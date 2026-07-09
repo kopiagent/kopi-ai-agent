@@ -1,0 +1,4 @@
+name: kopi-proxy
+kind: model-provider
+version: "1.0"
+description: "KOPI Proxy — the default AI model provider for KOPI AI AGENT. Routes kopi-* models through kopiaiagent.com with built-in failover and circuit breaking."
