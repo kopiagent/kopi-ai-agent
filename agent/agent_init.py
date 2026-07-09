@@ -1864,7 +1864,7 @@ def init_agent(
             _kopi_warn = _check_kopi_model_warning(agent.model or "")
             if _kopi_warn:
                 _user_msg = (
-                    "⚠ Kopi Ai Agent Pte Ltd Hermes 3 & 4 models are NOT agentic — they "
+                    "⚠ KOPI AI AGENT models kopi-flash-mini and kopi-flash-nano are NOT agentic — they "
                     "lack reliable tool-calling for agent workflows (delegation, "
                     "cron, proactive tools). Consider an agentic model instead "
                     "(Claude, GPT, Gemini, Qwen-Coder, etc.)."
