@@ -16,7 +16,7 @@ Hermes reads environment variables from the process environment and, for user-ma
 | `OPENROUTER_BASE_URL` | Override the OpenRouter-compatible base URL |
 | `KOPI_OPENROUTER_CACHE` | Enable OpenRouter response caching (`1`/`true`/`yes`/`on`). Overrides `openrouter.response_cache` in config.yaml. See [Response Caching](https://openrouter.ai/docs/guides/features/response-caching). |
 | `KOPI_OPENROUTER_CACHE_TTL` | Cache TTL in seconds (1-86400). Overrides `openrouter.response_cache_ttl` in config.yaml. |
-| `NOUS_BASE_URL` | Override Nous Portal base URL (rarely needed; development/testing only) |
+| `NOUS_BASE_URL` | Override KOPI Proxy base URL (rarely needed; development/testing only) |
 | `NOUS_INFERENCE_BASE_URL` | Override Nous inference endpoint directly |
 | `OPENAI_API_KEY` | API key for custom OpenAI-compatible endpoints (used with `OPENAI_BASE_URL`) |
 | `OPENAI_BASE_URL` | Base URL for custom endpoint (VLLM, SGLang, etc.) |
@@ -115,7 +115,7 @@ For native Anthropic auth, Hermes prefers Claude Code's own credential files whe
 
 | Variable | Description |
 |----------|-------------|
-| `KOPI_PORTAL_BASE_URL` | Override Nous Portal URL (for development/testing) |
+| `KOPI_PORTAL_BASE_URL` | Override KOPI Proxy URL (for development/testing) |
 | `NOUS_INFERENCE_BASE_URL` | Override Nous inference API URL |
 | `KOPI_NOUS_MIN_KEY_TTL_SECONDS` | Min agent key TTL before re-mint (default: 1800 = 30min) |
 | `KOPI_NOUS_TIMEOUT_SECONDS` | HTTP timeout for Nous credential / token flows |
@@ -195,7 +195,7 @@ These variables configure the [Tool Gateway](/user-guide/features/tool-gateway) 
 
 | Variable | Description |
 |----------|-------------|
-| `TOOL_GATEWAY_DOMAIN` | Base domain for Tool Gateway routing (default: `nousresearch.com`) |
+| `TOOL_GATEWAY_DOMAIN` | Base domain for Tool Gateway routing (default: `kopiaiagent.com`) |
 | `TOOL_GATEWAY_SCHEME` | HTTP or HTTPS scheme for gateway URLs (default: `https`) |
 | `TOOL_GATEWAY_USER_TOKEN` | Auth token for the Tool Gateway (normally auto-populated from Nous auth) |
 | `FIRECRAWL_GATEWAY_URL` | Override URL for the Firecrawl gateway endpoint specifically |
@@ -488,7 +488,7 @@ For cloud sandbox backends, persistence is filesystem-oriented. `TERMINAL_LIFETI
 
 Auth for the [web dashboard](/user-guide/features/web-dashboard) and for connecting [Hermes Desktop to a remote backend](/user-guide/features/web-dashboard#connecting-kopi-desktop-to-a-remote-backend). Per the secrets-only convention, credentials belong in `~/.kopi/.env`; the OAuth `client_id` is better set under `dashboard.oauth` in `config.yaml` (env wins when set).
 
-Three dashboard-auth providers ship in the box. For a remote Hermes Desktop connection or any internet-facing dashboard, the recommended provider is **OAuth (Nous Portal)** — set `KOPI_DASHBOARD_OAUTH_CLIENT_ID` (provision it with `kopi dashboard register`). The bundled **username/password** provider (`KOPI_DASHBOARD_BASIC_AUTH_*`) is the quickest option for a backend on a trusted LAN or behind a VPN, but is not suitable for direct public-internet exposure. To authenticate against your own identity provider, use the **self-hosted OIDC** provider (`KOPI_DASHBOARD_OIDC_*`). Either way, a non-loopback bind (`kopi dashboard --host 0.0.0.0`) engages the auth gate. See [Web Dashboard → Authentication](/user-guide/features/web-dashboard#authentication-gated-mode) for the full picture.
+Three dashboard-auth providers ship in the box. For a remote Hermes Desktop connection or any internet-facing dashboard, the recommended provider is **OAuth (KOPI Proxy)** — set `KOPI_DASHBOARD_OAUTH_CLIENT_ID` (provision it with `kopi dashboard register`). The bundled **username/password** provider (`KOPI_DASHBOARD_BASIC_AUTH_*`) is the quickest option for a backend on a trusted LAN or behind a VPN, but is not suitable for direct public-internet exposure. To authenticate against your own identity provider, use the **self-hosted OIDC** provider (`KOPI_DASHBOARD_OIDC_*`). Either way, a non-loopback bind (`kopi dashboard --host 0.0.0.0`) engages the auth gate. See [Web Dashboard → Authentication](/user-guide/features/web-dashboard#authentication-gated-mode) for the full picture.
 
 | Variable | Description |
 |----------|-------------|

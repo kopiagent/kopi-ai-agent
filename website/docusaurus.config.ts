@@ -7,7 +7,7 @@ const config: Config = {
   tagline: 'The self-improving AI agent',
   favicon: 'img/favicon.ico',
 
-  url: 'https://kopi-ai-agent.nousresearch.com',
+  url: 'https://kopiaiagent.com',
   baseUrl: '/docs/',
 
   organizationName: 'Kopi Ai Agent Pte Ltd',
@@ -137,7 +137,7 @@ const config: Config = {
           position: 'left',
         },
         {
-          href: 'https://kopi-ai-agent.nousresearch.com/',
+          href: 'https://kopiaiagent.com/',
           label: 'Download',
           position: 'left',
         },
@@ -146,7 +146,7 @@ const config: Config = {
           position: 'right',
         },
         {
-          href: 'https://kopi-ai-agent.nousresearch.com',
+          href: 'https://kopiaiagent.com/',
           label: 'Home',
           position: 'right',
         },
@@ -156,7 +156,7 @@ const config: Config = {
           position: 'right',
         },
         {
-          href: 'https://discord.gg/Kopi Ai Agent Pte Ltd',
+          href: 'https://discord.gg/kopi-ai-agent',
           label: 'Discord',
           position: 'right',
         },
@@ -177,7 +177,7 @@ const config: Config = {
         {
           title: 'Community',
           items: [
-            { label: 'Discord', href: 'https://discord.gg/Kopi Ai Agent Pte Ltd' },
+            { label: 'Discord', href: 'https://discord.gg/kopi-ai-agent' },
             { label: 'GitHub Issues', href: 'https://github.com/LINYIQ66/kopi-ai-agent/issues' },
             { label: 'Skills Hub', href: 'https://agentskills.io' },
           ],
@@ -185,13 +185,13 @@ const config: Config = {
         {
           title: 'More',
           items: [
-            { label: 'Desktop Download', href: 'https://kopi-ai-agent.nousresearch.com/' },
+            { label: 'Desktop Download', href: 'https://kopiaiagent.com/' },
             { label: 'GitHub', href: 'https://github.com/LINYIQ66/kopi-ai-agent' },
-            { label: 'Kopi Ai Agent Pte Ltd', href: 'https://nousresearch.com' },
+            { label: 'Kopi Ai Agent Pte Ltd', href: 'https://kopiaiagent.com' },
           ],
         },
       ],
-      copyright: `Built by <a href="https://nousresearch.com">Kopi Ai Agent Pte Ltd</a> · MIT License · ${new Date().getFullYear()}`,
+      copyright: `Built by <a href="https://kopiaiagent.com">Kopi Ai Agent Pte Ltd</a> · MIT License · ${new Date().getFullYear()}`,
     },
     prism: {
       theme: prismThemes.github,

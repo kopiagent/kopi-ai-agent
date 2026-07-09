@@ -43,7 +43,7 @@ That ordering matters because Hermes treats the saved model/provider choice as t
 Current provider families include (see `plugins/model-providers/` for the complete bundled set):
 
 - OpenRouter
-- Nous Portal
+- KOPI Proxy
 - OpenAI Codex
 - Copilot / Copilot ACP
 - Anthropic (native)

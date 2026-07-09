@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Account — KOPI AI AGENT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--coffee:#c87533;--coffee-dark:#8b5a2b;--coffee-light:#d4956b;--gold:#d4a04a;--gold-light:#e8c87a;--cream:#faf6f1;--cream-dark:#f0e8dd;--bg:#ffffff;--gray-50:#f8fafc;--gray-100:#f1f5f9;--gray-200:#e2e8f0;--gray-300:#cbd5e1;--gray-400:#94a3b8;--gray-500:#64748b;--gray-600:#475569;--gray-700:#334155;--gray-800:#1e293b;--gray-900:#0f172a;--green:#16a34a;--green-bg:#f0fdf4;--red:#dc2626;--red-bg:#fef2f2}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--gray-800);background:var(--cream);line-height:1.6;min-height:100vh}
+
+/* Nav */
+.nav{position:fixed;top:0;left:0;width:100%;z-index:1000;padding:0.75rem 2rem;background:rgba(255,255,255,0.85);backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(200,117,51,0.1)}
+.nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+.nav-logo{font-size:1.25rem;font-weight:800;color:var(--gray-900);text-decoration:none;display:flex;align-items:center;gap:0.5rem}
+.nav-logo span{color:var(--coffee)}
+.nav-links{display:flex;gap:1.75rem;align-items:center}
+.nav-links a{color:var(--gray-600);text-decoration:none;font-size:0.875rem;font-weight:500;transition:color .2s}
+.nav-links a:hover{color:var(--coffee)}
+.nav-hamburger{display:none;flex-direction:column;gap:4px;cursor:pointer;background:none;border:none;padding:4px}
+.nav-hamburger span{width:22px;height:2px;background:var(--gray-700);border-radius:2px}
+@media(max-width:768px){
+  .nav-links{position:fixed;top:56px;left:0;right:0;background:rgba(255,255,255,0.97);backdrop-filter:blur(20px);flex-direction:column;padding:1.5rem;gap:1rem;border-bottom:1px solid var(--gray-200);transform:translateY(-120%);transition:transform .3s ease}
+  .nav-links.open{transform:translateY(0)}
+  .nav-hamburger{display:flex}
+}
+
+/* Hero */
+.hero{padding:7rem 1.5rem 3rem;text-align:center;background:linear-gradient(180deg,var(--cream) 0%,var(--bg) 50%)}
+.hero h1{font-size:clamp(2rem,4vw,3rem);font-weight:900;letter-spacing:-0.03em;margin-bottom:0.75rem}
+.hero h1 .gold{background:linear-gradient(135deg,var(--gold),var(--coffee-dark));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{color:var(--gray-500);font-size:1.1rem;max-width:600px;margin:0 auto}
+
+/* Container */
+.container{max-width:1100px;margin:0 auto;padding:0 1.5rem 4rem}
+
+/* Balance Card */
+.balance-card{background:var(--bg);border-radius:20px;padding:2rem;margin-bottom:2rem;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid var(--gray-200)}
+.balance-card h2{font-size:1.25rem;font-weight:700;margin-bottom:1rem}
+.key-input-group{display:flex;gap:0.75rem;flex-wrap:wrap}
+.key-input-group input{flex:1;min-width:250px;padding:0.75rem 1rem;border:2px solid var(--gray-200);border-radius:12px;font-size:0.9rem;font-family:'Inter',sans-serif;outline:none;transition:border .2s}
+.key-input-group input:focus{border-color:var(--coffee)}
+.key-input-group button{padding:0.75rem 1.5rem;background:var(--coffee);color:#fff;border:none;border-radius:12px;font-size:0.9rem;font-weight:600;cursor:pointer;transition:all .2s}
+.key-input-group button:hover{background:var(--coffee-dark)}
+.key-input-group button:disabled{opacity:0.5;cursor:not-allowed}
+.balance-display{margin-top:1rem;padding:1rem 1.25rem;background:var(--green-bg);border:1px solid #bbf7d0;border-radius:12px;display:none}
+.balance-display.visible{display:block}
+.balance-display .balance-amount{font-size:1.5rem;font-weight:800;color:var(--green)}
+.balance-display .balance-label{color:var(--gray-500);font-size:0.85rem}
+.balance-display .client-info{display:flex;gap:1.5rem;flex-wrap:wrap;margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid #bbf7d0}
+.balance-display .client-info span{color:var(--gray-500);font-size:0.85rem}
+.error-display{margin-top:0.75rem;padding:0.75rem 1rem;background:var(--red-bg);border:1px solid #fecaca;border-radius:12px;color:var(--red);font-size:0.85rem;display:none}
+.error-display.visible{display:block}
+
+/* Tiers Section */
+.section-title{text-align:center;margin-bottom:2.5rem}
+.section-title h2{font-size:1.75rem;font-weight:800;margin-bottom:0.5rem}
+.section-title p{color:var(--gray-500)}
+.tier-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.25rem}
+.tier-card{background:var(--bg);border-radius:20px;padding:2rem;border:1px solid var(--gray-200);box-shadow:0 1px 3px rgba(0,0,0,0.04);transition:all .25s ease;display:flex;flex-direction:column}
+.tier-card:hover{transform:translateY(-4px);box-shadow:0 12px 24px rgba(0,0,0,0.08);border-color:var(--coffee)}
+.tier-card.featured{border:2px solid var(--gold);position:relative}
+.tier-card.featured::before{content:"🔥 Best Value";position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--gold),var(--coffee-dark));color:#fff;padding:0.25rem 1rem;border-radius:999px;font-size:0.75rem;font-weight:700;letter-spacing:0.02em}
+.tier-emoji{font-size:2rem;margin-bottom:0.75rem}
+.tier-name{font-size:1.1rem;font-weight:700;margin-bottom:0.25rem}
+.tier-tokens{font-size:1.75rem;font-weight:800;color:var(--coffee);margin-bottom:0.25rem}
+.tier-tokens small{font-size:0.9rem;font-weight:500;color:var(--gray-500)}
+.tier-price{font-size:1.5rem;font-weight:700;color:var(--gray-900);margin-bottom:1rem}
+.tier-desc{color:var(--gray-500);font-size:0.85rem;margin-bottom:1.5rem;flex:1}
+.tier-btn{display:block;width:100%;padding:0.85rem;border-radius:12px;font-size:0.95rem;font-weight:600;border:none;cursor:pointer;transition:all .2s;text-decoration:none;text-align:center}
+.tier-btn-primary{background:var(--coffee);color:#fff}
+.tier-btn-primary:hover{background:var(--coffee-dark)}
+.tier-btn-gold{background:linear-gradient(135deg,var(--gold),var(--coffee-dark));color:#fff}
+.tier-btn-gold:hover{filter:brightness(1.1)}
+.tier-btn-outline{background:transparent;border:2px solid var(--gray-200);color:var(--gray-700)}
+.tier-btn-outline:hover{border-color:var(--coffee);color:var(--coffee)}
+
+/* Confirmation modal before PayPal */
+.modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);z-index:2000;justify-content:center;align-items:center}
+.modal-overlay.visible{display:flex}
+.modal{background:var(--bg);border-radius:20px;padding:2rem;max-width:440px;width:90%;box-shadow:0 24px 48px rgba(0,0,0,0.2)}
+.modal h3{font-size:1.25rem;font-weight:700;margin-bottom:0.75rem}
+.modal p{color:var(--gray-500);font-size:0.9rem;margin-bottom:1.5rem;line-height:1.7}
+.modal .detail-row{display:flex;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid var(--gray-100);font-size:0.9rem}
+.modal .detail-row:last-child{border-bottom:none;font-weight:700;font-size:1rem}
+.modal .modal-btns{display:flex;gap:0.75rem;margin-top:1.5rem}
+.modal .modal-btns button{flex:1;padding:0.75rem;border-radius:12px;font-size:0.9rem;font-weight:600;border:none;cursor:pointer;transition:all .2s}
+.modal .modal-btns .btn-cancel{background:var(--gray-100);color:var(--gray-600)}
+.modal .modal-btns .btn-cancel:hover{background:var(--gray-200)}
+.modal .modal-btns .btn-pay{background:var(--coffee);color:#fff}
+.modal .modal-btns .btn-pay:hover{background:var(--coffee-dark)}
+
+/* Steps */
+.steps-section{margin-top:3rem}
+.steps-section h2{text-align:center;font-size:1.5rem;font-weight:800;margin-bottom:2rem}
+.steps-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem}
+.step-card{text-align:center;padding:1.5rem}
+.step-number{width:40px;height:40px;border-radius:50%;background:var(--coffee);color:#fff;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700;margin:0 auto 1rem}
+.step-card h3{font-size:1rem;font-weight:700;margin-bottom:0.5rem}
+.step-card p{color:var(--gray-500);font-size:0.85rem}
+
+/* FAQ */
+.faq-section{margin-top:3rem;max-width:700px;margin-left:auto;margin-right:auto}
+.faq-section h2{text-align:center;font-size:1.5rem;font-weight:800;margin-bottom:2rem}
+.faq-item{border-bottom:1px solid var(--gray-200);padding:1rem 0}
+.faq-q{font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none}
+.faq-q::after{content:'+';font-size:1.25rem;color:var(--coffee);font-weight:300}
+.faq-q.open::after{content:'−'}
+.faq-a{padding-top:0.75rem;color:var(--gray-500);font-size:0.9rem;display:none;line-height:1.7}
+.faq-a.visible{display:block}
+
+/* Footer */
+.footer{background:var(--gray-900);color:var(--gray-400);padding:2rem;text-align:center;font-size:0.85rem}
+.footer a{color:var(--coffee-light);text-decoration:none}
+
+@media(max-width:640px){
+  .tier-grid{grid-template-columns:1fr}
+  .steps-grid{grid-template-columns:1fr}
+  .key-input-group{flex-direction:column}
+  .key-input-group input{min-width:auto}
+  .balance-display .client-info{flex-direction:column;gap:0.5rem}
+}
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">☕ KOPI <span>AI AGENT</span></a>
+    <div class="nav-links" id="navLinks">
+      <a href="/">Home</a>
+      <a href="/docs/">Docs</a>
+      <a href="/account/" class="active">🔑 Account</a>
+      <a href="/subscribers/">📋 Subscribe</a>
+      <a href="/guides/">Guides</a>
+    </div>
+    <button class="nav-hamburger" onclick="document.getElementById('navLinks').classList.toggle('open')">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <h1>☕ <span class="gold">Account</span></h1>
+  <p>Check your token balance and top up your KOPI AI AGENT account. Get more tokens for your AI workflows.</p>
+</section>
+
+<div class="container">
+
+  <!-- Balance Check -->
+  <div class="balance-card">
+    <h2>🔍 Check Balance</h2>
+    <p style="color:var(--gray-500);font-size:0.9rem;margin-bottom:1rem">Enter your API key to check your current token balance and usage.</p>
+    <div class="key-input-group">
+      <input type="text" id="apiKeyInput" placeholder="Enter your API key (e.g., kopi-xxxx...)" autocomplete="off">
+      <button id="checkBtn" onclick="checkBalance()">Check</button>
+    </div>
+    <div class="balance-display" id="balanceDisplay">
+      <div style="font-size:0.85rem;color:var(--gray-500);margin-bottom:0.25rem">Available Balance</div>
+      <div class="balance-amount"><span id="balanceAmount">0</span> tokens</div>
+      <div class="client-info">
+        <span>🔑 Key: <strong id="clientKey">—</strong></span>
+        <span>📊 Used: <strong id="clientUsed">0</strong></span>
+        <span>📦 Limit: <strong id="clientLimit">0</strong></span>
+        <span>🔄 Resets: <strong id="clientResets">—</strong></span>
+      </div>
+    </div>
+    <div class="error-display" id="errorDisplay"></div>
+  </div>
+
+  <!-- Top-Up Tiers -->
+  <div class="section-title">
+    <h2>💰 Top Up Tokens</h2>
+    <p>Choose a package and pay with PayPal. Tokens are credited within 24 hours.</p>
+  </div>
+
+  <div class="tier-grid">
+    <div class="tier-card">
+      <div class="tier-emoji">☕</div>
+      <div class="tier-name">KOPI-S</div>
+      <div class="tier-tokens">100K <small>tokens</small></div>
+      <div class="tier-price">$5 SGD</div>
+      <div class="tier-desc">Perfect for testing and light usage. ~500 AI conversations.</div>
+      <button class="tier-btn tier-btn-outline" onclick="openPayModal('kopi-s', 100000, 5)">Select</button>
+    </div>
+    <div class="tier-card">
+      <div class="tier-emoji">☕☕</div>
+      <div class="tier-name">KOPI-M</div>
+      <div class="tier-tokens">500K <small>tokens</small></div>
+      <div class="tier-price">$20 SGD</div>
+      <div class="tier-desc">For regular users. ~2,500 AI conversations.</div>
+      <button class="tier-btn tier-btn-primary" onclick="openPayModal('kopi-m', 500000, 20)">Select</button>
+    </div>
+    <div class="tier-card featured">
+      <div class="tier-emoji">☕☕☕</div>
+      <div class="tier-name">KOPI-L</div>
+      <div class="tier-tokens">2M <small>tokens</small></div>
+      <div class="tier-price">$69 SGD</div>
+      <div class="tier-desc">Our most popular plan. ~10,000 AI conversations. Great for teams.</div>
+      <button class="tier-btn tier-btn-gold" onclick="openPayModal('kopi-l', 2000000, 69)">Select</button>
+    </div>
+    <div class="tier-card">
+      <div class="tier-emoji">☕☕☕☕</div>
+      <div class="tier-name">KOPI-XL</div>
+      <div class="tier-tokens">5M <small>tokens</small></div>
+      <div class="tier-price">$149 SGD</div>
+      <div class="tier-desc">Heavy usage. ~25,000 AI conversations. Best tokens-per-dollar.</div>
+      <button class="tier-btn tier-btn-primary" onclick="openPayModal('kopi-xl', 5000000, 149)">Select</button>
+    </div>
+    <div class="tier-card">
+      <div class="tier-emoji">👑</div>
+      <div class="tier-name">Enterprise</div>
+      <div class="tier-tokens">Custom</div>
+      <div class="tier-price">Custom</div>
+      <div class="tier-desc">Need more? Contact us for custom quotas, dedicated support, and SLAs.</div>
+      <a href="mailto:hello@kopiaiagent.com" class="tier-btn tier-btn-outline" style="display:block;text-decoration:none">Contact Us</a>
+    </div>
+  </div>
+
+  <!-- How It Works -->
+  <div class="steps-section">
+    <h2>📋 How It Works</h2>
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-number">1</div>
+        <h3>Select a Plan</h3>
+        <p>Choose the token package that fits your needs.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">2</div>
+        <h3>Pay with PayPal</h3>
+        <p>Secure payment via PayPal. No account needed.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">3</div>
+        <h3>Send Your Key</h3>
+        <p>Email your transaction ID + API key prefix to us.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">4</div>
+        <h3>Get Credited</h3>
+        <p>Tokens are added within 24 hours. Happy coding!</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- FAQ -->
+  <div class="faq-section">
+    <h2>❓ FAQ</h2>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">How long does token crediting take?</div>
+      <div class="faq-a">Most top-ups are processed within 24 hours during business days. Once processed, your tokens are immediately available — no restart needed.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">Do tokens expire?</div>
+      <div class="faq-a">No! Purchased tokens never expire. They remain in your account until you use them.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">Can I get a refund?</div>
+      <div class="faq-a">We offer a 7-day money-back guarantee on unused tokens. Contact us at hello@kopiaiagent.com with your transaction ID.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">How do I find my API key prefix?</div>
+      <div class="faq-a">Your API key prefix is the first part of your key before the random characters (e.g., kopi-xxxx...). You can find it in your ~/.kopi/.env file or wherever you saved your key.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Payment Confirmation Modal -->
+<div class="modal-overlay" id="payModal">
+  <div class="modal">
+    <h3>📋 Confirm Top-Up</h3>
+    <p>Please review your selection before proceeding to PayPal.</p>
+    <div class="detail-row"><span>Plan</span><span id="modalPlan">—</span></div>
+    <div class="detail-row"><span>Tokens</span><span id="modalTokens">—</span></div>
+    <div class="detail-row" style="border-bottom:none"><span>Price</span><span id="modalPrice" style="color:var(--coffee);font-size:1rem;font-weight:700">—</span></div>
+    <div style="margin-top:1rem;color:var(--gray-500);font-size:0.85rem;background:var(--cream);padding:0.75rem;border-radius:8px">
+      💡 After paying, send your <strong>transaction ID</strong> and <strong>API key prefix</strong> to <strong>hello@kopiaiagent.com</strong>. Tokens credited within 24h.
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closePayModal()">Cancel</button>
+      <button class="btn-pay" id="payBtn" onclick="proceedToPayPal()">💳 Pay with PayPal</button>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<footer class="footer">
+  <p>© 2026 <a href="https://kopiaiagent.com">Kopi Ai Agent Pte Ltd</a> (Singapore). All rights reserved.</p>
+  <p style="margin-top:0.5rem"><a href="/legal/">Legal</a> · <a href="mailto:hello@kopiaiagent.com">Contact</a></p>
+</footer>
+
+<script>
+let selectedTier = null;
+
+function toggleFaq(el) {
+  el.classList.toggle('open');
+  const answer = el.nextElementSibling;
+  answer.classList.toggle('visible');
+}
+
+async function checkBalance() {
+  const input = document.getElementById('apiKeyInput');
+  const btn = document.getElementById('checkBtn');
+  const error = document.getElementById('errorDisplay');
+  const balance = document.getElementById('balanceDisplay');
+  const apiKey = input.value.trim();
+  
+  if (!apiKey) {
+    error.textContent = 'Please enter your API key.';
+    error.classList.add('visible');
+    return;
+  }
+  
+  btn.disabled = true;
+  btn.textContent = 'Checking...';
+  error.classList.remove('visible');
+  balance.classList.remove('visible');
+  
+  try {
+    const res = await fetch('/v1/account/balance', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({api_key: apiKey})
+    });
+    
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Invalid API key');
+    }
+    
+    const data = await res.json();
+    
+    document.getElementById('balanceAmount').textContent = 
+      data.available.toLocaleString();
+    document.getElementById('clientKey').textContent = 
+      data.key_prefix || apiKey.substring(0, 20) + '...';
+    document.getElementById('clientUsed').textContent = 
+      (data.total_used || 0).toLocaleString();
+    document.getElementById('clientLimit').textContent = 
+      (data.total_limit || 0).toLocaleString();
+    document.getElementById('clientResets').textContent = 
+      data.reset_period || 'No limit';
+    
+    balance.classList.add('visible');
+    input.value = apiKey.substring(0, 20) + '...';
+    input.dataset.fullKey = apiKey;
+  } catch(e) {
+    error.textContent = e.message || 'Failed to check balance. Please verify your API key.';
+    error.classList.add('visible');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Check';
+  }
+}
+
+function openPayModal(tier, tokens, price) {
+  selectedTier = {tier, tokens, price};
+  document.getElementById('modalPlan').textContent = tier;
+  document.getElementById('modalTokens').textContent = tokens.toLocaleString() + ' tokens';
+  document.getElementById('modalPrice').textContent = '$' + price + ' SGD';
+  document.getElementById('payModal').classList.add('visible');
+}
+
+function closePayModal() {
+  document.getElementById('payModal').classList.remove('visible');
+  selectedTier = null;
+}
+
+function proceedToPayPal() {
+  if (!selectedTier) return;
+  const btn = document.getElementById('payBtn');
+  btn.disabled = true;
+  btn.textContent = 'Redirecting to PayPal...';
+  
+  // Build PayPal payment URL with amount
+  const amount = selectedTier.price;
+  const itemName = 'KOPI AI Agent - ' + selectedTier.tier + ' (' + 
+    selectedTier.tokens.toLocaleString() + ' tokens)';
+  
+  // Use PayPal NCP payment link with correct amount
+  // We'll record this payment attempt
+  const paypalBase = 'https://www.paypal.com/ncp/payment/V5S5AQEMEBFVE';
+  
+  // Record the payment intent before redirecting
+  fetch('/v1/account/payment-intent', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      tier: selectedTier.tier,
+      tokens: selectedTier.tokens,
+      amount_sgd: selectedTier.price,
+      timestamp: new Date().toISOString()
+    })
+  }).catch(() => {}); // non-blocking
+  
+  setTimeout(() => {
+    window.location.href = paypalBase;
+  }, 500);
+}
+</script>
+</body>
+</html>

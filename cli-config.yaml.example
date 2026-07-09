@@ -8,11 +8,12 @@
 model:
   # Default model to use (can be overridden with --model flag)
   # Both "default" and "model" work as the key name here.
-  default: "anthropic/claude-opus-4.6"
+  default: "kopi-o"
   
   # Inference provider selection:
   #   "auto"         - Auto-detect from credentials (default)
   #   "openrouter"   - OpenRouter (requires: OPENROUTER_API_KEY or OPENAI_API_KEY)
+  #   "kopi"         - ⭐ KOPI Proxy (requires: KOPI_API_KEY — get yours at kopiaiagent.com/account)
   #   "nous"         - Nous Portal OAuth (requires: kopi auth add nous)
   #   "nous-api"     - Nous Portal API key (requires: NOUS_API_KEY)
   #   "anthropic"    - Direct Anthropic API (requires: ANTHROPIC_API_KEY)
@@ -39,11 +40,20 @@ model:
   #   It works with both no-auth and auth-enabled server modes.
   #
   # Can also be overridden for a single invocation with the --provider flag.
-  provider: "auto"
+  provider: "custom"
   
-  # API configuration (falls back to OPENROUTER_API_KEY env var)
-  # api_key: "your-key-here"  # Uncomment to set here instead of .env
-  base_url: "https://openrouter.ai/api/v1"
+  # ── KOPI Proxy Configuration ──────────────────────────────────────────
+  # The default KOPI AI AGENT provider. Get your API key:
+  #   https://kopiaiagent.com/account
+  #
+  # kopi-o       = MiMo v2.5 Pro · daily driver · Tier 2
+  # kopi-o-flash = MiMo v2.5 · fast + capable · Tier 3
+  # kopi-flash   = DeepSeek V4 Pro · ultra fast · Tier 3
+  # kopi-gpt5    = GPT-5.5 · strongest reasoning · Tier 1
+  # kopi-opus    = Claude Opus 4.6 · deep analysis · Tier 1
+  #
+  api_key: "${KOPI_API_KEY}"
+  base_url: "https://kopiaiagent.com/v2"
 
   # Azure Foundry keyless auth example:
   # provider: "azure-foundry"

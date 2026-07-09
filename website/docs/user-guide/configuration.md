@@ -9,7 +9,7 @@ description: "Configure KOPI AI AGENT — config.yaml, providers, models, API ke
 All settings are stored in the `~/.kopi/` directory for easy access.
 
 :::tip Easiest path to a working `config.yaml`
-Run `kopi setup --portal` — one OAuth gets you a model provider and all four Tool Gateway tools without hand-editing YAML. Portal subscribers also get 10% off token-billed providers. See [Nous Portal](/integrations/nous-portal).
+Run `kopi setup --portal` — one OAuth gets you a model provider and all four Tool Gateway tools without hand-editing YAML. KOPI Proxy subscribers also get 10% off token-billed providers. See [KOPI Proxy](/integrations/subscription-proxy).
 :::
 
 ## Directory Structure
@@ -18,7 +18,7 @@ Run `kopi setup --portal` — one OAuth gets you a model provider and all four T
 ~/.kopi/
 ├── config.yaml     # Settings (model, terminal, TTS, compression, etc.)
 ├── .env            # API keys and secrets
-├── auth.json       # OAuth provider credentials (Nous Portal, etc.)
+├── auth.json       # OAuth provider credentials (KOPI Proxy, etc.)
 ├── SOUL.md         # Primary agent identity (slot #1 in system prompt)
 ├── memories/       # Persistent memory (MEMORY.md, USER.md)
 ├── skills/         # Agent-created skills (managed via skill_manage tool)
@@ -908,7 +908,7 @@ Options: `fill_first` (default), `round_robin`, `least_used`, `random`. See [Cre
 
 Hermes turns on cross-session prompt caching automatically when the active provider supports it — no user config needed.
 
-For Claude on **native Anthropic**, **OpenRouter**, and **Nous Portal**, Hermes attaches `cache_control` breakpoints with the 1-hour TTL (`ttl: "1h"`) on the system prompt and skill blocks. The first send within a fresh hour pays full input rates; subsequent sends across any session within the same hour pull from the cache at the discounted cached-read rate. This means the system prompt, loaded skill content, and the early portion of any long-context include get reused across `kopi` sessions and across forked subagents for the first hour.
+For Claude on **native Anthropic**, **OpenRouter**, and **KOPI Proxy**, Hermes attaches `cache_control` breakpoints with the 1-hour TTL (`ttl: "1h"`) on the system prompt and skill blocks. The first send within a fresh hour pays full input rates; subsequent sends across any session within the same hour pull from the cache at the discounted cached-read rate. This means the system prompt, loaded skill content, and the early portion of any long-context include get reused across `kopi` sessions and across forked subagents for the first hour.
 
 The Qwen Cloud (Alibaba DashScope) upstream caps cache TTL at 5 minutes, so Hermes uses the 5-minute breakpoint TTL there instead. Other Claude-via-third-party paths (AWS Bedrock, Azure Foundry) fall back to the provider's own caching defaults. xAI Grok uses a separate session-pinned conversation-id mechanism — see [xAI prompt caching](/integrations/providers#xai-grok--responses-api--prompt-caching).
 
@@ -921,14 +921,14 @@ prompt_caching:
   cache_ttl: "5m"   # "5m" or "1h" (Anthropic-supported tiers); other values are ignored
 ```
 
-`cache_ttl` selects the breakpoint TTL Hermes attaches for Claude via the native Anthropic API, OpenRouter, and Nous Portal. Only the two Anthropic-supported tiers (`"5m"`, `"1h"`) are honored — any other value is ignored. Providers with their own caps (e.g. Qwen Cloud, which maxes at 5 minutes) still clamp to what the upstream allows.
+`cache_ttl` selects the breakpoint TTL Hermes attaches for Claude via the native Anthropic API, OpenRouter, and KOPI Proxy. Only the two Anthropic-supported tiers (`"5m"`, `"1h"`) are honored — any other value is ignored. Providers with their own caps (e.g. Qwen Cloud, which maxes at 5 minutes) still clamp to what the upstream allows.
 
 ## Auxiliary Models
 
 Hermes uses "auxiliary" models for side tasks like image analysis, web page summarization, browser screenshot analysis, session-title generation, and context compression. By default (`auxiliary.*.provider: "auto"`), Hermes routes every auxiliary task to your **main chat model** — the same provider/model you picked in `kopi model`. You don't need to configure anything to get started, but be aware that on expensive reasoning models (Opus, MiniMax M2.7, etc.) auxiliary tasks add meaningful cost. If you want cheap-and-fast side tasks regardless of your main model, set `auxiliary.<task>.provider` and `auxiliary.<task>.model` explicitly (for example, Gemini Flash on OpenRouter for vision and web extraction).
 
 :::note Why "auto" uses your main model
-Earlier builds split aggregator users (OpenRouter, Nous Portal) onto a cheap provider-side default. That was surprising — users who paid for an aggregator subscription would see a different model handling their auxiliary traffic. `auto` now uses the main model for everyone, and per-task overrides in `config.yaml` still win (see [Full auxiliary config reference](#full-auxiliary-config-reference) below).
+Earlier builds split aggregator users (OpenRouter, KOPI Proxy) onto a cheap provider-side default. That was surprising — users who paid for an aggregator subscription would see a different model handling their auxiliary traffic. `auto` now uses the main model for everyone, and per-task overrides in `config.yaml` still win (see [Full auxiliary config reference](#full-auxiliary-config-reference) below).
 :::
 
 ### Configuring auxiliary models interactively
@@ -1164,7 +1164,7 @@ These options apply to **auxiliary task configs** (`auxiliary:`, `compression:`)
 |----------|-------------|-------------|
 | `"auto"` | Best available (default). Vision tries OpenRouter → Nous → Codex. | — |
 | `"openrouter"` | Force OpenRouter — routes to any model (Gemini, GPT-4o, Claude, etc.) | `OPENROUTER_API_KEY` |
-| `"nous"` | Force Nous Portal | `kopi auth` |
+| `"nous"` | Force KOPI Proxy | `kopi auth` |
 | `"codex"` | Force Codex OAuth (ChatGPT account). Supports vision (gpt-5.3-codex). | `kopi model` → Codex |
 | `"minimax-oauth"` | Force MiniMax OAuth (browser login, no API key). Uses MiniMax-M2.7-highspeed for auxiliary tasks. | `kopi model` → MiniMax (OAuth) |
 | `"xai-oauth"` | Force xAI Grok OAuth (browser login for SuperGrok or X Premium+ subscribers, no API key). Same OAuth token covers chat, TTS, image, video, and transcription. | `kopi model` → xAI Grok OAuth (SuperGrok / Premium+) |
@@ -2029,9 +2029,9 @@ dashboard:
   theme: "default"            # "default" | "midnight" | "ember" | "mono" | "cyberpunk" | "rose"
   show_token_analytics: false # Re-enable the (local-estimate-only) token/cost analytics surfaces
   public_url: ""              # Full public authority for OAuth redirect_uri (env: KOPI_DASHBOARD_PUBLIC_URL)
-  oauth:                      # Portal OAuth gate (engaged with --host and not --insecure)
-    client_id: ""             # agent:{instance_id} — Portal provisions this
-    portal_url: ""            # blank → plugin default (production Portal)
+  oauth:                      # KOPI Proxy OAuth gate (engaged with --host and not --insecure)
+    client_id: ""             # agent:{instance_id} — KOPI Proxy provisions this
+    portal_url: ""            # blank → plugin default (production KOPI Proxy)
   basic_auth:                 # Self-hosted username/password gate (dashboard_auth/basic plugin)
     username: ""              # blank → plugin no-op
     password_hash: ""         # scrypt$... (preferred — no plaintext at rest)

@@ -34,7 +34,7 @@ Key capabilities:
 ## Setup
 
 :::tip Nous Subscribers
-If you have a paid [Nous Portal](https://kopiaiagent.com/portal) subscription, you can use browser automation through the **[Tool Gateway](tool-gateway.md)** without any separate API keys. New installs can run `kopi setup --portal` to log in and turn on every gateway tool at once; existing installs can pick **Nous Subscription** as the browser provider via `kopi model` or `kopi tools`.
+If you have a paid [KOPI Proxy](https://kopiaiagent.com/portal) subscription, you can use browser automation through the **[Tool Gateway](tool-gateway.md)** without any separate API keys. New installs can run `kopi setup --portal` to log in and turn on every gateway tool at once; existing installs can pick **Nous Subscription** as the browser provider via `kopi model` or `kopi tools`.
 :::
 
 ### Browserbase cloud mode

@@ -9,7 +9,7 @@ description: "Practical advice to get the most out of KOPI AI AGENT — prompt t
 A quick-wins collection of practical tips that make you immediately more effective with KOPI AI AGENT. Each section targets a different aspect — scan the headers and jump to what's relevant.
 
 :::tip Confused which model to pick?
-Run `kopi setup --portal` — you get 300+ models including Claude, GPT-5, and Gemini under one subscription. See [Nous Portal](/integrations/nous-portal).
+Run `kopi setup --portal` — you get 300+ models including Claude, GPT-5, and Gemini under one subscription. See [KOPI Proxy](/integrations/subscription-proxy).
 :::
 
 ---

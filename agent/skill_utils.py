@@ -606,7 +606,7 @@ def extract_skill_conditions(frontmatter: Dict[str, Any]) -> Dict[str, List]:
     if not isinstance(metadata, dict):
         metadata = {}
     kopi = metadata.get("kopi") or {}
-    if not isinstance(hermes, dict):
+    if not isinstance(kopi, dict):
         kopi = {}
     return {
         "fallback_for_toolsets": kopi.get("fallback_for_toolsets", []),
@@ -639,7 +639,7 @@ def extract_skill_config_vars(frontmatter: Dict[str, Any]) -> List[Dict[str, Any
     if not isinstance(metadata, dict):
         return []
     kopi = metadata.get("kopi")
-    if not isinstance(hermes, dict):
+    if not isinstance(kopi, dict):
         return []
     raw = kopi.get("config")
     if not raw:

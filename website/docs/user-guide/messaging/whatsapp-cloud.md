@@ -373,7 +373,7 @@ kopi config set stt.use_gateway true
 kopi gateway restart
 ```
 
-This uses your Nous Portal access token instead of needing a separate OpenAI key.
+This uses your KOPI Proxy access token instead of needing a separate OpenAI key.
 
 ---
 

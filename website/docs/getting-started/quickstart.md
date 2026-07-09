@@ -85,7 +85,7 @@ The single most important setup step. Use `kopi model` to walk through the choic
 kopi model
 ```
 
-:::tip Easiest path: Nous Portal
+:::tip Easiest path: KOPI Proxy
 One subscription covers 300+ models plus the [Tool Gateway](../user-guide/features/tool-gateway.md) (web search, image generation, TTS, cloud browser). On a fresh install:
 
 ```bash
@@ -98,7 +98,7 @@ That logs you in, sets Nous as your provider, and turns on the Tool Gateway in o
 :::info Setup modes
 On a fresh install, `kopi setup` offers three modes:
 
-- **Quick Setup (Nous Portal)** — free OAuth login, no API keys; sets up a model plus the Tool Gateway tools. The recommended fast path.
+- **Quick Setup (KOPI Proxy)** — free OAuth login, no API keys; sets up a model plus the Tool Gateway tools. The recommended fast path.
 - **Full Setup** — walk through every provider, tool, and option yourself (bring your own keys).
 - **Blank Slate** — everything starts **off** except the bare minimum needed to run an agent: **provider & model, the File Operations toolset, and the Terminal toolset**. No web, browser, code execution, vision, memory, delegation, cron, skills, plugins, or MCP servers — and compression, checkpoints, smart routing, and memory capture are all disabled. After the minimal baseline is applied, you choose one of two paths: **start with everything disabled** (finish now with the minimal agent), or **walk through all configurations** (opt in to tools, skills, plugins, MCP, and messaging). Pick this when you want a minimal, fully-controlled agent and intend to enable only exactly what you need.
 
@@ -109,7 +109,7 @@ Good defaults:
 
 | Provider | What it is | How to set up |
 |----------|-----------|---------------|
-| **Nous Portal** | Subscription-based, zero-config | OAuth login via `kopi model` |
+| **KOPI Proxy** | Subscription-based, zero-config | OAuth login via `kopi model` |
 | **OpenAI Codex** | ChatGPT OAuth, uses Codex models | Device code auth via `kopi model` |
 | **Anthropic** | Claude models directly — Max plan + extra usage credits (OAuth), or API key for pay-per-token | `kopi model` → OAuth login (requires Max + extra credits), or an Anthropic API key |
 | **OpenRouter** | Multi-provider routing across many models | Enter your API key |

@@ -25,7 +25,7 @@ kopi chat -q "Hello"
 kopi chat --model "anthropic/claude-sonnet-4"
 
 # 使用指定提供商
-kopi chat --provider nous        # 使用 Nous Portal
+kopi chat --provider nous        # 使用 KOPI Proxy
 kopi chat --provider openrouter  # 强制使用 OpenRouter
 
 # 使用指定工具集

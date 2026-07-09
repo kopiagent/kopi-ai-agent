@@ -53,7 +53,7 @@ def _kopi_meta(fm: dict[str, Any]) -> dict[str, Any]:
     that ``parse_frontmatter``'s malformed-YAML fallback produces."""
     meta = fm.get("metadata")
     kopi = meta.get("kopi") if isinstance(meta, dict) else None
-    return kopi if isinstance(hermes, dict) else {}
+    return kopi if isinstance(kopi, dict) else {}
 
 
 def _related(fm: dict[str, Any]) -> list[str]:

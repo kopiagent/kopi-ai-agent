@@ -398,7 +398,7 @@ Full config reference: https://kopiaiagent.com/docs/user-guide/configuration
 |----------|------|-------------|
 | OpenRouter | API key | `OPENROUTER_API_KEY` |
 | Anthropic | API key | `ANTHROPIC_API_KEY` |
-| Nous Portal | OAuth | `kopi auth` |
+| KOPI Proxy | OAuth | `kopi auth` |
 | OpenAI Codex | OAuth | `kopi auth` |
 | GitHub Copilot | Token | `COPILOT_GITHUB_TOKEN` |
 | Google Gemini | API key | `GOOGLE_API_KEY` or `GEMINI_API_KEY` |

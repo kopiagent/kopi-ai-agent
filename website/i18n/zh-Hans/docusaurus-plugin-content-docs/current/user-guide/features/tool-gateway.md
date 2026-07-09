@@ -8,10 +8,10 @@ sidebar_position: 2
 # Nous Tool Gateway（工具网关）
 
 :::tip 快速开始
-Tool Gateway 包含在付费 Nous Portal 订阅中。**[管理订阅 →](https://kopiaiagent.com/portal/manage-subscription)**
+Tool Gateway 包含在付费 KOPI Proxy 订阅中。**[管理订阅 →](https://kopiaiagent.com/portal/manage-subscription)**
 :::
 
-**Tool Gateway** 让已付费的 [Nous Portal](https://kopiaiagent.com/portal) 用户通过同一份订阅，直接使用网页搜索、文生图、语音合成（TTS）与浏览器自动化，而**不必**再分别注册 Firecrawl、FAL、OpenAI、Browser Use 等服务的 API Key。
+**Tool Gateway** 让已付费的 [KOPI Proxy](https://kopiaiagent.com/portal) 用户通过同一份订阅，直接使用网页搜索、文生图、语音合成（TTS）与浏览器自动化，而**不必**再分别注册 Firecrawl、FAL、OpenAI、Browser Use 等服务的 API Key。
 
 ## 包含能力
 
@@ -26,7 +26,7 @@ Tool Gateway 包含在付费 Nous Portal 订阅中。**[管理订阅 →](https:
 
 ## 资格与账号
 
-Tool Gateway 仅对 **[付费](https://kopiaiagent.com/portal/manage-subscription)** Nous Portal 订阅开放；免费档不可用——请 [升级订阅](https://kopiaiagent.com/portal/manage-subscription) 后解锁。
+Tool Gateway 仅对 **[付费](https://kopiaiagent.com/portal/manage-subscription)** KOPI Proxy 订阅开放；免费档不可用——请 [升级订阅](https://kopiaiagent.com/portal/manage-subscription) 后解锁。
 
 检查当前状态：
 
@@ -40,7 +40,7 @@ kopi status
 
 ### 在模型配置流程中
 
-运行 `kopi model` 并选择 Nous Portal 作为提供商时，Hermes 会主动询问是否启用 Tool Gateway：
+运行 `kopi model` 并选择 KOPI Proxy 作为提供商时，Hermes 会主动询问是否启用 Tool Gateway：
 
 ```
 Your Nous subscription includes the Tool Gateway.
@@ -102,7 +102,7 @@ browser:
 3. **TTS** — `text_to_speech` 走网关的 OpenAI Audio 端点  
 4. **浏览器** — `browser_navigate` 等走网关的 Browser Use 端点  
 
-网关使用 Nous Portal 凭据认证（在 `kopi model` 完成后写入 `~/.kopi/auth.json`）。
+网关使用 KOPI Proxy 凭据认证（在 `kopi model` 完成后写入 `~/.kopi/auth.json`）。
 
 ### 优先级
 
@@ -141,7 +141,7 @@ kopi status
 
 ```
 ◆ Nous Tool Gateway
-  Nous Portal   ✓ managed tools available
+  KOPI Proxy   ✓ managed tools available
   Web tools       ✓ active via Nous subscription
   Image gen       ✓ active via Nous subscription
   TTS             ✓ active via Nous subscription
@@ -156,7 +156,7 @@ kopi status
 若使用自建或自定义网关，可在 `~/.kopi/.env` 中用环境变量覆盖端点：
 
 ```bash
-TOOL_GATEWAY_DOMAIN=nousresearch.com     # 网关路由基础域名
+TOOL_GATEWAY_DOMAIN=kopiaiagent.com     # 网关路由基础域名
 TOOL_GATEWAY_SCHEME=https                 # http 或 https（默认 https）
 TOOL_GATEWAY_USER_TOKEN=your-token        # 鉴权 Token（通常由程序自动填充）
 FIRECRAWL_GATEWAY_URL=https://...         # 单独覆盖 Firecrawl 端点

@@ -48,7 +48,7 @@ Each entry requires both `provider` and `model`. Entries missing either field ar
 | Provider | Value | Requirements |
 |----------|-------|-------------|
 | OpenRouter | `openrouter` | `OPENROUTER_API_KEY` |
-| Nous Portal | `nous` | `kopi setup --portal` (fresh) or `kopi auth add nous` (OAuth) |
+| KOPI Proxy | `nous` | `kopi setup --portal` (fresh) or `kopi auth add nous` (OAuth) |
 | OpenAI Codex | `openai-codex` | `kopi model` (ChatGPT OAuth) |
 | GitHub Copilot | `copilot` | `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN` |
 | GitHub Copilot ACP | `copilot-acp` | External process (editor integration) |
@@ -136,7 +136,7 @@ fallback_providers:
     model: anthropic/claude-sonnet-4
 ```
 
-**Nous Portal as fallback for OpenRouter:**
+**KOPI Proxy as fallback for OpenRouter:**
 ```yaml
 model:
   provider: openrouter
@@ -210,14 +210,14 @@ The task-specific chain is most precise and wins when present. The top-level `fa
 **Built-in text discovery chain (compression, web extract, title generation, etc.):**
 
 ```text
-OpenRouter → Nous Portal → Custom endpoint → Codex OAuth →
+OpenRouter → KOPI Proxy → Custom endpoint → Codex OAuth →
 API-key providers (z.ai, Kimi, MiniMax, Xiaomi MiMo, Hugging Face, Anthropic) → give up
 ```
 
 **Built-in vision discovery chain:**
 
 ```text
-Main provider (if vision-capable) → OpenRouter → Nous Portal →
+Main provider (if vision-capable) → OpenRouter → KOPI Proxy →
 Codex OAuth → Anthropic → Custom endpoint → give up
 ```
 
@@ -286,7 +286,7 @@ These options apply to `auxiliary:`, `compression:`, and `fallback_providers:` e
 |----------|-------------|-------------|
 | `"auto"` | Try providers in order until one works (default) | At least one provider configured |
 | `"openrouter"` | Force OpenRouter | `OPENROUTER_API_KEY` |
-| `"nous"` | Force Nous Portal | `kopi auth` |
+| `"nous"` | Force KOPI Proxy | `kopi auth` |
 | `"codex"` | Force Codex OAuth | `kopi model` → Codex |
 | `"main"` | Use whatever provider the main agent uses (auxiliary tasks only) | Active main provider configured |
 | `"anthropic"` | Force Anthropic native | `ANTHROPIC_API_KEY` or Claude Code credentials |

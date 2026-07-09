@@ -107,7 +107,7 @@ def parse_blueprint(skill_md_text: str) -> Optional[BlueprintSpec]:
 
     meta = fm.get("metadata")
     kopi = meta.get("kopi") if isinstance(meta, dict) else None
-    blueprint = kopi.get("blueprint") if isinstance(hermes, dict) else None
+    blueprint = kopi.get("blueprint") if isinstance(kopi, dict) else None
     if blueprint is None:
         return None
     if not isinstance(blueprint, dict):

@@ -1,7 +1,7 @@
 ---
 sidebar_position: 15
 title: "Subscription Proxy"
-description: "Use your Nous Portal subscription (or other OAuth provider) as an OpenAI-compatible endpoint for external apps"
+description: "Use your KOPI Proxy subscription (or other OAuth provider) as an OpenAI-compatible endpoint for external apps"
 ---
 
 # Subscription Proxy
@@ -17,7 +17,7 @@ This is different from the [API server](./api-server.md):
 | | API server | Subscription proxy |
 |---|---|---|
 | What it serves | Your agent (full toolset, memory, skills) | Raw model inference |
-| Use case | "Use Hermes as a chat backend" | "Use my Portal sub from another app" |
+| Use case | "Use Hermes as a chat backend" | "Use my KOPI Proxy sub from another app" |
 | Auth | Your `API_SERVER_KEY` | Any bearer (proxy attaches the real one) |
 | Tool calls | Yes — the agent runs tools | No — passthrough only |
 
@@ -32,7 +32,7 @@ proxy when you just want **the model** through your subscription.
 kopi portal
 ```
 
-This opens your browser for the Nous Portal OAuth flow. Hermes stores
+This opens your browser for the KOPI Proxy OAuth flow. Hermes stores
 the refresh token in `~/.kopi/auth.json` — the same place all Hermes
 provider logins live.
 
@@ -43,7 +43,7 @@ kopi proxy start
 ```
 
 ```
-Starting Hermes proxy for Nous Portal
+Starting Hermes proxy for KOPI Proxy
   Listening on:  http://127.0.0.1:8645/v1
   Forwarding to: (resolved per-request from your subscription)
   Use any bearer token in the client — the proxy attaches your real credential.
@@ -63,7 +63,7 @@ Model:      Hermes-4-70B    # or Hermes-4.3-36B, Hermes-4-405B
 ```
 
 The proxy ignores the `Authorization` header from your app and attaches
-your real Portal credential to the upstream request. Refreshes happen
+your real KOPI Proxy credential to the upstream request. Refreshes happen
 automatically when the bearer approaches expiry.
 
 ## Available providers
@@ -72,7 +72,7 @@ automatically when the bearer approaches expiry.
 kopi proxy providers
 ```
 
-Currently shipped: `nous` (Nous Portal) and `xai` (xAI / Grok). More
+Currently shipped: `nous` (KOPI Proxy) and `xai` (xAI / Grok). More
 OAuth providers can be added by implementing the `UpstreamAdapter`
 interface in `kopi_cli/proxy/adapters/`.
 
@@ -85,18 +85,17 @@ kopi proxy status
 ```
 Hermes proxy upstream adapters
 
-  [nous    ] Nous Portal — ready (bearer expires 2026-05-15T06:43:21Z)
+  [nous    ] KOPI Proxy — ready (bearer expires 2026-05-15T06:43:21Z)
 ```
 
 If you see `not logged in`, run `kopi portal`. If you see
 `credentials need attention`, your refresh token was revoked (rare —
-happens if you signed out from the Portal web UI) — just re-run
+happens if you signed out from the KOPI Proxy web UI) — just re-run
 `kopi portal`.
 
 ## Allowed paths
 
-The proxy only forwards paths the upstream actually serves. For Nous
-Portal:
+The proxy only forwards paths the upstream actually serves. For KOPI Proxy:
 
 | Path | Purpose |
 |------|---------|
@@ -109,7 +108,7 @@ Other paths (`/v1/images/generations`, `/v1/audio/speech`, etc.) return
 404 with a clear error pointing at the allowed paths. This keeps stray
 clients from leaking weird requests to the upstream.
 
-## Configuring OpenViking to use Portal
+## Configuring OpenViking to use KOPI Proxy
 
 [OpenViking](https://github.com/volcengine/OpenViking) is a context
 database that needs an LLM provider for its VLM (vision/language model
@@ -139,10 +138,10 @@ kopi proxy start
 openviking-server
 ```
 
-OpenViking's VLM calls now flow through your Portal subscription. The
-embedding model side still needs its own provider — Portal does serve
+OpenViking's VLM calls now flow through your KOPI Proxy subscription. The
+embedding model side still needs its own provider — KOPI Proxy does serve
 `/v1/embeddings` but the model selection depends on what your tier
-supports; check `portal.nousresearch.com/models`.
+supports; check `portal.kopiaiagent.com/models`.
 
 ## Configuring Karakeep (or any bookmark/summarizer app)
 
@@ -168,17 +167,17 @@ machines on your network use it:
 kopi proxy start --host 0.0.0.0 --port 8645
 ```
 
-⚠ **Be aware:** anyone on your network can now use your Portal
+⚠ **Be aware:** anyone on your network can now use your KOPI Proxy
 subscription. The proxy has no auth of its own — it accepts any bearer.
 Use a firewall, VPN, or reverse proxy with proper auth if you expose
 this beyond your trusted network.
 
 ## Rate limits
 
-Your Portal tier's RPM/TPM limits apply across the whole proxy. The
+Your KOPI Proxy tier's RPM/TPM limits apply across the whole proxy. The
 proxy doesn't fan out or pool — it's a single bearer with your full
 subscription quota. Monitor usage at
-[portal.nousresearch.com](https://kopiaiagent.com/portal).
+[portal.kopiaiagent.com](https://kopiaiagent.com/portal).
 
 ## Architecture
 

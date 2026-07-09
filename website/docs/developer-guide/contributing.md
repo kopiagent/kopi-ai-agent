@@ -279,7 +279,7 @@ fix(security): prevent shell injection in sudo password piping
 
 ## Community
 
-- **Discord**: [discord.gg/Kopi Ai Agent Pte Ltd](https://discord.gg/Kopi Ai Agent Pte Ltd)
+- **Discord**: [discord.gg/kopi-ai-agent](https://discord.gg/kopi-ai-agent)
 - **GitHub Discussions**: For design proposals and architecture discussions
 - **Skills Hub**: Upload specialized skills and share with the community
 

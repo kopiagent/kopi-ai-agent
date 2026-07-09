@@ -11,7 +11,7 @@ import Link from "@docusaurus/Link";
 
 # KOPI AI AGENT
 
-The self-improving AI agent built by [Kopi Ai Agent Pte Ltd](https://nousresearch.com). The only agent with a built-in learning loop — it creates skills from experience, improves them during use, nudges itself to persist knowledge, and builds a deepening model of who you are across sessions.
+The self-improving AI agent built by [Kopi Ai Agent Pte Ltd](https://kopiaiagent.com). The only agent with a built-in learning loop — it creates skills from experience, improves them during use, nudges itself to persist knowledge, and builds a deepening model of who you are across sessions.
 
 <div
   style={{
@@ -36,7 +36,7 @@ The self-improving AI agent built by [Kopi Ai Agent Pte Ltd](https://nousresearc
     Get Started →
   </Link>
   <a
-    href="https://kopi-ai-agent.nousresearch.com/"
+    href="https://kopiaiagent.com/"
     style={{
       display: "inline-block",
       padding: "0.6rem 1.2rem",
@@ -65,7 +65,7 @@ The self-improving AI agent built by [Kopi Ai Agent Pte Ltd](https://nousresearc
 
 ### Windows or macOS
 
-To easily install the command-line and desktop applications, [download the Hermes Desktop installer](https://kopi-ai-agent.nousresearch.com/) from our website and run it.
+To easily install the command-line and desktop applications, [download the Hermes Desktop installer](https://kopiaiagent.com/) from our website and run it.
 
 ### Without Hermes Desktop:
 
@@ -74,7 +74,7 @@ For a command-line only install without Hermes Desktop, run:
 #### Linux / macOS / WSL2 / Android (Termux)
 
 ```bash
-curl -fsSL https://kopi-ai-agent.nousresearch.com/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/LINYIQ66/kopi-ai-agent/main/scripts/install.sh | bash
 ```
 
 #### Windows (native)
@@ -82,13 +82,13 @@ curl -fsSL https://kopi-ai-agent.nousresearch.com/install.sh | bash
 Run in powershell:
 
 ```powershell
-iex (irm https://kopi-ai-agent.nousresearch.com/install.ps1)
+iex (irm https://raw.githubusercontent.com/LINYIQ66/kopi-ai-agent/main/scripts/install.ps1)
 ```
 
 See the full **[Installation Guide](/getting-started/installation)** for what the installer does, the per-user vs root layout, and Windows-specific notes. For the complete platform support matrix, see **[Platform Support](/getting-started/platform-support)**.
 
 :::tip Fastest path to a working agent
-After installing, run `kopi setup --portal` — one OAuth covers a model plus all four Tool Gateway tools (web search, image generation, TTS, browser). See [Nous Portal](/integrations/nous-portal).
+After installing, run `kopi setup --portal` — one OAuth covers a model plus all four Tool Gateway tools (web search, image generation, TTS, browser). See [KOPI Proxy](/integrations/subscription-proxy).
 :::
 
 ## What is KOPI AI AGENT?
@@ -118,18 +118,23 @@ It's not a coding copilot tethered to an IDE or a chatbot wrapper around a singl
 | 🏗️ **[Architecture](/developer-guide/architecture)**                    | How it works under the hood                                           |
 | ❓ **[FAQ & Troubleshooting](/reference/faq)**                          | Common questions and solutions                                        |
 
+## Memory Provider
+
+- **[KOPI Memory Provider](/models/)** — Persistent, cross-session memory backend for Hermes agents. Store, recall, and summarize conversational history with LLM-powered retrieval.
+- **[KOPI Proxy Backend](https://kopiaiagent.com)** — Use your KOPI Proxy subscription as a unified inference and tool gateway from any compatible client.
+
 ## Key Features
 
 - **A closed learning loop** — Agent-curated memory with periodic nudges, autonomous skill creation, skill self-improvement during use, FTS5 cross-session recall with LLM summarization, and [Honcho](https://github.com/plastic-labs/honcho) dialectic user modeling
 - **Runs anywhere, not just your laptop** — 6 terminal backends: local, Docker, SSH, Daytona, Singularity, Modal. Daytona and Modal offer serverless persistence — your environment hibernates when idle, costing nearly nothing
 - **Lives where you do** — CLI, Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Mattermost, Email, SMS, DingTalk, Feishu, WeCom, Weixin, QQ Bot, Yuanbao, BlueBubbles, Home Assistant, Microsoft Teams, Google Chat, and more — 20+ platforms from one gateway
-- **Built by model trainers** — Created by [Kopi Ai Agent Pte Ltd](https://nousresearch.com), the lab behind Hermes, Nomos, and Psyche. Works with [Nous Portal](https://portal.nousresearch.com), [OpenRouter](https://openrouter.ai), OpenAI, or any endpoint
+- **Built by model trainers** — Created by [Kopi Ai Agent Pte Ltd](https://kopiaiagent.com), the lab behind Hermes, Nomos, and Psyche. Works with [KOPI Proxy](https://kopiaiagent.com/portal), [OpenRouter](https://openrouter.ai), OpenAI, or any endpoint
 - **Scheduled automations** — Built-in cron with delivery to any platform
 - **Delegates & parallelizes** — Spawn isolated subagents for parallel workstreams. Programmatic Tool Calling via `execute_code` collapses multi-step pipelines into single inference calls
 - **Open standard skills** — Compatible with [agentskills.io](https://agentskills.io). Skills are portable, shareable, and community-contributed via the Skills Hub
-- **Full web control** — Search, extract, browse, vision, image generation, TTS — one subscription via [Nous Portal](/integrations/nous-portal) bundles all of them
+- **Full web control** — Search, extract, browse, vision, image generation, TTS — one subscription via [KOPI Proxy](/integrations/subscription-proxy) bundles all of them
 - **MCP support** — Connect to any MCP server for extended tool capabilities
-- **Research-ready** — Batch processing, trajectory export, RL training with Atropos. Built by [Kopi Ai Agent Pte Ltd](https://nousresearch.com) — the lab behind Hermes, Nomos, and Psyche models
+- **Research-ready** — Batch processing, trajectory export, RL training with Atropos. Built by [Kopi Ai Agent Pte Ltd](https://kopiaiagent.com) — the lab behind Hermes, Nomos, and Psyche models
 
 ## For LLMs and coding agents
 

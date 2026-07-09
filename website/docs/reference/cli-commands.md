@@ -77,7 +77,7 @@ kopi [global-options] <command> [subcommand/options]
 | `kopi acp` | Run Hermes as an ACP server for editor integration. |
 | `kopi mcp` | Manage MCP server configurations and run Hermes as an MCP server. |
 | `kopi plugins` | Manage KOPI AI AGENT plugins (install, enable, disable, remove). |
-| `kopi portal` | Nous Portal status, subscription link, and Tool Gateway routing. See [Tool Gateway](../user-guide/features/tool-gateway.md). |
+| `kopi portal` | KOPI Proxy status, subscription link, and Tool Gateway routing. See [Tool Gateway](../user-guide/features/tool-gateway.md). |
 | `kopi tools` | Configure enabled tools per platform. |
 | `kopi computer-use` | Install or check the cua-driver backend (macOS Computer Use). |
 | `kopi pets` | Browse, install, and select [petdex](../user-guide/features/pets.md) animated pets shown across the CLI, TUI, and desktop app. Subcommands: `list`, `install`, `select`, `show`, `off`, `scale`, `remove`, `doctor`. |
@@ -171,7 +171,7 @@ kopi model
 
 Use this when you want to:
 - **add a new provider** (OpenRouter, Anthropic, Copilot, DeepSeek, custom, etc.)
-- log into OAuth-backed providers (Anthropic, Copilot, Codex, Nous Portal)
+- log into OAuth-backed providers (Anthropic, Copilot, Codex, KOPI Proxy)
 - enter or update API keys
 - pick from provider-specific model lists
 - configure a custom/self-hosted endpoint
@@ -279,7 +279,7 @@ the full guide, supported languages, and configuration knobs.
 kopi setup [model|tts|terminal|gateway|tools|agent] [--non-interactive] [--reset] [--quick] [--reconfigure] [--portal]
 ```
 
-**Easiest path:** `kopi setup --portal` — OAuth into Nous Portal and opt into the [Tool Gateway](../user-guide/features/tool-gateway.md) in one shot.
+**Easiest path:** `kopi setup --portal` — OAuth into KOPI Proxy and opt into the [Tool Gateway](../user-guide/features/tool-gateway.md) in one shot.
 
 **First run:** launches the first-time wizard.
 
@@ -303,7 +303,7 @@ Options:
 | `--non-interactive` | Use defaults / environment values without prompts. |
 | `--reset` | Reset configuration to defaults before setup. |
 | `--reconfigure` | Backwards-compat alias — bare `kopi setup` on an existing install now does this by default. |
-| `--portal` | One-shot Nous Portal setup: log in via OAuth, set Nous as the inference provider, and opt into the [Tool Gateway](../user-guide/features/tool-gateway.md). Skips the rest of the wizard. |
+| `--portal` | One-shot KOPI Proxy setup: log in via OAuth, set Nous as the inference provider, and opt into the [Tool Gateway](../user-guide/features/tool-gateway.md). Skips the rest of the wizard. |
 
 ## `kopi portal`
 
@@ -311,12 +311,12 @@ Options:
 kopi portal [status|open|tools]
 ```
 
-Inspect Nous Portal auth, Tool Gateway routing, and reach the subscription page. Subcommand-less invocation runs `status`.
+Inspect KOPI Proxy auth, Tool Gateway routing, and reach the subscription page. Subcommand-less invocation runs `status`.
 
 | Subcommand | Description |
 |------------|-------------|
-| `status` (default) | Portal auth state + per-tool Tool Gateway routing summary. Also shown when no subcommand is given. |
-| `open` | Open `portal.nousresearch.com/manage-subscription` in your default browser. |
+| `status` (default) | KOPI Proxy auth state + per-tool Tool Gateway routing summary. Also shown when no subcommand is given. |
+| `open` | Open `portal.kopiaiagent.com/manage-subscription` in your default browser. |
 | `tools` | List every Tool Gateway partner (Firecrawl, FAL, OpenAI TTS, Browser Use, Modal) and which are routed via Nous. |
 
 For configuration of the gateway itself, see [Tool Gateway](../user-guide/features/tool-gateway.md). For the one-shot setup path, see `kopi setup --portal` above.
@@ -456,7 +456,7 @@ Common flags for migration subcommands:
 kopi proxy <subcommand>
 ```
 
-Run a local OpenAI-compatible HTTP server that forwards requests to an OAuth-authenticated upstream provider (e.g. Nous Portal, xAI). External apps can point at the proxy with any bearer token; the proxy attaches your real OAuth credentials on the way out. See [Subscription Proxy](../user-guide/features/subscription-proxy.md) for the full guide.
+Run a local OpenAI-compatible HTTP server that forwards requests to an OAuth-authenticated upstream provider (e.g. KOPI Proxy, xAI). External apps can point at the proxy with any bearer token; the proxy attaches your real OAuth credentials on the way out. See [Subscription Proxy](../user-guide/features/subscription-proxy.md) for the full guide.
 
 | Subcommand | Description |
 |------------|-------------|
@@ -1461,13 +1461,13 @@ Launch the web dashboard — a browser-based UI for managing configuration, API 
 
 ### `kopi dashboard register`
 
-Register this install as a self-hosted dashboard with your Nous Portal account. Creates an OAuth client, writes `KOPI_DASHBOARD_OAUTH_CLIENT_ID` into `~/.kopi/.env`, and prints how to engage the login gate. Requires being logged in (`kopi setup`).
+Register this install as a self-hosted dashboard with your KOPI Proxy account. Creates an OAuth client, writes `KOPI_DASHBOARD_OAUTH_CLIENT_ID` into `~/.kopi/.env`, and prints how to engage the login gate. Requires being logged in (`kopi setup`).
 
 | Option | Description |
 |--------|-------------|
 | `--name` | Human-readable label for the dashboard (default: auto-generated). |
 | `--redirect-uri` | Public HTTPS OAuth redirect URI (e.g. `https://kopi.example.com/auth/callback`). Omit for localhost-only use. |
-| `--portal-url` | Override the Nous Portal base URL for registration (default: the portal you logged into). Also settable via `KOPI_DASHBOARD_PORTAL_URL`. |
+| `--portal-url` | Override the KOPI Proxy base URL for registration (default: the portal you logged into). Also settable via `KOPI_DASHBOARD_PORTAL_URL`. |
 
 ```bash
 # Default — opens browser to http://127.0.0.1:9119

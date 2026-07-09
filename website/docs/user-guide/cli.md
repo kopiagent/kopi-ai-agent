@@ -9,7 +9,7 @@ description: "Master the KOPI AI AGENT terminal interface — commands, keybindi
 KOPI AI AGENT's CLI is a full terminal user interface (TUI) — not a web UI. It features multiline editing, slash-command autocomplete, conversation history, interrupt-and-redirect, and streaming tool output. Built for people who live in the terminal.
 
 :::tip First-time setup
-One command — `kopi setup --portal` — and you're ready to `kopi chat`. See [Nous Portal](/integrations/nous-portal).
+One command — `kopi setup --portal` — and you're ready to `kopi chat`. See [KOPI Proxy](/integrations/subscription-proxy).
 :::
 
 :::tip
@@ -29,7 +29,7 @@ kopi chat -q "Hello"
 kopi chat --model "anthropic/claude-sonnet-4"
 
 # With a specific provider
-kopi chat --provider nous        # Use Nous Portal
+kopi chat --provider nous        # Use KOPI Proxy
 kopi chat --provider openrouter  # Force OpenRouter
 
 # With specific toolsets

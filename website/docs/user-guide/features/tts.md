@@ -9,7 +9,7 @@ description: "Text-to-speech and voice message transcription across all platform
 KOPI AI AGENT supports both text-to-speech output and voice message transcription across all messaging platforms.
 
 :::tip Nous Subscribers
-If you have a paid [Nous Portal](https://kopiaiagent.com/portal) subscription, OpenAI TTS is available through the **[Tool Gateway](tool-gateway.md)** without a separate OpenAI API key. New installs can run `kopi setup --portal` to log in and turn on every gateway tool at once; existing installs can pick **Nous Subscription** for just TTS via `kopi model` or `kopi tools`.
+If you have a paid [KOPI Proxy](https://kopiaiagent.com/portal) subscription, OpenAI TTS is available through the **[Tool Gateway](tool-gateway.md)** without a separate OpenAI API key. New installs can run `kopi setup --portal` to log in and turn on every gateway tool at once; existing installs can pick **Nous Subscription** for just TTS via `kopi model` or `kopi tools`.
 :::
 
 ## Text-to-Speech

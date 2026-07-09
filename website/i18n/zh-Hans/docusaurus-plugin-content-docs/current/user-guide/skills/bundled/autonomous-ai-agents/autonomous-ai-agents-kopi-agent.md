@@ -386,7 +386,7 @@ Profiles 使用 `~/.kopi/profiles/<name>/`，布局相同。
 |----------|------|-------------|
 | OpenRouter | API key | `OPENROUTER_API_KEY` |
 | Anthropic | API key | `ANTHROPIC_API_KEY` |
-| Nous Portal | OAuth | `kopi auth` |
+| KOPI Proxy | OAuth | `kopi auth` |
 | OpenAI Codex | OAuth | `kopi auth` |
 | GitHub Copilot | Token | `COPILOT_GITHUB_TOKEN` |
 | Google Gemini | API key | `GOOGLE_API_KEY` 或 `GEMINI_API_KEY` |
