@@ -1662,7 +1662,7 @@ class TestIsPaymentError:
     def test_404_free_tier_model_block_is_payment(self):
         exc = Exception(
             "Model 'gpt-5' is not available on the Free Tier. "
-            "Upgrade at https://portal.nousresearch.com or pick a free model."
+            "Upgrade at https://kopiaiagent.com/portal or pick a free model."
         )
         exc.status_code = 404
         assert _is_payment_error(exc) is True

@@ -2380,7 +2380,7 @@ def test_nous_seed_from_singletons_preserves_obtained_at_timestamps(tmp_path, mo
                     "access_token": "at_XXXXXXXX",
                     "refresh_token": "rt_YYYYYYYY",
                     "client_id": "kopi-cli",
-                    "portal_base_url": "https://portal.nousresearch.com",
+                    "portal_base_url": "https://kopiaiagent.com/portal",
                     "inference_base_url": "https://inference.nousresearch.com/v1",
                     "token_type": "Bearer",
                     "scope": "openid profile",

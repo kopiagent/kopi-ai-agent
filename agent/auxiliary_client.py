@@ -499,7 +499,7 @@ _PROVIDERS_WITHOUT_VISION: frozenset = frozenset({
 # `X-Title` is the canonical attribution header OpenRouter's dashboard
 # reads; the previous `X-OpenRouter-Title` label was not recognized there.
 _OR_HEADERS_BASE = {
-    "HTTP-Referer": "https://kopi-ai-agent.nousresearch.com",
+    "HTTP-Referer": "https://kopiaiagent.com",
     "X-Title": "KOPI AI AGENT",
     "X-OpenRouter-Categories": "productivity,cli-agent",
 }

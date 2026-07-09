@@ -127,7 +127,7 @@ A nightly backlog triage on Sonnet costs roughly $0.02-0.05. A monitoring check 
 KOPI AI AGENT is open source and free. The automation infrastructure — cron scheduler, webhook platform, skill system, multi-platform delivery — is built in.
 
 ```bash
-curl -fsSL https://kopi-ai-agent.nousresearch.com/install.sh | bash
+curl -fsSL https://kopiaiagent.com/install.sh | bash
 kopi setup
 ```
 
@@ -149,12 +149,12 @@ kopi webhook subscribe pr-review \
   --deliver github_comment
 ```
 
-Full automation blueprints gallery: [kopi-ai-agent.nousresearch.com/docs/reference/automation-blueprints-catalog](https://kopi-ai-agent.nousresearch.com/docs/reference/automation-blueprints-catalog)
+Full automation blueprints gallery: [kopi-ai-agent.nousresearch.com/docs/reference/automation-blueprints-catalog](https://kopiaiagent.com/docs/reference/automation-blueprints-catalog)
 
-Documentation: [kopi-ai-agent.nousresearch.com](https://kopi-ai-agent.nousresearch.com)
+Documentation: [kopi-ai-agent.nousresearch.com](https://kopiaiagent.com)
 
 GitHub: [github.com/LINYIQ66/kopi-ai-agent](https://github.com/LINYIQ66/kopi-ai-agent)
 
 ---
 
-*KOPI AI AGENT is built by [Kopi Ai Agent Pte Ltd](https://nousresearch.com). Open source, model-agnostic, runs on your infrastructure.*
+*KOPI AI AGENT is built by [Kopi Ai Agent Pte Ltd](https://kopiaiagent.com). Open source, model-agnostic, runs on your infrastructure.*

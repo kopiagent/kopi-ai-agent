@@ -46,13 +46,13 @@ People use Hermes for software development, research, system administration, dat
 
 **This skill helps you work with KOPI AI AGENT effectively** — setting it up, configuring features, spawning additional agent instances, troubleshooting issues, finding the right commands and settings, and understanding how the system works when you need to extend or contribute to it.
 
-**Docs:** https://kopi-ai-agent.nousresearch.com/docs/
+**Docs:** https://kopiaiagent.com/docs/
 
 ## Quick Start
 
 ```bash
 # Install
-curl -fsSL https://kopi-ai-agent.nousresearch.com/install.sh | bash
+curl -fsSL https://kopiaiagent.com/install.sh | bash
 
 # Interactive chat (default)
 hermes
@@ -174,7 +174,7 @@ kopi gateway setup        Configure platforms
 
 Supported platforms: Telegram, Discord, Slack, WhatsApp, Signal, Email, SMS, Matrix, Mattermost, Home Assistant, DingTalk, Feishu, WeCom, BlueBubbles (iMessage), Weixin (WeChat), API Server, Webhooks. Open WebUI connects via the API Server adapter.
 
-Platform docs: https://kopi-ai-agent.nousresearch.com/docs/user-guide/messaging/
+Platform docs: https://kopiaiagent.com/docs/user-guide/messaging/
 
 ### Sessions
 
@@ -256,7 +256,7 @@ kopi uninstall            Uninstall Hermes
 
 Type these during an interactive chat session. New commands land fairly
 often; if something below looks stale, run `/help` in-session for the
-authoritative list or see the [live slash commands reference](https://kopi-ai-agent.nousresearch.com/docs/reference/slash-commands).
+authoritative list or see the [live slash commands reference](https://kopiaiagent.com/docs/reference/slash-commands).
 The registry of record is `kopi_cli/commands.py` — every consumer
 (autocomplete, Telegram menu, Slack mapping, `/help`) derives from it.
 
@@ -388,7 +388,7 @@ Edit with `kopi config edit` or `kopi config set section.key value`.
 | `delegation` | `model`, `provider`, `base_url`, `api_key`, `max_iterations` (50), `reasoning_effort` |
 | `checkpoints` | `enabled`, `max_snapshots` (50) |
 
-Full config reference: https://kopi-ai-agent.nousresearch.com/docs/user-guide/configuration
+Full config reference: https://kopiaiagent.com/docs/user-guide/configuration
 
 ### Providers
 
@@ -418,7 +418,7 @@ Full config reference: https://kopi-ai-agent.nousresearch.com/docs/user-guide/co
 | Custom endpoint | Config | `model.base_url` + `model.api_key` in config.yaml |
 | GitHub Copilot ACP | External | `COPILOT_CLI_PATH` or Copilot CLI |
 
-Full provider docs: https://kopi-ai-agent.nousresearch.com/docs/integrations/providers
+Full provider docs: https://kopiaiagent.com/docs/integrations/providers
 
 ### Toolsets
 
@@ -677,7 +677,7 @@ the `cronjob` tool, the `kopi cron` CLI (`list`, `add`, `edit`,
   header/footer instead of being mirrored into the target gateway
   session (keeps role alternation intact).
 
-User docs: https://kopi-ai-agent.nousresearch.com/docs/user-guide/features/cron
+User docs: https://kopiaiagent.com/docs/user-guide/features/cron
 
 ### Curator (skill lifecycle)
 
@@ -698,7 +698,7 @@ so nothing is lost.
 
 Config: `curator.*` (`enabled`, `interval_hours`, `min_idle_hours`,
 `stale_after_days`, `archive_after_days`, `backup.*`).
-User docs: https://kopi-ai-agent.nousresearch.com/docs/user-guide/features/curator
+User docs: https://kopiaiagent.com/docs/user-guide/features/curator
 
 ### Kanban (multi-agent work queue)
 
@@ -727,7 +727,7 @@ sessions still have zero `kanban_*` schema footprint unless configured.
   `KOPI_KANBAN_BOARD` pinned in env); tenant is a soft namespace
   within a board for workspace-path + memory-key isolation.
 
-User docs: https://kopi-ai-agent.nousresearch.com/docs/user-guide/features/kanban
+User docs: https://kopiaiagent.com/docs/user-guide/features/kanban
 
 ---
 
@@ -894,18 +894,18 @@ multi-source resolution chain (highest priority first):
 
 | Looking for... | Location |
 |----------------|----------|
-| Config options | `kopi config edit` or [Configuration docs](https://kopi-ai-agent.nousresearch.com/docs/user-guide/configuration) |
-| Available tools | `kopi tools list` or [Tools reference](https://kopi-ai-agent.nousresearch.com/docs/reference/tools-reference) |
-| Slash commands | `/help` in session or [Slash commands reference](https://kopi-ai-agent.nousresearch.com/docs/reference/slash-commands) |
-| Skills catalog | `kopi skills browse` or [Skills catalog](https://kopi-ai-agent.nousresearch.com/docs/reference/skills-catalog) |
-| Provider setup | `kopi model` or [Providers guide](https://kopi-ai-agent.nousresearch.com/docs/integrations/providers) |
-| Platform setup | `kopi gateway setup` or [Messaging docs](https://kopi-ai-agent.nousresearch.com/docs/user-guide/messaging/) |
-| MCP servers | `kopi mcp list` or [MCP guide](https://kopi-ai-agent.nousresearch.com/docs/user-guide/features/mcp) |
-| Profiles | `kopi profile list` or [Profiles docs](https://kopi-ai-agent.nousresearch.com/docs/user-guide/profiles) |
-| Cron jobs | `kopi cron list` or [Cron docs](https://kopi-ai-agent.nousresearch.com/docs/user-guide/features/cron) |
-| Memory | `kopi memory status` or [Memory docs](https://kopi-ai-agent.nousresearch.com/docs/user-guide/features/memory) |
-| Env variables | `kopi config env-path` or [Env vars reference](https://kopi-ai-agent.nousresearch.com/docs/reference/environment-variables) |
-| CLI commands | `kopi --help` or [CLI reference](https://kopi-ai-agent.nousresearch.com/docs/reference/cli-commands) |
+| Config options | `kopi config edit` or [Configuration docs](https://kopiaiagent.com/docs/user-guide/configuration) |
+| Available tools | `kopi tools list` or [Tools reference](https://kopiaiagent.com/docs/reference/tools-reference) |
+| Slash commands | `/help` in session or [Slash commands reference](https://kopiaiagent.com/docs/reference/slash-commands) |
+| Skills catalog | `kopi skills browse` or [Skills catalog](https://kopiaiagent.com/docs/reference/skills-catalog) |
+| Provider setup | `kopi model` or [Providers guide](https://kopiaiagent.com/docs/integrations/providers) |
+| Platform setup | `kopi gateway setup` or [Messaging docs](https://kopiaiagent.com/docs/user-guide/messaging/) |
+| MCP servers | `kopi mcp list` or [MCP guide](https://kopiaiagent.com/docs/user-guide/features/mcp) |
+| Profiles | `kopi profile list` or [Profiles docs](https://kopiaiagent.com/docs/user-guide/profiles) |
+| Cron jobs | `kopi cron list` or [Cron docs](https://kopiaiagent.com/docs/user-guide/features/cron) |
+| Memory | `kopi memory status` or [Memory docs](https://kopiaiagent.com/docs/user-guide/features/memory) |
+| Env variables | `kopi config env-path` or [Env vars reference](https://kopiaiagent.com/docs/reference/environment-variables) |
+| CLI commands | `kopi --help` or [CLI reference](https://kopiaiagent.com/docs/reference/cli-commands) |
 | Gateway logs | `~/.kopi/logs/gateway.log` |
 | Session files | `kopi sessions browse` (reads state.db) |
 | Source code | `~/.kopi/kopi-ai-agent/` |
@@ -914,7 +914,7 @@ multi-source resolution chain (highest priority first):
 
 ## Contributor Quick Reference
 
-For occasional contributors and PR authors. Full developer docs: https://kopi-ai-agent.nousresearch.com/docs/developer-guide/
+For occasional contributors and PR authors. Full developer docs: https://kopiaiagent.com/docs/developer-guide/
 
 ### Project Layout
 

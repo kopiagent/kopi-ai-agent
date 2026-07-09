@@ -1,45 +1,35 @@
-# Website
+# KOPI AI AGENT — Website
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+The official website for [KOPI AI AGENT](https://kopiaiagent.com), built by Kopi Ai Agent Pte Ltd (Singapore).
 
-## Installation
-
-```bash
-yarn
-```
-
-## Local Development
+## Development
 
 ```bash
-yarn start
+npm install
+npm run dev
 ```
-
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
 
 ## Build
 
 ```bash
-yarn build
+npm run build
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+## Deploy
 
-## Deployment
-
-Using SSH:
+The site is auto-deployed from the `main` branch via CI. Manual trigger:
 
 ```bash
-USE_SSH=true yarn deploy
+npm run deploy
 ```
 
-Not using SSH:
+## Structure
 
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
+- `pages/` — individual pages
+- `components/` — shared React components
+- `public/` — static assets (images, fonts)
+- `content/` — documentation markdown files
 
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+## License
 
-## Diagram Linting
-
-CI runs `ascii-guard` to lint docs for ASCII box diagrams. Use Mermaid (````mermaid`) or plain lists/tables instead of ASCII boxes to avoid CI failures.
+MIT

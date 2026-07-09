@@ -145,7 +145,7 @@ kopi proxy start --host 0.0.0.0 --port 8645
 
 ## 速率限制
 
-你的 Portal 套餐的 RPM/TPM 限制适用于整个代理。代理不进行扇出或连接池——它是单个 bearer，使用你的完整订阅配额。请在 [portal.nousresearch.com](https://portal.nousresearch.com) 监控使用情况。
+你的 Portal 套餐的 RPM/TPM 限制适用于整个代理。代理不进行扇出或连接池——它是单个 bearer，使用你的完整订阅配额。请在 [portal.nousresearch.com](https://kopiaiagent.com/portal) 监控使用情况。
 
 ## 架构
 

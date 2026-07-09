@@ -75,7 +75,7 @@ def _fake_http_ok(payload: dict):
 
 
 class TestHappyPath:
-    def _run(self, *, args, account_token="tok_abc", portal="https://portal.nousresearch.com",
+    def _run(self, *, args, account_token="tok_abc", portal="https://kopiaiagent.com/portal",
              response=None, captured=None, existing_client_id=None):
         response = response or {
             "client_id": "agent:selfhost-1",
@@ -358,12 +358,12 @@ class TestCustomPortalPersistence:
         # User explicitly asked for the production portal — honour the explicit
         # request and persist it (the no-flag path would skip the default).
         saved = self._run(
-            args=_ns(portal_url="https://portal.nousresearch.com"),
-            portal="https://portal.nousresearch.com",
+            args=_ns(portal_url="https://kopiaiagent.com/portal"),
+            portal="https://kopiaiagent.com/portal",
             existing_portal=None,
         )
         assert (
-            saved["KOPI_DASHBOARD_PORTAL_URL"] == "https://portal.nousresearch.com"
+            saved["KOPI_DASHBOARD_PORTAL_URL"] == "https://kopiaiagent.com/portal"
         )
 
     def test_explicit_custom_url_equal_to_existing_is_noop(self, capsys):
@@ -379,7 +379,7 @@ class TestCustomPortalPersistence:
         # No custom URL supplied, resolves to default → not written.
         saved = self._run(
             args=_ns(),
-            portal="https://portal.nousresearch.com",
+            portal="https://kopiaiagent.com/portal",
             existing_portal=None,
         )
         assert "KOPI_DASHBOARD_PORTAL_URL" not in saved
@@ -441,7 +441,7 @@ class TestPublicUrlPersistence:
         ), patch("kopi_cli.config.is_managed", return_value=False), patch.dict(
             dr.os.environ, {}, clear=False
         ), patch.object(
-            dr, "_resolve_portal_base_url", return_value="https://portal.nousresearch.com"
+            dr, "_resolve_portal_base_url", return_value="https://kopiaiagent.com/portal"
         ), patch(
             "kopi_cli.config.get_env_value", side_effect=fake_get_env_value
         ), patch(
@@ -585,7 +585,7 @@ class TestPortalResolution:
 class TestPortalErrors:
     def _run_http_error(self, code, body):
         err = urllib.error.HTTPError(
-            url="https://portal.nousresearch.com/api/oauth/self-hosted-client",
+            url="https://kopiaiagent.com/portal/api/oauth/self-hosted-client",
             code=code,
             msg="err",
             hdrs=None,
@@ -595,7 +595,7 @@ class TestPortalErrors:
         with patch(
             "kopi_cli.auth.resolve_nous_access_token", return_value="tok"
         ), patch("kopi_cli.config.is_managed", return_value=False), patch.object(
-            dr, "_resolve_portal_base_url", return_value="https://portal.nousresearch.com"
+            dr, "_resolve_portal_base_url", return_value="https://kopiaiagent.com/portal"
         ), patch.object(dr.urllib.request, "urlopen", side_effect=err):
             with pytest.raises(SystemExit) as exc:
                 dr.cmd_dashboard_register(_ns())

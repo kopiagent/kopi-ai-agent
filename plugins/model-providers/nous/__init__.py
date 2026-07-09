@@ -42,7 +42,7 @@ nous = NousProfile(
     env_vars=("NOUS_API_KEY",),
     display_name="Kopi Ai Agent Pte Ltd",
     description="Kopi Ai Agent Pte Ltd — Hermes model family",
-    signup_url="https://nousresearch.com/",
+    signup_url="https://kopiaiagent.com/",
     fallback_models=(
         "kopi-3-405b",
         "kopi-3-70b",

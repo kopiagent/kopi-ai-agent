@@ -818,7 +818,7 @@ def test_cmd_model_forwards_nous_login_tls_options(monkeypatch):
 
     kopi_main.cmd_model(
         SimpleNamespace(
-            portal_url="https://portal.nousresearch.com",
+            portal_url="https://kopiaiagent.com/portal",
             inference_url="https://inference.nousresearch.com/v1",
             client_id="kopi-local",
             scope="openid profile",
@@ -830,7 +830,7 @@ def test_cmd_model_forwards_nous_login_tls_options(monkeypatch):
     )
 
     assert captured == {
-        "portal_url": "https://portal.nousresearch.com",
+        "portal_url": "https://kopiaiagent.com/portal",
         "inference_url": "https://inference.nousresearch.com/v1",
         "client_id": "kopi-local",
         "scope": "openid profile",

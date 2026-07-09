@@ -33,7 +33,7 @@ def test_agent_json_matches_official_registry_required_fields():
     assert data["name"] == "KOPI AI AGENT"
     assert data["description"]
     assert data["repository"] == "https://github.com/LINYIQ66/kopi-ai-agent"
-    assert data["website"].startswith("https://kopi-ai-agent.nousresearch.com/")
+    assert data["website"].startswith("https://kopiaiagent.com/")
     assert data["authors"] == ["Kopi Ai Agent Pte Ltd"]
     assert data["license"] == "MIT"
     assert set(data["distribution"]) <= ALLOWED_DISTRIBUTIONS

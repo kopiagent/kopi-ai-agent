@@ -18,7 +18,7 @@ class TestBuildOrHeaders:
         from agent.auxiliary_client import build_or_headers
 
         headers = build_or_headers(or_config={"response_cache": False})
-        assert headers["HTTP-Referer"] == "https://kopi-ai-agent.nousresearch.com"
+        assert headers["HTTP-Referer"] == "https://kopiaiagent.com"
         assert headers["X-Title"] == "KOPI AI AGENT"
         assert headers["X-OpenRouter-Categories"] == "productivity,cli-agent"
 

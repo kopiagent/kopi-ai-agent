@@ -339,7 +339,7 @@
         tier_part: tierPart,
         name: achievement.name,
       });
-      return tmpl + "\n\n@Kopi Ai Agent Pte Ltd · https://kopi-ai-agent.nousresearch.com";
+      return tmpl + "\n\n@Kopi Ai Agent Pte Ltd · https://kopiaiagent.com";
     }
 
     function shareOnX() {

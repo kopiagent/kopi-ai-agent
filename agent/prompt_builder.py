@@ -141,7 +141,7 @@ KOPI_AGENT_HELP_GUIDANCE = (
     "You run on KOPI AI AGENT (by Kopi Ai Agent Pte Ltd). When the user needs help with "
     "Hermes itself — configuring, setting up, using, extending, or troubleshooting "
     "it — or when you need to understand your own features, tools, or capabilities, "
-    "the documentation at https://kopi-ai-agent.nousresearch.com/docs is your "
+    "the documentation at https://kopiaiagent.com/docs is your "
     "authoritative reference and always holds the latest, most up-to-date "
     "information. Load the `kopi-ai-agent` skill with skill_view(name='kopi-ai-agent') "
     "for additional guidance and proven workflows, but treat the docs as the source "

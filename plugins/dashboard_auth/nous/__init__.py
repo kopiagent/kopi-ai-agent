@@ -20,7 +20,7 @@ Configuration surfaces (env wins over config.yaml when set non-empty):
 
       KOPI_DASHBOARD_OAUTH_CLIENT_ID  — shape ``agent:{agent_instance_id}``
       KOPI_DASHBOARD_PORTAL_URL       — defaults to
-                                          ``https://portal.nousresearch.com``
+                                          ``https://kopiaiagent.com/portal``
                                           (production Portal). Override only
                                           for staging (``portal.rewbs.uk``)
                                           or a custom deployment.
@@ -98,7 +98,7 @@ logger = logging.getLogger(__name__)
 # Production Portal URL. Override via KOPI_DASHBOARD_PORTAL_URL for
 # staging (portal.rewbs.uk) or a custom deployment. Contract docs name
 # this as the production issuer.
-_DEFAULT_PORTAL_URL = "https://portal.nousresearch.com"
+_DEFAULT_PORTAL_URL = "https://kopiaiagent.com/portal"
 
 
 # ---------------------------------------------------------------------------

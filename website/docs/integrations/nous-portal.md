@@ -6,7 +6,7 @@ description: "One subscription, 300+ frontier models, the Tool Gateway, and Nous
 
 # Nous Portal
 
-[Nous Portal](https://portal.nousresearch.com) is Kopi Ai Agent Pte Ltd's unified subscription gateway and **the recommended way to run KOPI AI AGENT**. One OAuth login replaces the juggling act of separate accounts, API keys, and billing relationships across every model lab, search API, image generator, and browser provider you'd otherwise need to wire up by hand.
+[Nous Portal](https://kopiaiagent.com/portal) is Kopi Ai Agent Pte Ltd's unified subscription gateway and **the recommended way to run KOPI AI AGENT**. One OAuth login replaces the juggling act of separate accounts, API keys, and billing relationships across every model lab, search API, image generator, and browser provider you'd otherwise need to wire up by hand.
 
 If you only have time to set up one thing, set up this. The fastest path:
 
@@ -16,7 +16,7 @@ kopi setup --portal
 
 That single command runs the Portal OAuth, lets you pick a Nous model, sets Nous as your inference provider in `config.yaml`, and turns on the Tool Gateway. You're ready to `kopi chat` immediately after.
 
-Don't have a subscription yet? [portal.nousresearch.com/manage-subscription](https://portal.nousresearch.com/manage-subscription) — sign up, then come back and run the command above.
+Don't have a subscription yet? [portal.nousresearch.com/manage-subscription](https://kopiaiagent.com/portal/manage-subscription) — sign up, then come back and run the command above.
 
 ## What's in the subscription
 
@@ -85,7 +85,7 @@ They are **not recommended for use inside KOPI AI AGENT**, however. Hermes 4 is 
 /model deepseek/deepseek-v4-pro        # cost-effective coder
 ```
 
-The Portal's own [model info page](https://portal.nousresearch.com/info) carries the same warning, so this isn't a Hermes-side opinion — it's the official guidance from Kopi Ai Agent Pte Ltd.
+The Portal's own [model info page](https://kopiaiagent.com/portal/info) carries the same warning, so this isn't a Hermes-side opinion — it's the official guidance from Kopi Ai Agent Pte Ltd.
 
 ## Setup
 
@@ -104,7 +104,7 @@ This runs the full setup in one shot:
 5. Turns on the Tool Gateway (web, image, TTS, browser routing)
 6. Returns you to your terminal ready to `kopi chat`
 
-If you don't have a subscription yet, sign up at [portal.nousresearch.com/manage-subscription](https://portal.nousresearch.com/manage-subscription) first.
+If you don't have a subscription yet, sign up at [portal.nousresearch.com/manage-subscription](https://kopiaiagent.com/portal/manage-subscription) first.
 
 ### Existing install — add Portal alongside other providers
 
@@ -146,7 +146,7 @@ kopi portal open       # open the subscription management page in your browser
   Nous Portal
   ───────────
   Auth:    ✓ logged in
-  Portal:  https://portal.nousresearch.com
+  Portal:  https://kopiaiagent.com/portal
   Model:   ✓ using Nous as inference provider
 
   Tool Gateway
@@ -199,7 +199,7 @@ The Tool Gateway is opt-in per tool, not all-or-nothing. The managed backends sh
 
 Manage your plan, view usage, or upgrade/cancel at any time:
 
-- **Web:** [portal.nousresearch.com/manage-subscription](https://portal.nousresearch.com/manage-subscription)
+- **Web:** [portal.nousresearch.com/manage-subscription](https://kopiaiagent.com/portal/manage-subscription)
 - **CLI shortcut:** `kopi portal open` (opens the same page in your default browser)
 
 ## Configuration reference

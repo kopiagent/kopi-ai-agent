@@ -3654,7 +3654,7 @@ def check_for_skill_updates(
 # Hermes centralized index source
 # ---------------------------------------------------------------------------
 
-KOPI_INDEX_URL = "https://kopi-ai-agent.nousresearch.com/docs/api/skills-index.json"
+KOPI_INDEX_URL = "https://kopiaiagent.com/docs/api/skills-index.json"
 KOPI_INDEX_TTL = 6 * 3600  # 6 hours
 
 
