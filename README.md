@@ -37,6 +37,9 @@ Use any model you want — **KOPI Proxy**, OpenRouter, OpenAI, or your own endpo
 <tr><td><b>MCP v1 + v2 support</b></td><td>Connect MCP stdio servers (filesystem, time, github) and SSE servers via KOPI MCP Gateway. Extended capabilities from day one.</td></tr>
 <tr><td><b>Runs anywhere, not just your laptop</b></td><td>Six terminal backends — local, Docker, SSH, Singularity, Modal, and Daytona. Run it on a $5 VPS or a GPU cluster.</td></tr>
 <tr><td><b>Research-ready</b></td><td>Batch trajectory generation, trajectory compression for training the next generation of tool-calling models.</td></tr>
+<tr><td><b>📈 Stock Intelligence</b></td><td>Built-in real-time market data (US & HK), 30+ technical indicators, AI-powered analysis. No API keys — just install and analyze.</td></tr>
+<tr><td><b>🎬 Media Generation</b></td><td>Text-to-image (Krea 2, FAL, SDXL), video generation with voiceover & subtitles. All through unified MCP tools.</td></tr>
+<tr><td><b>🧑‍💼 Digital Human</b></td><td>Alpaca-powered AI avatars with lip-sync, voice cloning, and multi-language TTS. For live streaming and customer service.</td></tr>
 </table>
 
 ---
@@ -217,6 +220,103 @@ The provider exposes three tools to the agent:
 - `memory_search` — Semantic search across past conversations
 - `memory_save` — Store important facts and preferences
 - `memory_forget` — Remove specific memories
+
+---
+
+## 📈 KOPI Stock Intelligence
+
+KOPI AI AGENT includes a built-in **Stock Intelligence** engine — real-time market data, technical analysis, and AI-powered trading insights. No API keys to manage, no data sources to configure.
+
+```bash
+kopi tools          # enable Stock Intelligence tools
+```
+
+| Feature | Description |
+|---------|-------------|
+| **Real-time Quotes** | US & HK stocks, live price, volume, order book |
+| **Technical Analysis** | MA/MACD/RSI/BOLL/KDJ — 30+ indicators, auto-computed |
+| **K-Line Charts** | Historical candlestick data, multiple timeframes |
+| **AI Market Insights** | LLM-powered sentiment analysis, trend detection |
+| **Portfolio Tracking** | Watchlists, position tracking, P&L alerts |
+
+**Use it from any platform:**
+
+```
+You: 分析一下苹果股票
+KOPI: 📊 AAPL (Apple Inc.)
+  当前价格: $234.40 (+1.2%)
+  RSI: 58.3 (中性)
+  MACD: 金叉形成中...
+  综合评级: ⚡ 偏多
+```
+
+> 🔒 All market data is sourced through KOPI's proprietary data pipeline. No third-party API keys or credentials required — just install and start analyzing.
+
+---
+
+## 🎬 KOPI Media MCP (Video & Image Generation)
+
+KOPI AI AGENT ships with integrated **Media Generation** capabilities — text-to-image, image editing, and video generation, all accessible through MCP tools.
+
+### 🖼️ Image Generation
+
+```bash
+kopi tools          # enable Image Generation
+```
+
+| Backend | Models | Capabilities |
+|---------|--------|-------------|
+| **Krea 2** | Large, Medium, Turbo | Text-to-image, style transfer, reference-guided |
+| **FAL** | SDXL, Flux, Upscaler | High-res generation, image-to-image, upscaling |
+| **OpenRouter** | Multi-model | Reference-grounded image generation |
+
+```
+You: 生成一张赛博朋克风格的新加坡城市夜景
+KOPI: ✨ Image generated and saved to assets/cyberpunk-sg.jpg
+```
+
+### 🎥 Video Generation
+
+```bash
+kopi tools          # enable Video Generation
+```
+
+- **Text-to-Video** — Describe a scene, get a video clip
+- **Image-to-Video** — Animate a static image with motion
+- **Multi-scene Scripts** — Batch generation from screenplay-style prompts
+- **Voiceover + Subtitles** — Auto-narration with TTS + subtitle burn-in
+
+```
+You: 做一个30秒的产品宣传片，主题是AI咖啡机器人
+KOPI: 🎬 Generating video...
+  Scene 1: 航拍工厂全景 (5s)
+  Scene 2: 机器人特写制作咖啡 (10s)
+  Scene 3: 客户体验画面 (10s)
+  Scene 4: 品牌logo + slogan (5s)
+  ✅ Video saved to output/promo-30s.mp4
+```
+
+> 🔒 All media generation runs through KOPI's managed gateway. No separate API signups — billing is unified under your KOPI subscription.
+
+---
+
+## 🧑‍💼 KOPI Digital Human (Alpaca)
+
+KOPI AI AGENT supports **AI Digital Human** avatars — lifelike virtual presenters powered by the Alpaca engine, for customer service, live streaming, and interactive demos.
+
+```bash
+kopi tools          # enable Digital Human
+```
+
+| Feature | Description |
+|---------|-------------|
+| **Real-time Avatar** | 3D rendered digital human with lip-sync |
+| **Voice Cloning** | Custom voice from 30s of sample audio |
+| **Multi-language** | Speak 30+ languages with natural TTS |
+| **Knowledge Base** | Connect to your docs — the avatar answers questions |
+| **Live Streaming** | Broadcast to TikTok, YouTube, WeChat channels |
+
+> 🔒 Powered by KOPI's proprietary Alpaca engine. No external dependencies — activate via `kopi tools` and start creating.
 
 ---
 
