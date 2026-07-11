@@ -30,14 +30,27 @@ from kopi_constants import get_kopi_home
 
 logger = logging.getLogger(__name__)
 
-# Vault location — must match scripts/kopi-bootstrap-config.py so the index
-# points at the same vault mcpvault serves. Overridable via the same env var.
+# Vault location — resolved to match the bundled upstream `obsidian` skill
+# (skills/note-taking/obsidian) and scripts/kopi-bootstrap-config.py so the
+# index, mcpvault, and the file-level skill all point at ONE vault.
+#
+# Precedence follows upstream Hermes: OBSIDIAN_VAULT_PATH is the canonical env
+# var. KOPI_OBSIDIAN_VAULT is a backward-compatible alias. The fallback matches
+# the skill's documented default.
 def get_vault_dir() -> Path:
-    return Path(os.environ.get("KOPI_OBSIDIAN_VAULT", Path.home() / "kopi-vault"))
+    path = os.environ.get("OBSIDIAN_VAULT_PATH") or os.environ.get("KOPI_OBSIDIAN_VAULT")
+    if path:
+        return Path(path).expanduser()
+    return Path.home() / "Documents" / "Obsidian Vault"
 
 
 def _index_cache_path() -> Path:
     return get_kopi_home() / "obsidian-index.json"
+
+
+# Staging folder for two-way import (obsidian_sync action=import). Excluded from
+# the index so unimported/quarantined notes never appear in queries.
+_INBOX_REL = os.path.join("kopi", "inbox")
 
 
 # ── Parsing helpers ─────────────────────────────────────────────────────────
@@ -48,7 +61,11 @@ _WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 # Inline #tag (word chars, slash, hyphen). Excludes bare '#' headings via \w start.
 _INLINE_TAG_RE = re.compile(r"(?:^|\s)#([\w/][\w/\-]*)")
 _H1_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
+# Latin/digit words. CJK, kana, and Hangul have no word breaks, so they are
+# tokenized per-character (unigram) below — otherwise `[a-z0-9]+` would drop
+# every Chinese/Japanese/Korean character and CJK content could never match.
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+_CJK_RE = re.compile(r"[一-鿿㐀-䶿぀-ヿ가-힯]")
 
 
 def _json_safe(value: Any) -> Any:
@@ -110,7 +127,10 @@ def _title_of(path: Path, frontmatter: Dict[str, Any], body: str) -> str:
 
 
 def _tokenize(text: str) -> List[str]:
-    return _TOKEN_RE.findall(text.lower())
+    lowered = text.lower()
+    # Latin/digit words plus per-character CJK/kana/Hangul unigrams, so a query
+    # like "咖啡" matches a note containing "深烘咖啡豆".
+    return _TOKEN_RE.findall(lowered) + _CJK_RE.findall(lowered)
 
 
 def _parse_note(vault: Path, path: Path) -> Optional[Dict[str, Any]]:
@@ -167,6 +187,11 @@ class VaultIndex:
                 if not path.is_file():
                     continue
                 rel = str(path.relative_to(vault))
+                # kopi/inbox/ is a staging area for two-way import, not part of
+                # the knowledge graph. Excluding it keeps unimported (and
+                # quarantined/rejected) notes out of search, orphans, and links.
+                if rel == _INBOX_REL or rel.startswith(_INBOX_REL + os.sep):
+                    continue
                 try:
                     mtime = path.stat().st_mtime
                 except OSError:

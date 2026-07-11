@@ -13,15 +13,49 @@ from pathlib import Path
 KOPI_HOME = Path(os.environ.get("KOPI_HOME", Path.home() / ".kopi"))
 CONFIG_PATH = KOPI_HOME / "config.yaml"
 
-# Obsidian vault (mcpvault) — a KOPI-managed vault so Obsidian tools work
-# out of the box with no desktop app or plugin. Overridable via env for
-# users who already have a vault. Created at bootstrap if missing; it also
-# doubles as the sink target for agent memory/skill export.
-OBSIDIAN_VAULT = Path(os.environ.get("KOPI_OBSIDIAN_VAULT", Path.home() / "kopi-vault"))
+# Obsidian vault — a vault so the Obsidian tools + bundled `obsidian` skill
+# work out of the box with no desktop app or plugin. Created at bootstrap if
+# missing; also the sink target for agent memory/skill export.
+#
+# Path convention matches upstream Hermes and the bundled skill: canonical env
+# var OBSIDIAN_VAULT_PATH (KOPI_OBSIDIAN_VAULT kept as a compat alias), default
+# ~/Documents/Obsidian Vault. We persist OBSIDIAN_VAULT_PATH to ~/.kopi/.env so
+# the file-level skill, mcpvault, and the obsidian_* tools all resolve the same
+# directory.
+OBSIDIAN_VAULT = Path(
+    os.environ.get("OBSIDIAN_VAULT_PATH")
+    or os.environ.get("KOPI_OBSIDIAN_VAULT")
+    or (Path.home() / "Documents" / "Obsidian Vault")
+)
 
 def run_kopi(*args: str) -> None:
     """Run a `kopi` CLI command."""
     subprocess.run([sys.executable, "-m", "kopi_cli", *args], check=False)
+
+
+def _set_env_var(key: str, value: str) -> None:
+    """Upsert KEY=VALUE in ~/.kopi/.env (create if missing). Values with spaces
+    are quoted so python-dotenv reads them intact."""
+    env_path = KOPI_HOME / ".env"
+    line_val = f'"{value}"' if (" " in value or "\t" in value) else value
+    new_line = f"{key}={line_val}"
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+    except OSError:
+        lines = []
+    replaced = False
+    for i, line in enumerate(lines):
+        if line.split("=", 1)[0].strip() == key:
+            lines[i] = new_line
+            replaced = True
+            break
+    if not replaced:
+        lines.append(new_line)
+    try:
+        env_path.parent.mkdir(parents=True, exist_ok=True)
+        env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except OSError as exc:
+        print(f"⚠ Could not write {key} to {env_path}: {exc}")
 
 def main() -> None:
     print("☕ KOPI AI AGENT — Bootstrap defaults")
@@ -58,6 +92,9 @@ def main() -> None:
         "command": "npx",
         "args": ["-y", "@bitbonsai/mcpvault@latest", str(OBSIDIAN_VAULT)],
     }
+    # Persist the canonical vault path so the bundled `obsidian` skill (which
+    # reads OBSIDIAN_VAULT_PATH from ~/.kopi/.env) resolves the same directory.
+    _set_env_var("OBSIDIAN_VAULT_PATH", str(OBSIDIAN_VAULT))
 
     # 2. Add MCP v2 SSE: KOPI MCP Gateway
     mcp_servers["kopi-mcp"] = {

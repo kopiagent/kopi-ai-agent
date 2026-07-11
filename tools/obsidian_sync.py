@@ -253,6 +253,65 @@ def _append_daily(content: str, title: Optional[str] = None) -> Dict[str, Any]:
     return {"success": True, "action": "append_daily", "note": str(path)}
 
 
+# ── Two-way import (Phase 3): vault inbox → curated memory ───────────────────
+#
+# Optional reverse flow. The agent normally exports memory → vault; this brings
+# user-authored notes the other way. It is SAFE by construction:
+#   - Source is kopi/inbox/ ONLY (never the export targets kopi/memory|user),
+#     so there is no import↔export loop.
+#   - Every note is routed through MemoryStore.add(), which runs the same
+#     injection/exfiltration scan (_scan_memory_content) that guards the memory
+#     tool, plus dedup and char-limit enforcement. Poisoned or oversized notes
+#     are rejected and left in the inbox with a reason — never silently trusted.
+#   - It is explicit (a tool action), never a hook and never automatic.
+# Imported notes move to kopi/inbox/imported/ so they aren't re-imported and
+# stay auditable.
+
+_LEADING_H1_RE = re.compile(r"^\s*#\s+.*\n+")
+
+
+def _import_from_inbox() -> Dict[str, Any]:
+    inbox = _kopi_dir() / "inbox"
+    if not inbox.exists():
+        return {
+            "success": True, "action": "import", "imported": 0, "skipped": [],
+            "note": f"No inbox to import from. Create {inbox} and drop notes there.",
+        }
+    from tools.memory_tool import load_on_disk_store
+    store = load_on_disk_store()
+    done_dir = inbox / "imported"
+    imported = 0
+    skipped: List[Dict[str, str]] = []
+    for note in sorted(inbox.glob("*.md")):
+        try:
+            raw = note.read_text(encoding="utf-8")
+        except OSError as exc:
+            skipped.append({"note": note.name, "reason": f"unreadable: {exc}"})
+            continue
+        fm, body = _parse_frontmatter(raw)
+        body = _LEADING_H1_RE.sub("", body, count=1).strip()  # drop a title heading
+        if not body:
+            skipped.append({"note": note.name, "reason": "empty after frontmatter/title"})
+            continue
+        target = "user" if str(fm.get("kopi_target", "")).lower() == "user" else "memory"
+        # add() runs the injection scan, dedup, and char-limit checks, then persists.
+        result = store.add(target, body)
+        if result.get("success"):
+            imported += 1
+            done_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                note.rename(done_dir / note.name)
+            except OSError:
+                pass  # imported into memory already; leaving it in inbox is safe
+        else:
+            skipped.append({"note": note.name, "reason": result.get("error", "rejected")})
+    return {
+        "success": True, "action": "import",
+        "imported": imported, "skipped": skipped,
+        "vault": str(get_vault_dir()),
+    }
+
+
 # ── Export core (shared by tool handler and auto-sync) ───────────────────────
 
 def _run_export(action: str) -> Optional[Dict[str, int]]:
@@ -308,6 +367,9 @@ def _handle_obsidian_sync(args: dict, **kwargs) -> str:
             if not content:
                 return tool_error("append_daily requires 'content'")
             return tool_result(**_append_daily(content, args.get("title")))
+
+        if action == "import":
+            return tool_result(_import_from_inbox())
 
         summary = _run_export(action)
         if summary is None:
@@ -387,7 +449,10 @@ OBSIDIAN_SYNC_SCHEMA = {
         "kopi/. One-way (KOPI is source of truth), idempotent, and rebuilds a "
         "_MOC.md hub. Use to sediment accumulated knowledge into a browsable, "
         "graph-linked knowledge base. action=append_daily writes a dated "
-        "journal entry under kopi/daily/ (for digests and daily notes)."
+        "journal entry under kopi/daily/. action=import pulls user-authored "
+        "notes from kopi/inbox/ back INTO curated memory — each note is run "
+        "through the same injection scan, dedup, and char-limit checks as the "
+        "memory tool; rejected notes stay in the inbox with a reason."
     ),
     "parameters": {
         "type": "object",
@@ -396,7 +461,7 @@ OBSIDIAN_SYNC_SCHEMA = {
                 "type": "string",
                 "enum": [
                     "export_all", "export_memory", "export_skills",
-                    "append_daily", "status",
+                    "append_daily", "import", "status",
                 ],
                 "description": "Which action to run (default: export_all).",
             },
