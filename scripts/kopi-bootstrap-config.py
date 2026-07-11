@@ -92,8 +92,11 @@ def main() -> None:
         "command": "npx",
         "args": ["-y", "@bitbonsai/mcpvault@latest", str(OBSIDIAN_VAULT)],
     }
-    # Persist the canonical vault path so the bundled `obsidian` skill (which
-    # reads OBSIDIAN_VAULT_PATH from ~/.kopi/.env) resolves the same directory.
+    # Persist the canonical vault path. This ONE directory is the unified
+    # knowledge base: the `obsidian` skill, the `obsidian_*` tools, mcpvault,
+    # AND the `llm-wiki` skill all resolve to it (llm-wiki's WIKI_PATH falls
+    # back to OBSIDIAN_VAULT_PATH). So "my vault", "my notes", "my wiki", and
+    # "my knowledge base" all mean the same place — no routing ambiguity.
     _set_env_var("OBSIDIAN_VAULT_PATH", str(OBSIDIAN_VAULT))
 
     # 2. Add MCP v2 SSE: KOPI MCP Gateway

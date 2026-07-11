@@ -77,10 +77,16 @@ def _handle_obsidian_query(args: dict, **kwargs) -> str:
 OBSIDIAN_QUERY_SCHEMA = {
     "name": "obsidian_query",
     "description": (
-        "Query the Obsidian vault with desktop-like intelligence — headless, no "
-        "Obsidian app required. Full-text (BM25) search, backlinks/outlinks, a "
-        "Dataview-style frontmatter query, orphan and broken-link detection, and "
-        "link-graph traversal. Reads the vault files directly."
+        "THE tool for searching the user's notes, vault, knowledge base, wiki, or "
+        "memory notes. Use this whenever the user asks to search, find, look up, or "
+        "recall something in their notes/vault/knowledge base — prefer it over "
+        "generic file search (search_files/grep) because it RANKS results (BM25), "
+        "handles Chinese/CJK text (plain grep does not), and understands links. "
+        "Queries the Obsidian vault with desktop-like intelligence, headless (no "
+        "Obsidian app needed): full-text search, backlinks/outlinks, a Dataview-"
+        "style frontmatter query, orphan and broken-link detection, and link-graph "
+        "traversal. Only fall back to search_files for exact filename listing or a "
+        "raw regex sweep where ranking is not wanted."
     ),
     "parameters": {
         "type": "object",
