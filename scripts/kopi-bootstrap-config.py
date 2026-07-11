@@ -2,7 +2,7 @@
 """
 KOPI AI AGENT — Post-install bootstrap.
 Runs `kopi setup` then auto-configures KOPI defaults:
-  - MCP v1 stdio servers (filesystem, time, github)
+  - MCP v1 stdio servers (filesystem, time, github, obsidian/mcpvault)
   - KOPI MCP SSE Gateway
   - KOPI Proxy as custom provider
   - Default model: kopi-o
@@ -12,6 +12,12 @@ from pathlib import Path
 
 KOPI_HOME = Path(os.environ.get("KOPI_HOME", Path.home() / ".kopi"))
 CONFIG_PATH = KOPI_HOME / "config.yaml"
+
+# Obsidian vault (mcpvault) — a KOPI-managed vault so Obsidian tools work
+# out of the box with no desktop app or plugin. Overridable via env for
+# users who already have a vault. Created at bootstrap if missing; it also
+# doubles as the sink target for agent memory/skill export.
+OBSIDIAN_VAULT = Path(os.environ.get("KOPI_OBSIDIAN_VAULT", Path.home() / "kopi-vault"))
 
 def run_kopi(*args: str) -> None:
     """Run a `kopi` CLI command."""
@@ -39,6 +45,18 @@ def main() -> None:
             "command": "npx",
             "args": ["-y", "@modelcontextprotocol/server-github"],
         },
+    }
+
+    # Obsidian vault access via mcpvault — filesystem-direct, no desktop app
+    # or plugin required (works headless on a VPS). Ensure the vault dir
+    # exists so the server has a valid target on first launch.
+    try:
+        OBSIDIAN_VAULT.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"⚠ Could not create Obsidian vault at {OBSIDIAN_VAULT}: {exc}")
+    mcp_servers["obsidian"] = {
+        "command": "npx",
+        "args": ["-y", "@bitbonsai/mcpvault@latest", str(OBSIDIAN_VAULT)],
     }
 
     # 2. Add MCP v2 SSE: KOPI MCP Gateway
@@ -73,7 +91,8 @@ def main() -> None:
     config.setdefault("model", "kopi-o")
 
     CONFIG_PATH.write_text(yaml.safe_dump(config, default_flow_style=False, allow_unicode=True))
-    print("✓ MCP servers configured: filesystem, time, github, kopi-mcp")
+    print("✓ MCP servers configured: filesystem, time, github, kopi-mcp, obsidian")
+    print(f"✓ Obsidian vault (mcpvault) ready at: {OBSIDIAN_VAULT}")
     print("✓ KOPI Proxy added as custom provider (kopi-o / kopi-o-flash / kopi-flash)")
     print()
     print("To set your KOPI Proxy API key:")

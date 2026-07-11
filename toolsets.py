@@ -52,6 +52,9 @@ _KOPI_CORE_TOOLS = [
     "text_to_speech",
     # Planning & memory
     "todo", "memory",
+    # Obsidian vault — sediment memory/skills into the vault and query it with
+    # desktop-like intelligence (backlinks, dataview, BM25 search) headless.
+    "obsidian_sync", "obsidian_query",
     # NOTE: the desktop Project tools (project_list/create/switch) are
     # deliberately NOT here. They only make sense where a GUI can follow the
     # move, so they live in the `project` toolset and are enabled solely by the
@@ -303,6 +306,16 @@ TOOLSETS = {
     "feishu_doc": {
         "description": "Read Feishu/Lark document content",
         "tools": ["feishu_doc_read"],
+        "includes": []
+    },
+
+    "obsidian": {
+        "description": (
+            "Obsidian vault integration — sediment KOPI memory & skills into "
+            "the vault as linked notes (obsidian_sync) and query it headlessly "
+            "with search, backlinks, dataview, and graph (obsidian_query)"
+        ),
+        "tools": ["obsidian_sync", "obsidian_query"],
         "includes": []
     },
 

@@ -135,6 +135,22 @@ CATALOG: List[AutomationBlueprint] = [
         tags=("daily", "briefing"),
     ),
     AutomationBlueprint(
+        key="obsidian-sediment",
+        title="Obsidian knowledge sync",
+        description="Sediment your accumulated memory and learned skills into "
+        "your Obsidian vault as linked notes, so they show up in the graph.",
+        category="daily",
+        schedule_template="{minute} {hour} * * *",
+        prompt_template=(
+            "Call the obsidian_sync tool with action=export_all to export the "
+            "agent's curated memory and skills into the Obsidian vault as "
+            "linked notes, then briefly report how many notes were written per "
+            "category. If the obsidian tools are unavailable, say so and stop."
+        ),
+        slots=[_TIME("03:00"), _DELIVER],
+        tags=("daily", "obsidian", "knowledge"),
+    ),
+    AutomationBlueprint(
         key="important-mail",
         title="Important-mail monitor",
         description="Check your inbox periodically and ping you ONLY about mail "
