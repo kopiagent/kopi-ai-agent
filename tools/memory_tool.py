@@ -310,6 +310,13 @@ class MemoryStore:
         """Persist entries to the appropriate file. Called after every mutation."""
         get_memory_dir().mkdir(parents=True, exist_ok=True)
         self._write_file(self._path_for(target), self._entries_for(target))
+        # Best-effort Obsidian sediment (opt-in via config/env; no-op otherwise).
+        # Must never break a memory write, so swallow everything.
+        try:
+            from tools.obsidian_sync import trigger_auto_sync
+            trigger_auto_sync("user" if target == "user" else "memory")
+        except Exception:
+            pass
 
     def _entries_for(self, target: str) -> List[str]:
         if target == "user":

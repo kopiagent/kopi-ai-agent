@@ -19,8 +19,11 @@ Actions: export_all, export_memory, export_skills, status.
 import datetime
 import hashlib
 import logging
+import os
 import re
 import tempfile
+import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -207,52 +210,173 @@ def _rebuild_moc(sections: Dict[str, List[str]]) -> None:
         raise
 
 
+# ── Daily notes (Phase 2) ────────────────────────────────────────────────────
+
+_MD_HEADING_TS = re.compile(r"^#+\s")
+
+
+def _append_daily(content: str, title: Optional[str] = None) -> Dict[str, Any]:
+    """Append a timestamped block to kopi/daily/<YYYY-MM-DD>.md, creating it
+    (with frontmatter) on first write of the day. Cron digests land here."""
+    today = _today()
+    path = _kopi_dir() / "daily" / f"{today}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    block = content.rstrip()
+    if title:
+        block = f"## {title}\n\n{block}"
+    if path.exists():
+        try:
+            base = path.read_text(encoding="utf-8").rstrip()
+        except OSError:
+            base = ""
+    else:
+        base = "\n".join([
+            "---",
+            "kopi_type: daily",
+            f"kopi_id: daily-{today}",
+            f"created: {today}",
+            f"updated: {today}",
+            "tags: [kopi/daily]",
+            "---",
+            "",
+            f"# {today}",
+        ])
+    new_text = base + "\n\n" + block + "\n"
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".obs_", suffix=".tmp")
+    try:
+        with open(fd, "w", encoding="utf-8") as f:
+            f.write(new_text)
+        atomic_replace(tmp, path)
+    except OSError:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return {"success": True, "action": "append_daily", "note": str(path)}
+
+
+# ── Export core (shared by tool handler and auto-sync) ───────────────────────
+
+def _run_export(action: str) -> Optional[Dict[str, int]]:
+    """Run the requested export; returns a per-category summary, or None for an
+    unknown action. Rebuilds _MOC.md so wikilinks stay consistent."""
+    mem_dir = get_kopi_home() / "memories"
+    sections: Dict[str, List[str]] = {}
+    summary: Dict[str, int] = {}
+
+    if action in ("export_all", "export_memory"):
+        n_mem, t_mem = _sync_entries(
+            _read_entries(mem_dir / "MEMORY.md"),
+            "memory", "memory", "MEMORY.md", "mem",
+        )
+        n_user, t_user = _sync_entries(
+            _read_entries(mem_dir / "USER.md"),
+            "user", "user", "USER.md", "user",
+        )
+        sections["memory"], sections["user"] = t_mem, t_user
+        summary["memory"], summary["user"] = n_mem, n_user
+
+    if action in ("export_all", "export_skills"):
+        n_skill, t_skill = _sync_skills()
+        sections["skill"] = t_skill
+        summary["skills"] = n_skill
+
+    if not summary:
+        return None
+
+    _rebuild_moc(sections)
+    return summary
+
+
 # ── Tool handler ────────────────────────────────────────────────────────────
 
 def _handle_obsidian_sync(args: dict, **kwargs) -> str:
     action = (args.get("action") or "export_all").strip()
-    mem_dir = get_kopi_home() / "memories"
 
     try:
         if action == "status":
             kopi = _kopi_dir()
             counts = {
                 sub: len(list((kopi / sub).glob("*.md"))) if (kopi / sub).exists() else 0
-                for sub in ("memory", "user", "skills")
+                for sub in ("memory", "user", "skills", "daily")
             }
-            return tool_result(success=True, vault=str(get_vault_dir()), notes=counts)
-
-        sections: Dict[str, List[str]] = {}
-        summary: Dict[str, int] = {}
-
-        if action in ("export_all", "export_memory"):
-            n_mem, t_mem = _sync_entries(
-                _read_entries(mem_dir / "MEMORY.md"),
-                "memory", "memory", "MEMORY.md", "mem",
+            return tool_result(
+                success=True, vault=str(get_vault_dir()),
+                notes=counts, auto_sync=auto_sync_enabled(),
             )
-            n_user, t_user = _sync_entries(
-                _read_entries(mem_dir / "USER.md"),
-                "user", "user", "USER.md", "user",
-            )
-            sections["memory"] = t_mem
-            sections["user"] = t_user
-            summary["memory"] = n_mem
-            summary["user"] = n_user
 
-        if action in ("export_all", "export_skills"):
-            n_skill, t_skill = _sync_skills()
-            sections["skill"] = t_skill
-            summary["skills"] = n_skill
+        if action == "append_daily":
+            content = (args.get("content") or "").strip()
+            if not content:
+                return tool_error("append_daily requires 'content'")
+            return tool_result(**_append_daily(content, args.get("title")))
 
-        if not summary:
+        summary = _run_export(action)
+        if summary is None:
             return tool_error(f"Unknown action: {action}")
-
-        _rebuild_moc(sections)
         return tool_result(
             success=True, action=action, vault=str(get_vault_dir()), exported=summary,
         )
     except OSError as exc:
         return tool_error(f"Obsidian sync failed: {exc}")
+
+
+# ── Auto-sync hook (Phase 2) ─────────────────────────────────────────────────
+#
+# Memory writes and skill mutations can fire an incremental re-export so the
+# vault tracks the agent's knowledge in near-real-time. This is OPT-IN
+# (config obsidian.auto_sync or env KOPI_OBSIDIAN_AUTO_SYNC) and defaults OFF:
+# auto-writing to the vault on every memory mutation is a side effect users
+# should choose, and a default-on hook would write into ~/kopi-vault during
+# unrelated test runs. Work runs on a debounced daemon thread so it never adds
+# latency to the triggering write, and every failure is swallowed (sediment is
+# best-effort; it must never break a memory/skill write).
+
+_DEBOUNCE_SECONDS = 2.0
+_pending: set = set()
+_pending_lock = threading.Lock()
+_worker: Optional["threading.Thread"] = None
+
+
+def auto_sync_enabled() -> bool:
+    env = os.environ.get("KOPI_OBSIDIAN_AUTO_SYNC")
+    if env is not None:
+        return env.strip().lower() in ("1", "true", "yes", "on")
+    try:
+        from kopi_cli.config import load_config
+        return bool((load_config().get("obsidian") or {}).get("auto_sync", False))
+    except Exception:
+        return False
+
+
+def _drain() -> None:
+    time.sleep(_DEBOUNCE_SECONDS)  # coalesce a burst of writes into one export
+    while True:
+        with _pending_lock:
+            if not _pending:
+                return
+            _pending.clear()
+        try:
+            _run_export("export_all")
+        except Exception as exc:  # sediment is best-effort — never propagate
+            logger.debug("obsidian auto-sync export failed: %s", exc)
+
+
+def trigger_auto_sync(kind: str) -> None:
+    """Best-effort hook: schedule a debounced vault re-export. No-op unless
+    auto-sync is enabled and the vault exists. Never raises."""
+    try:
+        if not auto_sync_enabled() or not get_vault_dir().exists():
+            return
+        with _pending_lock:
+            _pending.add(kind)
+            global _worker
+            if _worker is not None and _worker.is_alive():
+                return
+            _worker = threading.Thread(
+                target=_drain, name="obsidian-auto-sync", daemon=True,
+            )
+            _worker.start()
+    except Exception:
+        pass
 
 
 OBSIDIAN_SYNC_SCHEMA = {
@@ -262,15 +386,27 @@ OBSIDIAN_SYNC_SCHEMA = {
         "into the Obsidian vault as linked, frontmatter-tagged notes under "
         "kopi/. One-way (KOPI is source of truth), idempotent, and rebuilds a "
         "_MOC.md hub. Use to sediment accumulated knowledge into a browsable, "
-        "graph-linked knowledge base."
+        "graph-linked knowledge base. action=append_daily writes a dated "
+        "journal entry under kopi/daily/ (for digests and daily notes)."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["export_all", "export_memory", "export_skills", "status"],
-                "description": "Which export to run (default: export_all).",
+                "enum": [
+                    "export_all", "export_memory", "export_skills",
+                    "append_daily", "status",
+                ],
+                "description": "Which action to run (default: export_all).",
+            },
+            "content": {
+                "type": "string",
+                "description": "Markdown body to append (action=append_daily).",
+            },
+            "title": {
+                "type": "string",
+                "description": "Optional H2 heading for the daily entry (action=append_daily).",
             },
         },
         "required": [],
