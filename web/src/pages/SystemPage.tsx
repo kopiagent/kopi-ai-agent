@@ -42,7 +42,7 @@ import { useConfirmDelete } from "@nous-research/ui/hooks/use-confirm-delete";
 import { ConfirmDialog } from "@nous-research/ui/ui/components/confirm-dialog";
 import { useModalBehavior } from "@/hooks/useModalBehavior";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
-import { HermesConsoleModal } from "@/components/HermesConsoleModal";
+import { KopiConsoleModal } from "@/components/KopiConsoleModal";
 import { cn, themedBody } from "@/lib/utils";
 import { api } from "@/lib/api";
 import type {
@@ -512,7 +512,7 @@ export default function SystemPage() {
   // ── Update check / apply ───────────────────────────────────────────
   const checkForUpdate = useCallback(
     async (force = false) => {
-      if (status?.can_update_kopi === false) return;
+      if (status?.can_update_hermes === false) return;
       setCheckingUpdate(true);
       try {
         const info = await api.checkHermesUpdate(force);
@@ -544,9 +544,9 @@ export default function SystemPage() {
   // user-triggered forced re-check from the "Check for updates" button.
   const applyUpdate = async () => {
     setUpdateConfirmOpen(false);
-    if (status?.can_update_kopi === false) {
+    if (status?.can_update_hermes === false) {
       showToast(
-        "Hermes updates are managed outside this dashboard.",
+        "KOPI updates are managed outside this dashboard.",
         "success",
       );
       return;
@@ -637,7 +637,7 @@ export default function SystemPage() {
   }
 
   const gatewayRunning = status?.gateway_running;
-  const canUpdateHermes = status?.can_update_kopi !== false;
+  const canUpdateHermes = status?.can_update_hermes !== false;
   const activeMemoryProvider = memory?.active
     ? memory.providers.find((provider) => provider.name === memory.active)
     : null;
@@ -662,7 +662,7 @@ export default function SystemPage() {
         open={canUpdateHermes && updateConfirmOpen}
         onCancel={() => setUpdateConfirmOpen(false)}
         onConfirm={() => void applyUpdate()}
-        title="Update Hermes?"
+        title="Update KOPI?"
         description={
           updateInfo && updateInfo.behind && updateInfo.behind > 0
             ? `This will run 'kopi update' (${updateInfo.update_command}) and pull ${updateInfo.behind} new commit${updateInfo.behind === 1 ? "" : "s"}. The gateway restarts when the update finishes; the current session keeps its prompt cache until then.`
@@ -703,7 +703,7 @@ export default function SystemPage() {
         description="Remove this hook from config and revoke its consent? It stops firing on the next restart."
         loading={hookDelete.isDeleting}
       />
-      <HermesConsoleModal
+      <KopiConsoleModal
         open={consoleOpen}
         onClose={() => setConsoleOpen(false)}
       />
@@ -846,7 +846,7 @@ export default function SystemPage() {
                 <div>{stats?.python_impl} {stats?.python_version}</div>
               </div>
               <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">Hermes</div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">KOPI</div>
                 <div className="flex items-center gap-2">
                   <span>v{stats?.kopi_version}</span>
                   {canUpdateHermes &&
@@ -1327,8 +1327,8 @@ export default function SystemPage() {
             </div>
             <ConfirmDialog
               open={!!importConfirmTarget}
-              title="Restore full Hermes backup?"
-              description={`This will overwrite your current Hermes configuration, skills, sessions, and data with the contents of ${backupImportLabel(importConfirmTarget)}. This cannot be undone.`}
+              title="Restore full KOPI backup?"
+              description={`This will overwrite your current KOPI configuration, skills, sessions, and data with the contents of ${backupImportLabel(importConfirmTarget)}. This cannot be undone.`}
               destructive
               confirmLabel="Restore"
               cancelLabel="Cancel"
@@ -1354,7 +1354,7 @@ export default function SystemPage() {
                   <span className="text-sm font-medium">Share debug report</span>
                   <span className="text-xs text-muted-foreground max-w-prose">
                     Uploads system info + logs to a public paste service and
-                    returns links to send the Hermes team. Pastes auto-delete
+                    returns links to send the KOPI team. Pastes auto-delete
                     after 6 hours.
                   </span>
                 </div>
