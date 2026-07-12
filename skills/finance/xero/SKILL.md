@@ -36,16 +36,30 @@ Connection**) and stores them in `~/.kopi/.env`. If the xero tools are not
 available in the current session, tell the user to run the command above and
 restart the session — do not try to work around a missing MCP.
 
+## Read-only via this MCP (IMPORTANT)
+
+Treat Xero as **read-only through KOPI**. Use the read/list/report tools freely —
+they work well. **Do NOT attempt transaction writes** (`create-invoice`,
+`create-manual-journal`, `create-credit-note`, `delete-*`): on Custom Connections
+that use Xero's newer *granular* scopes, this MCP requests the wrong OAuth scope
+and every transaction write fails with a generic "unexpected error". Repeated
+failed writes also trip KOPI's MCP circuit breaker and can briefly knock out
+Xero *reads* too. So don't try them.
+
+`create-contact` is the one write that does work (the contacts scope name is
+unchanged), but avoid it unless the user explicitly asks — it still writes to a
+real org.
+
+If the user needs to bulk-create Xero data (invoices, journals) for testing,
+that must be done outside this MCP (e.g. a direct Xero API script), not by the
+agent through these tools.
+
 ## Safety (MANDATORY)
 
-- **Read-first.** Default to read/list/report operations. They are always safe.
-- **Writes hit a REAL general ledger.** `create-invoice`, `create-contact`,
-  `create-credit-note`, `create-manual-journal`, `delete-*`, etc. change real
-  accounting records. Before ANY write, restate exactly what you will create/
-  change and get explicit user confirmation. Never write speculatively.
-- Whether writes even work depends on the OAuth **scopes** granted to the Custom
-  Connection. If a write fails with a scope/permission error, that is by design —
-  do not try to escalate; tell the user to re-grant scopes only if they intend to.
+- **Read-first.** Read/list/report operations are always safe — prefer them.
+- **Writes hit a REAL general ledger.** Any create/update/delete changes real
+  accounting records. Given the granular-scope limitation above, do not attempt
+  transaction writes through this MCP at all.
 - **Never** print, summarise, or echo `XERO_CLIENT_ID` / `XERO_CLIENT_SECRET` or
   anything from `~/.kopi/.env`. Credentials are the user's to manage.
 
@@ -66,18 +80,13 @@ Typical read workflows and the tool family to reach for:
 When answering a business question, pull the relevant report or list, then
 summarise the numbers plainly (totals, notable lines) rather than dumping raw JSON.
 
-## Writing (only on explicit request + confirmation)
+## Writing
 
-To create an invoice you usually need three lookups first:
-1. `contactId` — from the contacts list.
-2. `accountCode` — from the chart of accounts.
-3. `taxType` — from the tax rates list.
-
-Build the line items, **show the user the full invoice you're about to create**,
-confirm, then create it. Xero returns a deep link to the new record — surface
-that link to the user so they can review it in Xero.
-
-Manual journals must balance (debits = credits) and need at least two lines.
+Transaction writes (invoices, bills, manual journals, credit notes) are **not
+usable through this MCP** on granular-scope connections — see "Read-only via this
+MCP" above. If a user asks to create such records, explain the limitation and
+that it must be done via a direct Xero API integration, rather than attempting a
+call that will fail and trip the circuit breaker.
 
 ## Tips
 

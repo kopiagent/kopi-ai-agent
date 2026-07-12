@@ -3015,6 +3015,27 @@ def _reset_server_error(server_name: str) -> None:
     _server_breaker_opened_at.pop(server_name, None)
 
 
+def _is_protocol_error(exc: BaseException) -> bool:
+    """True when *exc* is a JSON-RPC/MCP error RESPONSE from the server rather
+    than a transport failure.
+
+    A protocol error (invalid params ``-32602``, method not found, a tool the
+    server rejected, a permission/scope denial surfaced as an error result)
+    means the server IS reachable — it answered. Such errors must NOT trip the
+    connection circuit breaker: they're the caller's problem to fix, not
+    evidence the server is down. Only genuine transport failures (session
+    terminated, not connected, timeouts) should count toward the breaker.
+
+    ``mcp`` raises ``McpError`` carrying an ``ErrorData`` with a numeric
+    ``code`` for JSON-RPC error responses; detect that shape by duck-typing so
+    we don't hard-depend on the SDK's exception class here.
+    """
+    if type(exc).__name__ == "McpError":
+        return True
+    err = getattr(exc, "error", None)
+    return err is not None and isinstance(getattr(err, "code", None), int)
+
+
 def _signal_reconnect(server: Any) -> bool:
     """Ask a server task to rebuild its transport, thread-safely.
 
@@ -3995,15 +4016,15 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
 
         try:
             result = _call_once()
-            # Check if the MCP tool itself returned an error
-            try:
-                parsed = json.loads(result)
-                if "error" in parsed:
-                    _bump_server_error(server_name)
-                else:
-                    _reset_server_error(server_name)  # success — reset
-            except (json.JSONDecodeError, TypeError):
-                _reset_server_error(server_name)  # non-JSON = success
+            # Reaching the server and getting ANY response back — even a
+            # tool-level error result (isError / invalid arguments / a
+            # permission denial) — proves the transport is healthy. A tool
+            # error is NOT a connection failure, so reset the breaker; only
+            # genuine transport failures (the except branch below) trip it.
+            # Without this, a burst of bad-argument or scope-denied calls would
+            # mark a perfectly reachable server "unreachable" (seen with the
+            # QBO params-shape and Xero granular-scope write cases).
+            _reset_server_error(server_name)
             return result
         except InterruptedError:
             return _interrupted_call_result()
@@ -4028,7 +4049,14 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
             if recovered is not None:
                 return recovered
 
-            _bump_server_error(server_name)
+            # A JSON-RPC/MCP error RESPONSE (invalid params, unknown tool, a
+            # scope/permission denial) means the server answered — it's
+            # reachable, so don't trip the connection breaker. Only genuine
+            # transport failures should count toward "unreachable".
+            if _is_protocol_error(exc):
+                _reset_server_error(server_name)
+            else:
+                _bump_server_error(server_name)
             logger.error(
                 "MCP tool %s/%s call failed: %s",
                 server_name, tool_name, exc,
