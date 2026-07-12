@@ -37,6 +37,27 @@ This clones + builds Intuit's server and prompts for `QUICKBOOKS_CLIENT_ID`,
 browser OAuth handshake done outside the agent. If the quickbooks tools are not
 available, tell the user to install the MCP and restart — do not improvise.
 
+## Calling the tools (IMPORTANT — avoids tripping the circuit breaker)
+
+Every QBO tool wraps its inputs in a required `params` object. Pass arguments as
+`{ "params": { ... } }`, NOT at the top level. Examples:
+
+- Company info: `get_company_info` → `{ "params": {} }`
+- Get a customer: `get_customer` → `{ "params": { "id": "1" } }`
+- A report: `get_profit_and_loss` → `{ "params": { ... } }`
+
+If you call a tool with the wrong shape (missing `params`), the server returns an
+`Invalid arguments` (-32602) error. KOPI's MCP circuit breaker counts consecutive
+errors and, after 3, marks the whole server "unreachable" for ~60s — so a burst of
+mis-shaped calls locks you out. Therefore:
+
+- **Get the shape right the first time** — always wrap in `params`.
+- **Probe with ONE call before fanning out.** Don't fire many tool calls in
+  parallel until you've confirmed one succeeds; parallel mis-calls trip the
+  breaker instantly.
+- If you do hit "server unreachable", stop calling and wait ~60s for the cooldown;
+  do not hammer it.
+
 ## Safety (MANDATORY)
 
 - **Read-first.** Default to read/query/report operations — always safe.
