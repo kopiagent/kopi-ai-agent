@@ -195,14 +195,14 @@ def _scrub_child_env(source_env, is_passthrough=None, is_windows=None):
             # Non-secret (secrets were already dropped above) and not in any
             # allowlist — a deliberately-dropped KOPI_* var.
             _dropped_kopi.append(k)
-    if _dropped_hermes:
+    if _dropped_kopi:
         logger.debug(
             "execute_code: dropped %d non-allowlisted KOPI_* var(s) from the "
             "sandbox child env (%s). This is intentional hardening (#27303); if "
             "a sandbox script legitimately needs one, declare it via "
             "env_passthrough in the skill/config so it passes by explicit opt-in.",
-            len(_dropped_hermes),
-            ", ".join(sorted(_dropped_hermes)),
+            len(_dropped_kopi),
+            ", ".join(sorted(_dropped_kopi)),
         )
     return scrubbed
 
