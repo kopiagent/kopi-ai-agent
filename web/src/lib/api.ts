@@ -315,9 +315,29 @@ function appendProfileParam(url: string, profile?: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}profile=${encodeURIComponent(profile)}`;
 }
 
+export interface OfficeAgent {
+  subagent_id: string;
+  parent_id: string | null;
+  depth: number;
+  kind?: "main" | "subagent";
+  goal: string;
+  model: string;
+  started_at: number;
+  tool_count: number;
+  status: string;
+  tool?: string;
+}
+export interface OfficeStateResponse {
+  agents: OfficeAgent[];
+  count: number;
+  ts: number;
+}
+
 export const api = {
   buildWsUrl,
   getStatus: () => fetchJSON<StatusResponse>("/api/status"),
+  /** Live multi-agent activity for the pixel-office page (P1). */
+  getOfficeState: () => fetchJSON<OfficeStateResponse>("/api/office/state"),
   /**
    * Identity probe for the dashboard auth gate (Phase 7).
    *

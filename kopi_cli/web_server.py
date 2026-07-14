@@ -206,11 +206,14 @@ async def _lifespan(app: "FastAPI"):
 
     # Reap idle/dead keep-alive PTY sessions in the background (30-min TTL).
     pty_reaper_task = asyncio.create_task(run_reaper(PTY_REGISTRY))
+    # Push pixel-office state to subscribed browsers on change (P2 realtime).
+    office_watcher_task = asyncio.create_task(_office_watcher(app))
 
     try:
         yield
     finally:
         pty_reaper_task.cancel()
+        office_watcher_task.cancel()
         await PTY_REGISTRY.close_all()
         if cron_stop is not None:
             cron_stop.set()
@@ -2437,6 +2440,108 @@ def _collect_profile_gateway_topology() -> Dict[str, Any]:
         mode = "none"
 
     return {"profiles": profile_names, "gateway_mode": mode, "gateways": gateways}
+
+
+def _read_office_agents() -> list:
+    """Merge live-subagent snapshots across all agent processes.
+
+    Agents run in a different process (a PTY chat child, the gateway, a cron
+    run) than this web server, so we can't read delegate_tool's in-memory
+    registry directly. delegate_tool mirrors each process's live subagents to
+    ``<KOPI_HOME>/office/subagents-<pid>.json``; we glob + merge those,
+    dropping snapshots whose PID is dead or whose heartbeat is stale (and
+    reaping clearly-dead ones). Never raises.
+    """
+    agents: list = []
+    try:
+        office_dir = get_kopi_home() / "office"
+        now = time.time()
+        for snap in office_dir.glob("subagents-*.json"):
+            try:
+                data = json.loads(snap.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            pid = data.get("pid")
+            ts = data.get("ts", 0)
+            alive = False
+            if isinstance(pid, int):
+                try:
+                    os.kill(pid, 0)
+                    alive = True
+                except (OSError, ProcessLookupError):
+                    alive = False
+            if alive or (now - ts) < 20:
+                for a in data.get("agents", []):
+                    # Main turns and subagents both own explicit lifecycle
+                    # cleanup. Do not age out a live process here: a model may
+                    # legitimately think or wait on a tool for several minutes.
+                    agents.append(a)
+            elif not alive and (now - ts) > 120:
+                try:
+                    snap.unlink()
+                except OSError:
+                    pass
+    except Exception as exc:
+        logging.getLogger(__name__).debug("office state read failed: %s", exc)
+    return agents
+
+
+async def _office_watcher(app: "FastAPI") -> None:
+    """Push office state to the ``office`` event channel on change (P2 realtime).
+
+    Only does work while at least one browser is subscribed to ``office`` via
+    /api/events. Reads the merged snapshot every ~600ms; when the signature
+    (ids + statuses) changes, broadcasts an ``office.state`` event so subscribed
+    OfficePage clients update instantly instead of polling. Best-effort loop.
+    """
+    last_sig = None
+    while True:
+        try:
+            await asyncio.sleep(0.6)
+            event_channels, _ = _get_event_state(app)
+            if not event_channels.get("office"):
+                last_sig = None  # reset so first subscriber gets a fresh push
+                continue
+            agents = _read_office_agents()
+            sig = json.dumps(sorted(
+                (
+                    a.get("subagent_id"),
+                    a.get("status"),
+                    a.get("tool"),
+                    a.get("tool_count"),
+                    a.get("goal"),
+                    a.get("parent_id"),
+                )
+                for a in agents
+            ))
+            if sig == last_sig:
+                continue
+            last_sig = sig
+            payload = json.dumps({
+                "method": "event",
+                "params": {
+                    "type": "office.state",
+                    "payload": {"agents": agents, "count": len(agents), "ts": time.time()},
+                },
+            }, ensure_ascii=False)
+            await _broadcast_event(app, "office", payload)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logging.getLogger(__name__).debug("office watcher tick failed: %s", exc)
+
+
+@app.get("/api/office/state")
+async def get_office_state():
+    """Live multi-agent activity for the pixel-office page (initial seed).
+
+    The frontend fetches this once on mount, then subscribes to the ``office``
+    event channel (/api/events) for realtime updates pushed by _office_watcher.
+    Each agent: ``{subagent_id, parent_id, depth, goal, model, started_at,
+    tool_count, status}``.
+    """
+    agents = _read_office_agents()
+    return {"agents": agents, "count": len(agents), "ts": time.time()}
 
 
 @app.get("/api/status")

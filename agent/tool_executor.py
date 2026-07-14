@@ -252,6 +252,17 @@ def _apply_tool_request_middleware_for_agent(
     effective_task_id: str,
     tool_call_id: str,
 ) -> tuple[dict, list[dict[str, Any]]]:
+    # Pixel-office visualization: this is the ONE per-tool choke point both the
+    # concurrent (line ~397) and sequential (line ~1030) execution paths pass
+    # through, and it runs AFTER tool_search unwrap so function_name is already
+    # the real underlying tool. Record it here so /office shows the live tool at
+    # the NPC's feet. Best-effort; never affects execution.
+    try:
+        from tools.delegate_tool import note_tool_activity
+        note_tool_activity(agent, function_name)
+    except Exception:
+        pass
+
     try:
         from kopi_cli.middleware import apply_tool_request_middleware
 

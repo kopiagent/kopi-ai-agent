@@ -91,6 +91,7 @@ import ChannelsPage from "@/pages/ChannelsPage";
 import WebhooksPage from "@/pages/WebhooksPage";
 import SystemPage from "@/pages/SystemPage";
 import ChatPage from "@/pages/ChatPage";
+import OfficePage from "@/pages/OfficePage";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { useI18n } from "@/i18n";
@@ -133,6 +134,7 @@ const CHAT_NAV_ITEM: NavItem = {
 const BUILTIN_ROUTES_CORE: Record<string, ComponentType> = {
   "/": RootRedirect,
   "/sessions": SessionsPage,
+  "/office": OfficePage,
   "/files": FilesPage,
   "/analytics": AnalyticsPage,
   "/models": ModelsPage,
@@ -180,6 +182,7 @@ const BUILTIN_NAV_REST: NavItem[] = [
     label: "Models",
     icon: Cpu,
   },
+  { path: "/office", label: "Office", icon: Activity },
   { path: "/logs", labelKey: "logs", label: "Logs", icon: FileText },
   { path: "/cron", labelKey: "cron", label: "Cron", icon: Clock },
   { path: "/skills", labelKey: "skills", label: "Skills", icon: Package },
