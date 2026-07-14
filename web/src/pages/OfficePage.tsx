@@ -119,6 +119,35 @@ const STATIONS: Record<StationType, { x: number; y: number }[]> = {
   server: [{ x: 470, y: 165 }, { x: 470, y: 235 }],
 };
 const ENTRANCE = { x: 500, y: 315 };
+const MAIN_AISLE_Y = 300;
+const BACK_AISLE_Y = 130;
+const ENTRY_SPEED = 3.1;
+const EXIT_SPEED = 4.8;
+
+function compactLabel(text: string): string {
+  const chars = Array.from((text || "").trim());
+  if (chars.length <= 8) return chars.join("");
+  return chars.slice(0, 8).join("");
+}
+
+function pathToSeat(from: { x: number; y: number }, to: { x: number; y: number }, station: StationType) {
+  const laneY = station === "whiteboard" ? BACK_AISLE_Y : MAIN_AISLE_Y;
+  const raw = [
+    { x: from.x, y: MAIN_AISLE_Y },
+    ...(laneY !== MAIN_AISLE_Y ? [{ x: to.x, y: MAIN_AISLE_Y }, { x: to.x, y: laneY }] : [{ x: to.x, y: MAIN_AISLE_Y }]),
+    { x: to.x, y: to.y },
+  ];
+  return raw.filter((p, i) => i === 0 || Math.hypot(p.x - raw[i - 1].x, p.y - raw[i - 1].y) > 2);
+}
+
+function pathToExit(from: { x: number; y: number }) {
+  const raw = [
+    { x: from.x, y: MAIN_AISLE_Y },
+    { x: ENTRANCE.x, y: MAIN_AISLE_Y },
+    ENTRANCE,
+  ];
+  return raw.filter((p, i) => i === 0 || Math.hypot(p.x - raw[i - 1].x, p.y - raw[i - 1].y) > 2);
+}
 
 // ---- NPC model -------------------------------------------------------------
 interface Npc {
@@ -132,6 +161,7 @@ interface Npc {
   seatKey: string;      // "station:index"
   x: number; y: number; // current px
   tx: number; ty: number; // target px
+  path: { x: number; y: number }[];
   facing: number;       // 1 right, -1 left
   gone: boolean;
   removeAt: number;
@@ -177,15 +207,17 @@ export default function OfficePage() {
         const station = stationFor(a.status);
         const existing = npcsRef.current.get(a.subagent_id);
         if (existing) {
+          const wasLeaving = existing.gone;
           existing.goal = a.goal;
           existing.tool = a.tool || "";
           existing.gone = false;
           existing.removeAt = 0;
-          if (existing.status !== a.status && existing.station !== station) {
+          if (wasLeaving || (existing.status !== a.status && existing.station !== station)) {
             // status changed → walk to a seat in the new station
             const { key, seat } = freeSeats(station, existing.id);
             existing.station = station;
             existing.seatKey = key;
+            existing.path = pathToSeat({ x: existing.x, y: existing.y }, seat, station);
             existing.tx = seat.x;
             existing.ty = seat.y;
           }
@@ -204,6 +236,7 @@ export default function OfficePage() {
             x: isSeed ? seat.x : ENTRANCE.x,
             y: isSeed ? seat.y : ENTRANCE.y, // walk in from the door, unless this is the initial seed
             tx: seat.x, ty: seat.y,
+            path: isSeed ? [] : pathToSeat(ENTRANCE, seat, station),
             facing: -1,
             gone: false, removeAt: 0,
             bob: (skinFor(a.subagent_id) * 17) % 100,
@@ -213,8 +246,9 @@ export default function OfficePage() {
       npcsRef.current.forEach((npc, id) => {
         if (!seen.has(id) && !npc.gone) {
           npc.gone = true;
-          npc.removeAt = now + 1600;
-          npc.tx = ENTRANCE.x; npc.ty = ENTRANCE.y; // walk out
+          npc.removeAt = now + 2600;
+          npc.path = pathToExit({ x: npc.x, y: npc.y });
+          npc.tx = ENTRANCE.x; npc.ty = ENTRANCE.y; // walk out through the aisle
         }
       });
     };
@@ -441,15 +475,16 @@ export default function OfficePage() {
       }
     };
     const drawLabel = (x: number, y: number, top: string, bottom: string) => {
-      const g = top.length > 20 ? top.slice(0, 19) + "…" : top;
-      const labelW = Math.min(62, Math.max(28, g.length * 4));
+      const g = compactLabel(top);
+      const labelW = Math.min(42, Math.max(24, Array.from(g).length * 5));
       rect(x - labelW / 2 - 1, y - 42, labelW + 2, 12, "#6e3f29");
       rect(x - labelW / 2, y - 43, labelW, 12, "#fff4cc");
       rect(x - labelW / 2 + 2, y - 34, labelW - 4, 1, "#d5ad64");
       ctx.fillStyle = C.text; ctx.font = "6px monospace"; ctx.textAlign = "center";
       ctx.fillText(g, x, y - 35);
       const footTrunc = bottom.length > 22 ? bottom.slice(0, 21) + "…" : bottom;
-      rect(x - Math.min(70, Math.max(30, footTrunc.length * 4)) / 2, y + 17, Math.min(70, Math.max(30, footTrunc.length * 4)), 8, "rgba(255,244,204,0.82)");
+      const footW = Math.min(70, Math.max(30, footTrunc.length * 4));
+      rect(x - footW / 2, y + 17, footW, 8, "rgba(255,244,204,0.82)");
       ctx.fillStyle = C.sub; ctx.fillText(footTrunc, x, y + 23);
     };
 
@@ -544,11 +579,21 @@ export default function OfficePage() {
       // NPCs
       const toDelete: string[] = [];
       [...npcs.values()].sort((a, b) => a.y - b.y).forEach((n) => {
-        const dx = n.tx - n.x, dy = n.ty - n.y;
+        const next = n.path[0] ?? { x: n.tx, y: n.ty };
+        const dx = next.x - n.x, dy = next.y - n.y;
         const dist = Math.hypot(dx, dy);
         const moving = dist > 1.5;
-        if (moving) { n.x += (dx / dist) * Math.min(1.8, dist); n.y += (dy / dist) * Math.min(1.8, dist); n.facing = dx < 0 ? -1 : 1; }
-        if (n.gone && now >= n.removeAt) { toDelete.push(n.id); return; }
+        if (moving) {
+          const speed = n.gone ? EXIT_SPEED : ENTRY_SPEED;
+          n.x += (dx / dist) * Math.min(speed, dist);
+          n.y += (dy / dist) * Math.min(speed, dist);
+          if (Math.abs(dx) > 0.2) n.facing = dx < 0 ? -1 : 1;
+        } else if (n.path.length > 0) {
+          n.x = next.x;
+          n.y = next.y;
+          n.path.shift();
+        }
+        if (n.gone && (n.path.length === 0 || now >= n.removeAt)) { toDelete.push(n.id); return; }
         const atSeat = !moving && !n.gone;
         drawChar(n.x, n.y, SKINS[n.skin], t, moving, atSeat ? actionFor(n.status) : "", n.bob);
         // label + verb (only when seated, to reduce clutter while walking)
