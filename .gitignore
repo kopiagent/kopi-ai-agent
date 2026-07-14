@@ -146,4 +146,4 @@ apps/desktop/demo/
 infographic/
 
 kopi_ai_agent.egg-info/
-uv.lock
+pnpm-*.yaml
