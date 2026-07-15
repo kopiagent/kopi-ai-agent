@@ -135,6 +135,45 @@ CATALOG: List[AutomationBlueprint] = [
         tags=("daily", "briefing"),
     ),
     AutomationBlueprint(
+        key="obsidian-sediment",
+        title="Obsidian knowledge sync",
+        description="Sediment your accumulated memory and learned skills into "
+        "your Obsidian vault as linked notes, so they show up in the graph.",
+        category="daily",
+        schedule_template="{minute} {hour} * * *",
+        prompt_template=(
+            "Call the obsidian_sync tool with action=export_all to export the "
+            "agent's curated memory and skills into the Obsidian vault as "
+            "linked notes, then briefly report how many notes were written per "
+            "category. If the obsidian tools are unavailable, say so and stop."
+        ),
+        slots=[_TIME("03:00"), _DELIVER],
+        tags=("daily", "obsidian", "knowledge"),
+    ),
+    AutomationBlueprint(
+        key="obsidian-daily-journal",
+        title="Obsidian daily journal",
+        description="Write a short end-of-day journal entry (what happened, "
+        "decisions, open threads) into your Obsidian vault's daily note.",
+        category="daily",
+        schedule_template="{minute} {hour} * * *",
+        prompt_template=(
+            "Write a concise daily journal entry summarizing today: {focus}. "
+            "Then persist it by calling obsidian_sync with action=append_daily, "
+            "passing the summary as 'content' and a short 'title'. Confirm the "
+            "note path. If the obsidian tools are unavailable, say so and stop."
+        ),
+        slots=[
+            _TIME("21:00"),
+            BlueprintSlot(
+                name="focus", type="text", label="What should the journal cover?",
+                default="key events, decisions made, and anything still open",
+            ),
+            _DELIVER,
+        ],
+        tags=("daily", "obsidian", "journal"),
+    ),
+    AutomationBlueprint(
         key="important-mail",
         title="Important-mail monitor",
         description="Check your inbox periodically and ping you ONLY about mail "

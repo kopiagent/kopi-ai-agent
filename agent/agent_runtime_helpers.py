@@ -2192,6 +2192,10 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
     if not isinstance(function_args, dict):
         function_args = {}
 
+    # (Pixel-office tool activity is recorded in
+    # tool_executor._apply_tool_request_middleware_for_agent — the single
+    # per-tool choke point shared by both execution paths.)
+
     _tool_middleware_trace = list(tool_request_middleware_trace or [])
     try:
         from kopi_cli.middleware import apply_tool_request_middleware

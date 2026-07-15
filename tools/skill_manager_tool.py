@@ -1392,6 +1392,12 @@ def skill_manage(
             clear_skills_system_prompt_cache(clear_snapshot=True)
         except Exception:
             pass
+        # Best-effort Obsidian sediment of skills (opt-in; no-op otherwise).
+        try:
+            from tools.obsidian_sync import trigger_auto_sync
+            trigger_auto_sync("skills")
+        except Exception:
+            pass
         # Curator telemetry: bump patch_count on edit/patch/write_file (the actions
         # that mutate an existing skill's guidance), drop the record on delete.
         # Only mark a skill as agent-created when the background self-improvement

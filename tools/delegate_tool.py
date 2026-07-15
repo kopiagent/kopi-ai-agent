@@ -148,6 +148,128 @@ _active_subagents_lock = threading.Lock()
 # for the lifetime of the run; _run_single_child is the owner.
 _active_subagents: Dict[str, Dict[str, Any]] = {}
 
+# Live activity of ROOT/main sessions, keyed by agent identity. A process can
+# serve more than one conversation concurrently (gateway, cron, API), so one
+# module-level record would let unrelated turns overwrite or clear each other.
+_main_activities: Dict[int, Dict[str, Any]] = {}
+
+# Map a tool name to a pixel-office status (which drives the workstation the
+# NPC walks to on the /office page). Substring match, first hit wins.
+_TOOL_STATUS_RULES = (
+    (("read_file", "read", "cat", "view", "open"), "reading"),
+    (("grep", "glob", "search", "find", "web_search", "browse", "fetch"), "searching"),
+    (("write", "edit", "create", "apply_patch", "str_replace", "notebook"), "writing"),
+    (("bash", "shell", "run", "exec", "command", "terminal", "python", "test"), "running"),
+    (("think", "reason", "plan"), "thinking"),
+    (("delegate", "spawn", "task"), "thinking"),
+)
+
+
+def _status_for_tool(tool_name: str) -> str:
+    name = (tool_name or "").lower()
+    for needles, status in _TOOL_STATUS_RULES:
+        if any(n in name for n in needles):
+            return status
+    return "writing"  # generic active work → desk/computer
+
+
+def _agent_is_subagent(agent: Any) -> bool:
+    """True if ``agent`` is a live delegated subagent (tracked separately)."""
+    with _active_subagents_lock:
+        return any(r.get("agent") is agent for r in _active_subagents.values())
+
+
+def mark_main_turn_start(agent: Any, goal: str = "") -> None:
+    """Put the ROOT/main session on the pixel-office stage for this turn.
+
+    Called at run_conversation start. The NPC then stays for the whole turn
+    (through long thinking or slow tools) and is removed at turn end by
+    ``mark_main_turn_end`` — no reliance on a short idle timeout. Subagents are
+    tracked via register/unregister, so skip them here. Best-effort.
+    """
+    try:
+        if _agent_is_subagent(agent):
+            return
+        label = (goal or "").strip().replace("\n", " ")
+        if len(label) > 40:
+            label = label[:39] + "…"
+        with _active_subagents_lock:
+            key = id(agent)
+            _main_activities[key] = {
+                "subagent_id": f"main-{os.getpid()}-{key:x}",
+                "parent_id": None,
+                "depth": 0,
+                "kind": "main",
+                "goal": label or "main session",
+                "model": getattr(agent, "model", "") or getattr(agent, "model_name", "") or "",
+                "started_at": time.time(),
+                "tool_count": 0,
+                "status": "thinking",
+                "ts": time.time(),
+            }
+        _write_office_snapshot()
+    except Exception:
+        pass
+
+
+def mark_main_turn_end(agent: Any) -> None:
+    """Remove the main session from the office stage when its turn ends."""
+    try:
+        if _agent_is_subagent(agent):
+            return
+        with _active_subagents_lock:
+            _main_activities.pop(id(agent), None)
+        _write_office_snapshot()
+    except Exception:
+        pass
+
+
+def note_tool_activity(agent: Any, tool_name: str) -> None:
+    """Record that ``agent`` just started running ``tool_name``, for /office.
+
+    Single choke point (called from agent_runtime_helpers.invoke_tool), so it
+    covers the main session and every subagent on both execution paths. If the
+    agent matches a live subagent record we update that record's status;
+    otherwise it is the root/main session and we update ``_main_activity``.
+    Best-effort: never raises, never blocks tool execution.
+    """
+    try:
+        status = _status_for_tool(tool_name)
+        with _active_subagents_lock:
+            matched = None
+            for record in _active_subagents.values():
+                if record.get("agent") is agent:
+                    matched = record
+                    break
+            if matched is not None:
+                matched["status"] = status
+                matched["tool"] = tool_name
+                matched["tool_count"] = matched.get("tool_count", 0) + 1
+                matched["ts"] = time.time()
+            else:
+                key = id(agent)
+                activity = _main_activities.get(key)
+                if activity is None:
+                    activity = {
+                        "subagent_id": f"main-{os.getpid()}-{key:x}",
+                        "parent_id": None,
+                        "depth": 0,
+                        "kind": "main",
+                        "goal": "main session",
+                        "model": getattr(agent, "model", "") or getattr(agent, "model_name", "") or "",
+                        "started_at": time.time(),
+                        "tool_count": 0,
+                        "status": status,
+                    }
+                    _main_activities[key] = activity
+                activity["status"] = status
+                activity["tool"] = tool_name
+                activity["tool_count"] = activity.get("tool_count", 0) + 1
+                activity["ts"] = time.time()
+        _write_office_snapshot()
+    except Exception:
+        pass
+
 
 def set_spawn_paused(paused: bool) -> bool:
     """Globally block/unblock new delegate_task spawns.
@@ -166,17 +288,50 @@ def is_spawn_paused() -> bool:
         return _spawn_paused
 
 
+def _write_office_snapshot() -> None:
+    """Mirror this process's live subagents to a shared file so cross-process
+    readers can see them.
+
+    ``_active_subagents`` is a per-process in-memory global. Agents run in a
+    different process (a dashboard PTY child, the gateway, a cron run) than the
+    dashboard's web server, so that server can't read this global directly. We
+    write a snapshot to ``<KOPI_HOME>/office/subagents-<pid>.json`` on every
+    register/unregister; ``/api/office/state`` globs + merges these files.
+    Best-effort — never raises, never blocks delegation.
+    """
+    try:
+        from kopi_constants import get_kopi_home
+        d = get_kopi_home() / "office"
+        d.mkdir(parents=True, exist_ok=True)
+        with _active_subagents_lock:
+            agents = [
+                {k: v for k, v in r.items() if k != "agent"}
+                for r in _active_subagents.values()
+            ]
+            agents.extend(dict(activity) for activity in _main_activities.values())
+        path = d / f"subagents-{os.getpid()}.json"
+        tmp = f"{path}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"pid": os.getpid(), "ts": time.time(), "agents": agents},
+                      f, ensure_ascii=False)
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
 def _register_subagent(record: Dict[str, Any]) -> None:
     sid = record.get("subagent_id")
     if not sid:
         return
     with _active_subagents_lock:
         _active_subagents[sid] = record
+    _write_office_snapshot()
 
 
 def _unregister_subagent(subagent_id: str) -> None:
     with _active_subagents_lock:
         _active_subagents.pop(subagent_id, None)
+    _write_office_snapshot()
 
 
 def interrupt_subagent(subagent_id: str) -> bool:
@@ -1877,6 +2032,7 @@ def _run_single_child(
                 "subagent_id": _subagent_id,
                 "parent_id": _parent_sid if isinstance(_parent_sid, str) else None,
                 "depth": _tui_depth,
+                "kind": "subagent",
                 "goal": goal,
                 "model": (
                     getattr(child, "model", None)
@@ -1886,6 +2042,7 @@ def _run_single_child(
                 "started_at": time.time(),
                 "status": "running",
                 "tool_count": 0,
+                "ts": time.time(),
                 "agent": child,
             }
         )

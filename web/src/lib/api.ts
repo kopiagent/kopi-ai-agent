@@ -196,6 +196,16 @@ function pluginPath(name: string): string {
   return name.split("/").map(encodeURIComponent).join("/");
 }
 
+async function getSessionToken(): Promise<string> {
+  if (_sessionToken) return _sessionToken;
+  const injected = window.__KOPI_SESSION_TOKEN__;
+  if (injected) {
+    _sessionToken = injected;
+    return _sessionToken;
+  }
+  throw new Error("Session token not available — page must be served by the KOPI dashboard server");
+}
+
 /**
  * Fetch a single-use ticket for a WebSocket upgrade in gated mode.
  *
@@ -304,9 +314,29 @@ function appendProfileParam(url: string, profile?: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}profile=${encodeURIComponent(profile)}`;
 }
 
+export interface OfficeAgent {
+  subagent_id: string;
+  parent_id: string | null;
+  depth: number;
+  kind?: "main" | "subagent";
+  goal: string;
+  model: string;
+  started_at: number;
+  tool_count: number;
+  status: string;
+  tool?: string;
+}
+export interface OfficeStateResponse {
+  agents: OfficeAgent[];
+  count: number;
+  ts: number;
+}
+
 export const api = {
   buildWsUrl,
   getStatus: () => fetchJSON<StatusResponse>("/api/status"),
+  /** Live multi-agent activity for the pixel-office page (P1). */
+  getOfficeState: () => fetchJSON<OfficeStateResponse>("/api/office/state"),
   /**
    * Identity probe for the dashboard auth gate (Phase 7).
    *
