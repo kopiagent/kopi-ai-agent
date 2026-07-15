@@ -147,3 +147,5 @@ apps/desktop/demo/
 # PR body is the archive. See the kopi-agent-dev skill's
 # pr-infographic-workflow reference (storage rule + lapse #8 / #COMMIT-1).
 infographic/
+kopi-ai-agent.egg-info/
+kopi_ai_agent.egg-info/
