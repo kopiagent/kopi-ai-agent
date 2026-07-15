@@ -6,12 +6,29 @@
 # Usage:
 #   curl -fsSL https://kopiaiagent.com/install.sh | bash
 #   curl -fsSL https://kopiaiagent.com/install.sh | TG_TOKEN=xxx:yyy bash
-#   curl -fsSL https://kopiaiagent.com/install.sh | KOPI_API_KEY=kopi_xxx TG_TOKEN=xxx:yyy bash
+#   curl -fsSL https://kopiaiagent.com/install.sh | KOPI_API_KEY=kopi_xxx bash
+#
+# 多实例隔离安装:
+#   curl -fsSL https://kopiaiagent.com/install.sh | \
+#     KOPI_HOME=/root/tw1/.kopi \
+#     KOPI_INSTANCE_NAME=tw1 \
+#     KOPI_INSTALL_DIR=/root/tw1/kopi-ai-agent \
+#     bash
 #
 # Environment variables:
-#   TG_TOKEN       - Telegram Bot Token (from @BotFather)
-#   KOPI_API_KEY   - Existing API key (skip auto-provision if set)
-#   KOPI_MODEL     - Default model (default: kopi-o)
+#   TG_TOKEN          - Telegram Bot Token (from @BotFather)
+#   KOPI_API_KEY      - Existing API key (skip auto-provision if set)
+#   KOPI_MODEL        - Default model (default: kopi-o)
+#   KOPI_HOME         - Config/data directory (default: ~/.kopi)
+#   KOPI_INSTANCE_NAME- Instance name for multi-instance (default: "")
+#                       Empty = main instance (kopi / kopi-gateway)
+#                       Non-empty = isolated (kopi-tw1 / kopi-gateway-tw1)
+#   KOPI_INSTALL_DIR  - Engine installation directory
+#                       (default: /opt/kopi-ai-agent[-NAME] Linux,
+#                        ~/.kopi[-NAME]/kopi-ai-agent macOS)
+#   KOPI_SKIP_ENGINE  - Skip engine uv sync if "true" (default: false)
+#   KOPI_SKIP_SERVICE - Skip systemd/launchd service install (default: false)
+#   KOPI_SKIP_SKILLS  - Skip skill sync (default: false)
 #
 # Supported platforms:
 #   - Linux (Ubuntu/Debian/CentOS/RHEL) — requires root
@@ -33,12 +50,16 @@ NC='\033[0m'
 
 # ── Config ─────────────────────────────────────────────────────────────
 KOPI_HOME="${KOPI_HOME:-$HOME/.kopi}"
+KOPI_INSTANCE_NAME="${KOPI_INSTANCE_NAME:-}"
 KOPI_PROXY_BASE="https://kopiaiagent.com/v1"
 KOPI_PROXY_FALLBACK="https://kopi.readinghero.xyz/v1"
 AUTO_PROVISION_URL="${KOPI_PROXY_BASE}/auto-provision/ready"
 PROVISION_URL="${KOPI_PROXY_BASE}/provision"
 KOPI_MODEL="${KOPI_MODEL:-kopi-o}"
-KOPI_INSTALL_URL="https://raw.githubusercontent.com/kopiagent/kopi-ai-agent/main/scripts/install.sh"
+KOPI_SKIP_ENGINE="${KOPI_SKIP_ENGINE:-false}"
+KOPI_SKIP_SERVICE="${KOPI_SKIP_SERVICE:-false}"
+KOPI_SKIP_SKILLS="${KOPI_SKIP_SKILLS:-false}"
+REPO_URL="https://github.com/kopiagent/kopi-ai-agent.git"
 
 # ── Platform detection ─────────────────────────────────────────────────
 OS="$(uname -s)"
@@ -51,6 +72,30 @@ elif [[ "$OS" == "Linux" ]]; then
     IS_LINUX=true
 fi
 
+# ── Instance-aware naming ──────────────────────────────────────────────
+SUFFIX=""
+INSTANCE_DISPLAY=""
+if [[ -n "$KOPI_INSTANCE_NAME" ]]; then
+    SUFFIX="-$KOPI_INSTANCE_NAME"
+    INSTANCE_DISPLAY=" [$KOPI_INSTANCE_NAME]"
+fi
+
+# Service and binary names
+SERVICE_NAME="kopi-gateway${SUFFIX}"
+CLI_NAME="kopi${SUFFIX}"
+
+# Install directory
+if [[ -z "${KOPI_INSTALL_DIR:-}" ]]; then
+    if [[ "$IS_MACOS" == true ]]; then
+        KOPI_INSTALL_DIR="${KOPI_HOME}/kopi-ai-agent"
+    else
+        KOPI_INSTALL_DIR="/opt/kopi-ai-agent${SUFFIX}"
+    fi
+fi
+
+# Credential file (instance-aware)
+CRED_FILE="${KOPI_HOME}/kopi-credentials"
+
 # ── Helpers ────────────────────────────────────────────────────────────
 info()  { echo -e "${BLUE}ℹ${NC}  $*"; }
 ok()    { echo -e "${GREEN}✓${NC}  $*"; }
@@ -58,7 +103,7 @@ warn()  { echo -e "${YELLOW}⚠${NC}  $*"; }
 fail()  { echo -e "${RED}✗${NC}  $*"; exit 1; }
 step()  { echo -e "\n${BOLD}${CYAN}═══ $* ═══${NC}"; }
 
-# Cross-platform sed -i (macOS requires backup extension with BSD sed)
+# Cross-platform sed -i
 sedi() {
     if [[ "$IS_MACOS" == true ]]; then
         sed -i '' "$@"
@@ -85,7 +130,7 @@ banner() {
     ╚═══════════════════════════════════════════════╝
 EOF
     echo -e "${NC}"
-    echo -e "${DIM}  一键安装，一步到位${NC}"
+    echo -e "${DIM}  一键安装，一步到位${INSTANCE_DISPLAY}${NC}"
     if [[ "$IS_MACOS" == true ]]; then
         echo -e "${DIM}  检测到 macOS ($(uname -m))${NC}"
     else
@@ -96,22 +141,14 @@ EOF
 
 # ── Pre-flight checks ─────────────────────────────────────────────────
 preflight() {
-    # Platform check
     if [[ "$IS_MACOS" == false && "$IS_LINUX" == false ]]; then
         fail "不支持的系统: $OS。仅支持 Linux 和 macOS。"
     fi
 
-    # Linux requires root
     if [[ "$IS_LINUX" == true ]] && [[ $EUID -ne 0 ]]; then
         fail "Linux 上请使用 root 运行: sudo bash 或 curl ... | sudo bash"
     fi
 
-    # macOS: no root needed
-    if [[ "$IS_MACOS" == true ]]; then
-        info "macOS 模式 — 无需 root 权限"
-    fi
-
-    # Need curl
     if ! command -v curl &>/dev/null; then
         info "安装 curl..."
         if [[ "$IS_MACOS" == true ]]; then
@@ -127,28 +164,16 @@ preflight() {
         fi
     fi
 
-    # macOS needs Homebrew (for python3 at minimum)
+    # macOS needs Homebrew (for python3)
     if [[ "$IS_MACOS" == true ]]; then
         if ! command -v brew &>/dev/null; then
-            warn "未检测到 Homebrew"
-            echo "  Homebrew 安装 Python3 等依赖。是否安装？[Y/n]"
-            echo -n "  > "
-            local answer
-            read -r answer
-            if [[ "${answer,,}" == "n" ]]; then
-                # Check if python3 exists without brew
-                if ! command -v python3 &>/dev/null; then
-                    fail "需要 Python3，请先安装 Homebrew 或 Python3"
-                fi
-            else
-                info "安装 Homebrew（可能需要输入密码）..."
-                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-                # Add brew to PATH for this session
-                if [[ -f /opt/homebrew/bin/brew ]]; then
-                    eval "$(/opt/homebrew/bin/brew shellenv)"
-                elif [[ -f /usr/local/bin/brew ]]; then
-                    eval "$(/usr/local/bin/brew shellenv)"
-                fi
+            warn "macOS 需要 Homebrew 来安装 Python3 等依赖"
+            info "安装 Homebrew（可能需要输入密码）..."
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            if [[ -f /opt/homebrew/bin/brew ]]; then
+                eval "$(/opt/homebrew/bin/brew shellenv)"
+            elif [[ -f /usr/local/bin/brew ]]; then
+                eval "$(/usr/local/bin/brew shellenv)"
             fi
         fi
     fi
@@ -165,69 +190,155 @@ preflight() {
         fi
     fi
 
+    # git is required for cloning
+    if ! command -v git &>/dev/null; then
+        info "安装 git..."
+        if [[ "$IS_MACOS" == true ]]; then
+            brew install git
+        else
+            apt-get update -qq && apt-get install -y -qq git 2>/dev/null || \
+            yum install -y -q git 2>/dev/null || \
+            fail "无法安装 git，请手动安装后重试"
+        fi
+    fi
+
     ok "系统检查通过 ($OS)"
 }
 
-# ── Step 1: Install Kopi Ai Agent ──────────────────────────────────────
-install_kopi() {
-    step "安装 Kopi Ai Agent 引擎"
+# ── Step 1: Clone or Update Repo ───────────────────────────────────────
+clone_or_update_repo() {
+    step "下载 Kopi Ai Agent 引擎${INSTANCE_DISPLAY}"
 
-    # Download and run official installer with --skip-setup (non-interactive)
-    info "从 GitHub 下载 Kopi Ai Agent 安装程序..."
+    mkdir -p "$(dirname "$KOPI_INSTALL_DIR")"
 
-    local install_args="--skip-setup --skip-browser"
-
-    # If already installed, still run to update
-    if command -v kopi &>/dev/null; then
-        info "检测到已有 Kopi Ai Agent 安装，更新中..."
-    fi
-
-    curl -fsSL "$KOPI_INSTALL_URL" | bash -s -- $install_args
-
-    # Verify installation — binary is `kopi`, not `hermes`
-    local kopi_cmd=""
-    if command -v kopi &>/dev/null; then
-        kopi_cmd="kopi"
-    elif [[ -x /usr/local/bin/kopi ]]; then
-        kopi_cmd="/usr/local/bin/kopi"
-    elif [[ -x "$HOME/.local/bin/kopi" ]]; then
-        kopi_cmd="$HOME/.local/bin/kopi"
-    elif [[ -x "$KOPI_HOME/kopi-ai-agent/venv/bin/kopi" ]]; then
-        kopi_cmd="$KOPI_HOME/kopi-ai-agent/venv/bin/kopi"
+    if [[ -d "$KOPI_INSTALL_DIR/.git" ]]; then
+        info "检测到已有代码目录，更新中..."
+        cd "$KOPI_INSTALL_DIR"
+        git fetch --depth=1 origin main 2>/dev/null || \
+            git fetch --depth=1 origin master 2>/dev/null || true
+        git reset --hard origin/main 2>/dev/null || \
+            git reset --hard origin/master 2>/dev/null || true
+        cd /tmp
     else
-        fail "Kopi Ai Agent 安装失败 — 命令未找到"
+        info "克隆代码到 $KOPI_INSTALL_DIR ..."
+        git clone --depth=1 "$REPO_URL" "$KOPI_INSTALL_DIR"
     fi
 
-    local raw_version=$($kopi_cmd --version 2>/dev/null || echo "unknown")
-    local version=$(echo "$raw_version" | sed 's/[Hh]ermes[[:space:]]*[Aa]gent[[:space:]]*//g; s/[Kk]opi[[:space:]]*[Aa][Ii][[:space:]]*[Aa]gent[[:space:]]*//g; s/[Hh]ermes//g' | xargs)
-    [[ -z "$version" ]] && version="installed"
-    ok "Kopi Ai Agent 已安装: v$version"
-    KOPI_CMD="$kopi_cmd"
+    ok "代码已就绪: $KOPI_INSTALL_DIR"
 }
 
-# ── Step 2: Auto-Provision API Key ────────────────────────────────────
-provision_api_key() {
-    step "开通 KOPI Proxy API 账号"
+# ── Step 2: Install Engine (uv sync) ──────────────────────────────────
+install_engine() {
+    if [[ "$KOPI_SKIP_ENGINE" == "true" ]]; then
+        info "KOPI_SKIP_ENGINE=true，跳过引擎安装"
+        return
+    fi
 
-    # Use existing key if provided
+    step "安装依赖${INSTANCE_DISPLAY}"
+
+    cd "$KOPI_INSTALL_DIR"
+
+    # Install / locate uv
+    local UV_CMD=""
+    if command -v uv &>/dev/null; then
+        UV_CMD="uv"
+    elif [[ -x "$HOME/.local/bin/uv" ]]; then
+        UV_CMD="$HOME/.local/bin/uv"
+    elif [[ -x "$HOME/.cargo/bin/uv" ]]; then
+        UV_CMD="$HOME/.cargo/bin/uv"
+    fi
+
+    if [[ -z "$UV_CMD" ]]; then
+        info "安装 uv (Python 包管理器)..."
+        local uv_installer
+        uv_installer="$(mktemp)"
+        curl -LsSf https://astral.sh/uv/install.sh -o "$uv_installer"
+        sh "$uv_installer"
+        rm -f "$uv_installer"
+        if [[ -x "$HOME/.local/bin/uv" ]]; then
+            UV_CMD="$HOME/.local/bin/uv"
+        elif [[ -x "$HOME/.cargo/bin/uv" ]]; then
+            UV_CMD="$HOME/.cargo/bin/uv"
+        else
+            # Fallback: try pip install uv
+            pip3 install uv 2>/dev/null && UV_CMD="uv" || \
+            fail "无法安装 uv。请手动安装: curl -LsSf https://astral.sh/uv/install.sh | sh"
+        fi
+    fi
+
+    # Create venv and install
+    info "创建虚拟环境并安装依赖 (uv sync)..."
+    info "这可能需要 1-5 分钟，取决于网络速度"
+    export UV_NO_CONFIG=1
+
+    # Try hash-verified install first, fall back to pip
+    if [[ -f "uv.lock" ]]; then
+        if $UV_CMD venv venv --python 3.11 2>/dev/null || $UV_CMD venv venv 2>/dev/null; then
+            ok "虚拟环境已创建"
+        else
+            # uv venv failed, try python directly
+            python3 -m venv venv
+            ok "虚拟环境已创建 (stdlib venv)"
+        fi
+
+        if UV_PROJECT_ENVIRONMENT="$KOPI_INSTALL_DIR/venv" $UV_CMD sync --extra all --locked 2>/dev/null; then
+            ok "依赖已安装 (hash-verified via uv.lock)"
+        elif UV_PROJECT_ENVIRONMENT="$KOPI_INSTALL_DIR/venv" $UV_CMD sync 2>/dev/null; then
+            ok "依赖已安装 (re-resolved)"
+        else
+            warn "uv sync 失败，尝试 pip install 降级..."
+            cd "$KOPI_INSTALL_DIR"
+            ./venv/bin/pip install -e ".[all]" 2>/dev/null || \
+            ./venv/bin/pip install -e "." 2>/dev/null || \
+            fail "pip install 也失败。请检查网络和 Python 环境后重试"
+        fi
+    else
+        python3 -m venv venv
+        info "未找到 uv.lock，使用 pip 安装..."
+        ./venv/bin/pip install --upgrade pip setuptools wheel
+        ./venv/bin/pip install -e ".[all]" 2>/dev/null || \
+        ./venv/bin/pip install -e "." 2>/dev/null || \
+        fail "pip install 失败。请检查网络后重试"
+    fi
+
+    # Create symlink for CLI
+    local bin_dir
+    if [[ "$IS_MACOS" == true ]]; then
+        bin_dir="$HOME/.local/bin"
+    else
+        bin_dir="/usr/local/bin"
+    fi
+    mkdir -p "$bin_dir"
+
+    if [[ -x "$KOPI_INSTALL_DIR/venv/bin/kopi" ]]; then
+        # Instance-aware CLI symlink
+        ln -sf "$KOPI_INSTALL_DIR/venv/bin/kopi" "$bin_dir/$CLI_NAME"
+        ok "CLI 命令: $bin_dir/$CLI_NAME"
+    else
+        fail "安装后未找到 kopi 可执行文件"
+    fi
+
+    local raw_version
+    raw_version=$("$bin_dir/$CLI_NAME" --version 2>/dev/null || echo "installed")
+    local version
+    version=$(echo "$raw_version" | sed 's/[Hh]ermes[[:space:]]*[Aa]gent[[:space:]]*//g; s/[Kk]opi[[:space:]]*[Aa][Ii][[:space:]]*[Aa]gent[[:space:]]*//g; s/[Hh]ermes//g' | xargs)
+    [[ -z "$version" ]] && version="installed"
+    ok "Kopi Ai Agent 已安装: v$version"
+}
+
+# ── Step 3: Auto-Provision API Key ────────────────────────────────────
+provision_api_key() {
+    step "开通 KOPI Proxy API 账号${INSTANCE_DISPLAY}"
+
     if [[ -n "${KOPI_API_KEY:-}" ]]; then
         ok "使用提供的 API Key"
         return
     fi
 
-    # Check if key already exists
-    # Linux: /etc/kopi-agent/credentials, macOS: ~/.kopi/kopi-credentials
-    local cred_file
-    if [[ "$IS_MACOS" == true ]]; then
-        cred_file="$KOPI_HOME/kopi-credentials"
-    else
-        cred_file="/etc/kopi-agent/credentials"
-    fi
-
-    if [[ -f "$cred_file" ]]; then
+    # Check existing credential file (instance-aware: $KOPI_HOME)
+    if [[ -f "$CRED_FILE" ]]; then
         local existing_key
-        existing_key=$(cat "$cred_file" 2>/dev/null | tr -d '[:space:]')
-        # Accept both old kp-* and new kopi_ prefix
+        existing_key=$(cat "$CRED_FILE" 2>/dev/null | tr -d '[:space:]')
         if [[ -n "$existing_key" ]] && [[ "$existing_key" == kp-* || "$existing_key" == kopi-* ]]; then
             ok "已有 API Key，跳过开通"
             KOPI_API_KEY="$existing_key"
@@ -237,7 +348,6 @@ provision_api_key() {
 
     echo -n "  🔑 正在开通账号..."
 
-    # Auto-provision returns API key directly in one call
     local auto_resp
     auto_resp=$(curl -s -X POST "$AUTO_PROVISION_URL" \
         -H "Content-Type: application/json" \
@@ -262,32 +372,30 @@ except:
     fi
     echo -e "${GREEN}✓${NC}"
 
-    # Save credentials securely
-    mkdir -p "$(dirname "$cred_file")"
-    echo "$KOPI_API_KEY" > "$cred_file"
-    chmod 600 "$cred_file"
-    ok "API Key 已安全存储到 $cred_file"
+    mkdir -p "$(dirname "$CRED_FILE")"
+    echo "$KOPI_API_KEY" > "$CRED_FILE"
+    chmod 600 "$CRED_FILE"
+    ok "API Key 已安全存储到 $CRED_FILE"
 }
 
-# ── Step 3: Write KOPI Proxy Config ──────────────────────────────────
+# ── Step 4: Write Config ──────────────────────────────────────────────
 write_config() {
-    step "写入 KOPI Proxy 配置"
+    step "写入 KOPI Proxy 配置${INSTANCE_DISPLAY}"
 
     mkdir -p "$KOPI_HOME"
 
-    # Backup existing config if present
     if [[ -f "$KOPI_HOME/config.yaml" ]]; then
         local backup="$KOPI_HOME/config.yaml.backup.$(date +%Y%m%d_%H%M%S)"
         cp "$KOPI_HOME/config.yaml" "$backup"
         info "已备份旧配置到 $backup"
     fi
 
-    # Write config.yaml
     cat > "$KOPI_HOME/config.yaml" << CONFIG
 # ═══════════════════════════════════════════════════════════════════════
 # Kopi Ai Agent 配置文件
 # By Kopi Ai Agent Pte Ltd
 # Auto-generated at: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+# Instance: ${KOPI_INSTANCE_NAME:-main}
 # Platform: $OS
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -338,13 +446,12 @@ CONFIG
     if [[ ! -f "$env_file" ]]; then
         cat > "$env_file" << ENV
 # Kopi Ai Agent Environment Variables
+# Instance: ${KOPI_INSTANCE_NAME:-main}
 TZ=Asia/Singapore
 ENV
     fi
 
-    # Add Telegram token to .env if provided
     if [[ -n "${TG_TOKEN:-}" ]]; then
-        # Remove existing TELEGRAM_BOT_TOKEN if any
         if [[ -f "$env_file" ]]; then
             sedi '/^TELEGRAM_BOT_TOKEN=/d' "$env_file"
         fi
@@ -355,23 +462,20 @@ ENV
     ok "环境变量已写入: $env_file"
 }
 
-# ── Step 4: Configure Telegram Gateway ────────────────────────────────
+# ── Step 5: Configure Telegram Gateway ────────────────────────────────
 configure_telegram() {
-    # Skip if no token
     if [[ -z "${TG_TOKEN:-}" ]]; then
         info "未提供 Telegram Bot Token，跳过 Gateway 配置"
-        info "稍后配置: kopi config set telegram_bot_token 'YOUR_TOKEN'"
+        info "稍后配置: KOPI_HOME=$KOPI_HOME $CLI_NAME config set telegram_bot_token 'YOUR_TOKEN'"
         return
     fi
 
-    step "配置 Telegram Gateway"
+    step "配置 Telegram Gateway${INSTANCE_DISPLAY}"
 
-    # Validate token format (basic check)
     if [[ ! "$TG_TOKEN" =~ ^[0-9]+:.+ ]]; then
         warn "Telegram Bot Token 格式可能不正确，继续配置..."
     fi
 
-    # Verify token with Telegram API
     echo -n "  🤖 验证 Bot Token..."
     local bot_info
     bot_info=$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMe" 2>/dev/null || echo "")
@@ -400,7 +504,6 @@ except:
         echo -e "${YELLOW}⚠${NC} (无法验证，继续配置)"
     fi
 
-    # Add telegram config to config.yaml (append safely)
     if ! grep -q "^telegram:" "$KOPI_HOME/config.yaml" 2>/dev/null; then
         cat >> "$KOPI_HOME/config.yaml" << TGCONF
 
@@ -413,55 +516,61 @@ TGCONF
     ok "Telegram 配置完成"
 }
 
-# ── Step 5: Install Gateway Service ───────────────────────────────────
+# ── Step 6: Install Gateway Service ───────────────────────────────────
 install_gateway() {
-    # Skip if no Telegram token
+    if [[ "$KOPI_SKIP_SERVICE" == "true" ]]; then
+        info "KOPI_SKIP_SERVICE=true，跳过服务安装"
+        return
+    fi
+
     if [[ -z "${TG_TOKEN:-}" ]]; then
         return
     fi
 
-    step "安装 Gateway 服务"
+    step "安装 Gateway 服务${INSTANCE_DISPLAY}"
 
-    # Try built-in gateway install first
-    if [[ -n "${KOPI_CMD:-}" ]] && $KOPI_CMD gateway install 2>/dev/null; then
-        ok "Gateway 服务已安装"
+    # Try built-in gateway install (instance-aware with KOPI_HOME)
+    local kopi_bin="$KOPI_INSTALL_DIR/venv/bin/kopi"
+    if [[ -x "$kopi_bin" ]]; then
+        if KOPI_HOME="$KOPI_HOME" "$kopi_bin" gateway install 2>/dev/null; then
+            ok "Gateway 服务已安装"
 
-        # Start the gateway
-        if $KOPI_CMD gateway start 2>/dev/null; then
-            ok "Gateway 已启动"
-        else
-            warn "Gateway 启动失败，请手动运行: kopi gateway start"
+            if KOPI_HOME="$KOPI_HOME" "$kopi_bin" gateway start 2>/dev/null; then
+                ok "Gateway 已启动"
+            else
+                warn "Gateway 启动失败，请手动运行: KOPI_HOME=$KOPI_HOME $CLI_NAME gateway start"
+            fi
+            return
         fi
+    fi
+
+    # Fallback: manual service installation
+    if [[ "$IS_MACOS" == true ]]; then
+        install_gateway_launchd
     else
-        if [[ "$IS_MACOS" == true ]]; then
-            install_gateway_launchd
-        else
-            install_gateway_systemd
-        fi
+        install_gateway_systemd
     fi
 }
 
-# Linux: systemd service
+# Linux: systemd service (instance-aware)
 install_gateway_systemd() {
     info "使用 systemd 创建 Gateway 服务..."
 
-    local kopi_bin="${KOPI_CMD:-/usr/local/bin/kopi}"
-    local install_dir="$KOPI_HOME/kopi-ai-agent"
-    local venv_dir="$install_dir/venv"
-
-    # Find the correct python path
+    local venv_dir="$KOPI_INSTALL_DIR/venv"
     local python_path=""
     if [[ -x "$venv_dir/bin/python3" ]]; then
         python_path="$venv_dir/bin/python3"
-    elif [[ -x "$install_dir/.venv/bin/python3" ]]; then
-        python_path="$install_dir/.venv/bin/python3"
+    elif [[ -x "$KOPI_INSTALL_DIR/.venv/bin/python3" ]]; then
+        python_path="$KOPI_INSTALL_DIR/.venv/bin/python3"
     else
         python_path="$(which python3)"
     fi
 
-    cat > /etc/systemd/system/kopi-gateway.service << SERVICE
+    local service_file="/etc/systemd/system/${SERVICE_NAME}.service"
+
+    cat > "$service_file" << SERVICE
 [Unit]
-Description=Kopi Ai Agent Gateway
+Description=Kopi Ai Agent Gateway${INSTANCE_DISPLAY}
 After=network.target
 StartLimitIntervalSec=600
 StartLimitBurst=5
@@ -469,8 +578,9 @@ StartLimitBurst=5
 [Service]
 Type=simple
 User=root
-WorkingDirectory=${install_dir}
+WorkingDirectory=${KOPI_INSTALL_DIR}
 Environment=PATH=${venv_dir}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=KOPI_HOME=${KOPI_HOME}
 EnvironmentFile=${KOPI_HOME}/.env
 ExecStart=${python_path} -m kopi_cli.main gateway run --replace
 Restart=on-failure
@@ -481,38 +591,38 @@ WantedBy=multi-user.target
 SERVICE
 
     systemctl daemon-reload
-    systemctl enable kopi-gateway 2>/dev/null || true
-    systemctl start kopi-gateway 2>/dev/null || warn "Gateway 启动失败"
+    systemctl enable "$SERVICE_NAME" 2>/dev/null || true
+    systemctl start "$SERVICE_NAME" 2>/dev/null || warn "Gateway 启动失败"
 
-    ok "Gateway 服务已安装 (systemd)"
-    info "查看状态: systemctl status kopi-gateway"
-    info "查看日志: journalctl -u kopi-gateway -f"
+    ok "Gateway 服务已安装 (systemd): $SERVICE_NAME"
+    info "查看状态: systemctl status $SERVICE_NAME"
+    info "查看日志: journalctl -u $SERVICE_NAME -f"
 }
 
-# macOS: launchd service
+# macOS: launchd service (instance-aware)
 install_gateway_launchd() {
     info "使用 launchd 创建 Gateway 服务..."
 
     local plist_dir="$HOME/Library/LaunchAgents"
     mkdir -p "$plist_dir"
 
-    local plist_file="$plist_dir/com.kopi.agent.gateway.plist"
-    local install_dir="$KOPI_HOME/kopi-ai-agent"
-    local venv_dir="$install_dir/venv"
+    local plist_file="${plist_dir}/com.kopi.agent.gateway${SUFFIX}.plist"
+    local venv_dir="$KOPI_INSTALL_DIR/venv"
     local log_dir="$KOPI_HOME/logs"
     mkdir -p "$log_dir"
 
-    # Find the correct python path
     local python_path=""
     if [[ -x "$venv_dir/bin/python3" ]]; then
         python_path="$venv_dir/bin/python3"
-    elif [[ -x "$install_dir/.venv/bin/python3" ]]; then
-        python_path="$install_dir/.venv/bin/python3"
+    elif [[ -x "$KOPI_INSTALL_DIR/.venv/bin/python3" ]]; then
+        python_path="$KOPI_INSTALL_DIR/.venv/bin/python3"
     else
         python_path="$(which python3)"
     fi
 
-    # Unload if already exists
+    local label="com.kopi.agent.gateway${SUFFIX}"
+
+    # Unload if exists
     launchctl unload "$plist_file" 2>/dev/null || true
 
     cat > "$plist_file" << PLIST
@@ -521,7 +631,7 @@ install_gateway_launchd() {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.kopi.agent.gateway</string>
+    <string>${label}</string>
     <key>ProgramArguments</key>
     <array>
         <string>${python_path}</string>
@@ -532,9 +642,11 @@ install_gateway_launchd() {
         <string>--replace</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>${install_dir}</string>
+    <string>${KOPI_INSTALL_DIR}</string>
     <key>EnvironmentVariables</key>
     <dict>
+        <key>KOPI_HOME</key>
+        <string>${KOPI_HOME}</string>
         <key>PATH</key>
         <string>${venv_dir}/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     </dict>
@@ -555,28 +667,28 @@ install_gateway_launchd() {
 </plist>
 PLIST
 
-    # Load the service
     launchctl load "$plist_file" 2>/dev/null || warn "Gateway 启动失败"
 
-    ok "Gateway 服务已安装 (launchd)"
-    info "查看状态: launchctl list com.kopi.agent.gateway"
+    ok "Gateway 服务已安装 (launchd): ${label}"
+    info "查看状态: launchctl list ${label}"
     info "查看日志: tail -f $log_dir/gateway-stdout.log"
-    info "停止服务: launchctl unload $plist_file"
-    info "启动服务: launchctl load $plist_file"
 }
 
-# ── Step 6: Install Skills ────────────────────────���───────────────────
+# ── Step 7: Install Skills ────────────────────────────────────────────
 install_skills() {
-    step "安装预置技能"
+    if [[ "$KOPI_SKIP_SKILLS" == "true" ]]; then
+        info "KOPI_SKIP_SKILLS=true，跳过技能安装"
+        return
+    fi
+
+    step "安装预置技能${INSTANCE_DISPLAY}"
 
     local skills_dir="$KOPI_HOME/skills"
     mkdir -p "$skills_dir"
 
-    # Copy bundled skills from the Kopi install if they exist
-    local kopi_lib="$KOPI_HOME/kopi-ai-agent"
-    if [[ -d "$kopi_lib/skills" ]]; then
+    if [[ -d "$KOPI_INSTALL_DIR/skills" ]]; then
         local count=0
-        for skill_dir in "$kopi_lib/skills/"*/; do
+        for skill_dir in "$KOPI_INSTALL_DIR/skills/"*/; do
             local skill_name
             skill_name=$(basename "$skill_dir")
             if [[ ! -d "$skills_dir/$skill_name" ]]; then
@@ -589,9 +701,8 @@ install_skills() {
         fi
     fi
 
-    # Copy optional skills
-    if [[ -d "$kopi_lib/optional-skills" ]]; then
-        for skill_dir in "$kopi_lib/optional-skills/"*/; do
+    if [[ -d "$KOPI_INSTALL_DIR/optional-skills" ]]; then
+        for skill_dir in "$KOPI_INSTALL_DIR/optional-skills/"*/; do
             local skill_name
             skill_name=$(basename "$skill_dir")
             if [[ ! -d "$skills_dir/$skill_name" ]]; then
@@ -609,30 +720,43 @@ install_skills() {
 show_completion() {
     echo ""
     echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
-    echo -e "${BOLD}${GREEN}  ✓ Kopi Ai Agent 安装完成!${NC}"
+    echo -e "${BOLD}${GREEN}  ✓ Kopi Ai Agent 安装完成!${INSTANCE_DISPLAY}${NC}"
     echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
     echo ""
-    echo -e "  ${BOLD}快速开始:${NC}"
-    echo -e "    kopi                # 交互式聊天"
-    echo -e "    kopi gateway        # 启动消息网关"
-    echo -e "    kopi doctor         # 诊断问题"
+    echo -e "  ${BOLD}使用:${NC}"
+    echo -e "    KOPI_HOME=$KOPI_HOME $CLI_NAME        # 交互式聊天（多实例需设 KOPI_HOME）"
+    echo -e "    $CLI_NAME                     # 如果已设 KOPI_HOME 环境变量"
+    echo -e "    KOPI_HOME=$KOPI_HOME $CLI_NAME gateway  # 启动消息网关"
+    echo -e "    KOPI_HOME=$KOPI_HOME $CLI_NAME doctor   # 诊断问题"
     echo ""
+    echo -e "  ${BOLD}快速启动（不设 KOPI_HOME 的 alias）:${NC}"
+    echo -e "    alias $CLI_NAME='KOPI_HOME=$KOPI_HOME $KOPI_INSTALL_DIR/venv/bin/kopi'"
+    echo ""
+
+    if [[ -z "${TG_TOKEN:-}" ]]; then
+        echo -e "  ${BOLD}配置 API Key + Telegram:${NC}"
+        echo -e "    KOPI_HOME=$KOPI_HOME $CLI_NAME setup"
+        echo ""
+    fi
+
     echo -e "  ${BOLD}Gateway 管理:${NC}"
     if [[ "$IS_MACOS" == true ]]; then
-        echo -e "    launchctl load ~/Library/LaunchAgents/com.kopi.agent.gateway.plist    # 启动"
-        echo -e "    launchctl unload ~/Library/LaunchAgents/com.kopi.agent.gateway.plist  # 停止"
-        echo -e "    launchctl list com.kopi.agent.gateway                                 # 状态"
-        echo -e "    tail -f ~/.kopi/logs/gateway-stdout.log                          # 日志"
+        local label="com.kopi.agent.gateway${SUFFIX}"
+        local plist_file="$HOME/Library/LaunchAgents/${label}.plist"
+        echo -e "    launchctl load $plist_file      # 启动"
+        echo -e "    launchctl unload $plist_file    # 停止"
+        echo -e "    launchctl list ${label}                    # 状态"
+        echo -e "    tail -f $KOPI_HOME/logs/gateway-stdout.log  # 日志"
     else
-        echo -e "    systemctl start kopi-gateway    # 启动"
-        echo -e "    systemctl stop kopi-gateway     # 停止"
-        echo -e "    systemctl status kopi-gateway   # 状态"
-        echo -e "    journalctl -u kopi-gateway -f   # 日志"
+        echo -e "    systemctl start $SERVICE_NAME   # 启动"
+        echo -e "    systemctl stop $SERVICE_NAME    # 停止"
+        echo -e "    systemctl status $SERVICE_NAME  # 状态"
+        echo -e "    journalctl -u $SERVICE_NAME -f  # 日志"
     fi
     echo ""
     echo -e "  ${BOLD}配置文件:${NC}"
-    echo -e "    ~/.kopi/config.yaml"
-    echo -e "    ~/.kopi/.env"
+    echo -e "    $KOPI_HOME/config.yaml"
+    echo -e "    $KOPI_HOME/.env"
     echo ""
 
     if [[ -n "${TG_TOKEN:-}" ]]; then
@@ -642,6 +766,8 @@ show_completion() {
     fi
 
     echo -e "  ${DIM}API Key: ${KOPI_API_KEY:0:12}...${NC}"
+    echo -e "  ${DIM}安装目录: ${KOPI_INSTALL_DIR}${NC}"
+    echo -e "  ${DIM}配置目录: ${KOPI_HOME}${NC}"
     echo -e "  ${DIM}文档: https://kopiaiagent.com/docs${NC}"
     echo -e "  ${DIM}支持: support@kopiaiagent.com${NC}"
     echo ""
@@ -656,7 +782,8 @@ show_completion() {
 main() {
     banner
     preflight
-    install_kopi
+    clone_or_update_repo
+    install_engine
     provision_api_key
     write_config
     configure_telegram
