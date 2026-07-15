@@ -31,7 +31,7 @@ def test_logs_gateways_seeded_and_kopi_owned(
         f"logs/ or logs/gateways/ not seeded: {r.stdout}"
     )
 
-    # Both must be owned by hermes
+    # Both must be owned by kopi
     r = docker_exec_sh(
         container_name,
         'logs_owner=$(stat -c "%U" /opt/data/logs); '
@@ -39,9 +39,9 @@ def test_logs_gateways_seeded_and_kopi_owned(
         'echo "logs=$logs_owner gateways=$gateways_owner"',
         timeout=10,
     )
-    assert "logs=hermes" in r.stdout, (
-        f"logs/ not owned by hermes: {r.stdout}"
+    assert "logs=kopi" in r.stdout, (
+        f"logs/ not owned by kopi: {r.stdout}"
     )
-    assert "gateways=hermes" in r.stdout, (
-        f"logs/gateways/ not owned by hermes: {r.stdout}"
+    assert "gateways=kopi" in r.stdout, (
+        f"logs/gateways/ not owned by kopi: {r.stdout}"
     )

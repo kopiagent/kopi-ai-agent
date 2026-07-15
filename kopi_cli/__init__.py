@@ -1,5 +1,5 @@
 """
-Hermes CLI - Unified command-line interface for KOPI AI AGENT.
+Kopi CLI - Unified command-line interface for Kopi Agent.
 
 Provides subcommands for:
 - kopi chat          - Interactive chat (same as ./kopi)

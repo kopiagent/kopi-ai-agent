@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
 
-import type { HermesGateway } from '@/kopi'
+import type { KopiGateway } from '@/kopi'
 import type { IconComponent } from '@/lib/icons'
 import type { EnvVarInfo } from '@/types/kopi'
 
@@ -15,7 +15,7 @@ export type SettingsView =
 export type EnvPatch = Partial<Pick<EnvVarInfo, 'is_set' | 'redacted_value'>>
 
 export interface SettingsPageProps {
-  gateway?: HermesGateway | null
+  gateway?: KopiGateway | null
   onClose: () => void
   onConfigSaved?: () => void
   onMainModelChanged?: (provider: string, model: string) => void

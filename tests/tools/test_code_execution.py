@@ -80,7 +80,7 @@ class TestSandboxRequirements(unittest.TestCase):
         self.assertIn("code", EXECUTE_CODE_SCHEMA["parameters"]["required"])
 
 
-class TestHermesToolsGeneration(unittest.TestCase):
+class TestKopiToolsGeneration(unittest.TestCase):
     def test_generates_all_allowed_tools(self):
         src = generate_kopi_tools_module(list(SANDBOX_ALLOWED_TOOLS))
         for tool in SANDBOX_ALLOWED_TOOLS:

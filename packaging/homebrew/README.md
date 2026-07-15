@@ -1,6 +1,6 @@
-Homebrew packaging notes for KOPI AI AGENT.
+Homebrew packaging notes for Kopi Agent.
 
-Use `packaging/homebrew/kopi-ai-agent.rb` as a tap or `homebrew-core` starting point.
+Use `packaging/homebrew/kopi-agent.rb` as a tap or `homebrew-core` starting point.
 
 Key choices:
 - Stable builds should target the semver-named sdist asset attached to each GitHub release, not the CalVer tag tarball.
@@ -9,6 +9,6 @@ Key choices:
 
 Typical update flow:
 1. Bump the formula `url`, `version`, and `sha256`.
-2. Refresh Python resources with `brew update-python-resources --print-only kopi-ai-agent`.
+2. Refresh Python resources with `brew update-python-resources --print-only kopi-agent`.
 3. Keep `ignore_packages: %w[certifi cryptography pydantic]`.
-4. Verify `brew audit --new --strict kopi-ai-agent` and `brew test kopi-ai-agent`.
+4. Verify `brew audit --new --strict kopi-agent` and `brew test kopi-agent`.

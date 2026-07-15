@@ -1,7 +1,7 @@
 """
-Lazy dependency installer for opt-in KOPI AI AGENT backends.
+Lazy dependency installer for opt-in Kopi Agent backends.
 
-Many Hermes features (Mistral TTS, ElevenLabs TTS, Honcho memory, Bedrock,
+Many Kopi features (Mistral TTS, ElevenLabs TTS, Honcho memory, Bedrock,
 Slack, Matrix, etc.) require Python packages that not every user needs. The
 historical approach was to bundle them all under ``pyproject.toml`` extras
 (``kopi-ai-agent[all]``) and install them eagerly at setup time. That has
@@ -38,7 +38,7 @@ Security model:
   a module the core already ships. The worst a bad/incompatible backend
   package can do is fail to import and report itself unavailable — the agent
   core stays healthy. This is the structural guarantee that a lazily
-  installed package cannot brick Hermes, which is what made it safe to seal
+  installed package cannot brick Kopi, which is what made it safe to seal
   the venv in the first place. Compiled-wheel safety across image rebuilds
   is handled by an ABI/Python-version stamp on the target subdir (see
   :func:`_ensure_target_ready`).
@@ -168,8 +168,8 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
         "aiohttp==3.14.1",  # CVE-2026-34513/34518/34519/34520/34525 + 34993(RCE)/47265
     ),
     "platform.slack": (
-        "slack-bolt==1.27.0",
-        "slack-sdk==3.40.1",
+        "slack-bolt==1.29.0",
+        "slack-sdk==3.43.0",
         "aiohttp==3.14.1",  # CVE-2026-34513/34518/34519/34520/34525 + 34993(RCE)/47265
     ),
     "platform.matrix": (
@@ -188,7 +188,7 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
         "qrcode==7.4.2",
     ),
     "platform.feishu": (
-        "lark-oapi==1.5.3",
+        "lark-oapi==1.6.8",
         "qrcode==7.4.2",
     ),
     # WeCom callback-mode adapter — parses untrusted XML POST bodies. Pulls
@@ -466,7 +466,7 @@ def _unsupported_feature_reason(feature: str) -> Optional[str]:
         return (
             "unsupported on Windows: Matrix E2EE depends on python-olm, "
             "which has no Windows wheel and requires make + libolm to build "
-            "from sdist. Run Hermes under WSL to use Matrix on Windows."
+            "from sdist. Run Kopi under WSL to use Matrix on Windows."
         )
     return None
 

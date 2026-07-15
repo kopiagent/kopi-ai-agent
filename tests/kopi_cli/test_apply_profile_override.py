@@ -50,7 +50,7 @@ def _run_apply_profile_override(
     return os.environ.get("KOPI_HOME")
 
 
-class TestApplyProfileOverrideHermesHomeGuard:
+class TestApplyProfileOverrideKopiHomeGuard:
     """Regression guard for issue #22502.
 
     Verifies that KOPI_HOME pointing to the kopi root does NOT suppress
@@ -169,7 +169,7 @@ class TestApplyProfileOverrideHermesHomeGuard:
 
         Docker Desktop's MCP Toolkit uses `docker mcp gateway run --profile ...`.
         When that argv is passed through `kopi mcp add --args`, the early
-        profile pre-parser must not interpret the Docker profile as a Hermes
+        profile pre-parser must not interpret the Docker profile as a Kopi
         profile.
         """
         kopi_root = tmp_path / ".kopi"
@@ -200,7 +200,7 @@ class TestApplyProfileOverrideHermesHomeGuard:
         assert sys.argv == argv
 
     def test_profile_after_chat_subcommand_is_still_consumed(self, tmp_path, monkeypatch):
-        """Profile flags historically work after normal Hermes subcommands."""
+        """Profile flags historically work after normal Kopi subcommands."""
         result = _run_apply_profile_override(
             tmp_path,
             monkeypatch,

@@ -25,7 +25,7 @@ description: "将静态站点发布到 {slug}"
 ## 参考：完整 SKILL.md
 
 :::info
-以下是 Hermes 在触发此 skill 时加载的完整 skill 定义。这是 skill 激活时 agent 所看到的指令内容。
+以下是 Kopi 在触发此 skill 时加载的完整 skill 定义。这是 skill 激活时 agent 所看到的指令内容。
 :::
 
 # here.now
@@ -81,7 +81,7 @@ here.now 适用于两类任务：
 
 ```bash
 PUBLISH="${KOPI_SKILL_DIR}/scripts/publish.sh"
-bash "$PUBLISH" {file-or-dir} --client hermes
+bash "$PUBLISH" {file-or-dir} --client kopi
 ```
 
 输出实时 URL（例如 `https://bright-canvas-a7k2.here.now/`）。
@@ -99,7 +99,7 @@ bash "$PUBLISH" {file-or-dir} --client hermes
 
 ```bash
 PUBLISH="${KOPI_SKILL_DIR}/scripts/publish.sh"
-bash "$PUBLISH" {file-or-dir} --slug {slug} --client hermes
+bash "$PUBLISH" {file-or-dir} --slug {slug} --client kopi
 ```
 
 更新匿名站点时，脚本会自动从 `.herenow/state.json` 加载 `claimToken`。传入 `--claim-token {token}` 可覆盖此值。

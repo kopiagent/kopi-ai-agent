@@ -834,7 +834,7 @@ def test_group_topic_chat_id_int_string_coercion():
         {
             "chat_id": "-1001234567890",  # string, not int
             "topics": [
-                {"name": "Dev", "thread_id": "7", "skill": "kopi-ai-agent-dev"},
+                {"name": "Dev", "thread_id": "7", "skill": "kopi-agent-dev"},
             ],
         }
     ])
@@ -849,7 +849,7 @@ def test_group_topic_chat_id_int_string_coercion():
     )
     event = adapter._build_message_event(msg, MessageType.TEXT)
 
-    assert event.auto_skill == "kopi-ai-agent-dev"
+    assert event.auto_skill == "kopi-agent-dev"
     assert event.source.chat_topic == "Dev"
 
 

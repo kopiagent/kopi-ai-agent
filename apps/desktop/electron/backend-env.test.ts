@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict'
 import path from 'node:path'
-import test from 'node:test'
+
+import { test } from 'vitest'
 
 import {
   appendUniquePathEntries,
   buildDesktopBackendEnv,
   buildDesktopBackendPath,
-  normalizeHermesHomeRoot,
+  normalizeKopiHomeRoot,
   pathEnvKey,
   POSIX_SANE_PATH_ENTRIES
 } from './backend-env'
 
-test('desktop backend PATH adds Hermes-managed bins and missing POSIX sane entries', () => {
+test('desktop backend PATH adds Kopi-managed bins and missing POSIX sane entries', () => {
   const result = buildDesktopBackendPath({
-    hermesHome: '/Users/test/.kopi',
+    kopiHome: '/Users/test/.kopi',
     venvRoot: '/Users/test/.kopi/kopi-ai-agent/venv',
     currentPath: '/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin',
     platform: 'darwin',
@@ -34,7 +35,7 @@ test('desktop backend PATH adds Hermes-managed bins and missing POSIX sane entri
 
 test('desktop backend PATH preserves first occurrence and avoids duplicates', () => {
   const result = buildDesktopBackendPath({
-    hermesHome: '/Users/test/.kopi',
+    kopiHome: '/Users/test/.kopi',
     venvRoot: '/Users/test/.kopi/kopi-ai-agent/venv',
     currentPath: '/opt/homebrew/bin:/usr/bin:/opt/homebrew/bin:/bin',
     platform: 'darwin',
@@ -51,7 +52,7 @@ test('desktop backend PATH preserves first occurrence and avoids duplicates', ()
 
 test('buildDesktopBackendEnv extends PYTHONPATH and backend PATH together', () => {
   const env = buildDesktopBackendEnv({
-    hermesHome: '/Users/test/.kopi',
+    kopiHome: '/Users/test/.kopi',
     pythonPathEntries: ['/repo/kopi-ai-agent'],
     venvRoot: '/Users/test/.kopi/kopi-ai-agent/venv',
     currentEnv: {
@@ -67,23 +68,23 @@ test('buildDesktopBackendEnv extends PYTHONPATH and backend PATH together', () =
   assert.ok(env.PATH.includes('/opt/homebrew/bin'))
 })
 
-test('normalizeHermesHomeRoot maps profile homes back to the global Hermes root', () => {
+test('normalizeKopiHomeRoot maps profile homes back to the global Kopi root', () => {
   assert.equal(
-    normalizeHermesHomeRoot('/Users/test/.kopi/profiles/oracle', { pathModule: path.posix }),
+    normalizeKopiHomeRoot('/Users/test/.kopi/profiles/oracle', { pathModule: path.posix }),
     '/Users/test/.kopi'
   )
   assert.equal(
-    normalizeHermesHomeRoot('C:\\Users\\test\\AppData\\Local\\hermes\\profiles\\oracle', { pathModule: path.win32 }),
-    'C:\\Users\\test\\AppData\\Local\\hermes'
+    normalizeKopiHomeRoot('C:\\Users\\test\\AppData\\Local\\kopi\\profiles\\oracle', { pathModule: path.win32 }),
+    'C:\\Users\\test\\AppData\\Local\\kopi'
   )
-  assert.equal(normalizeHermesHomeRoot('/Users/test/.kopi', { pathModule: path.posix }), '/Users/test/.kopi')
+  assert.equal(normalizeKopiHomeRoot('/Users/test/.kopi', { pathModule: path.posix }), '/Users/test/.kopi')
 })
 
 test('Windows PATH casing and delimiter are preserved without POSIX sane entries', () => {
   const env = buildDesktopBackendEnv({
-    hermesHome: 'C:\\Users\\test\\AppData\\Local\\hermes',
+    kopiHome: 'C:\\Users\\test\\AppData\\Local\\kopi',
     pythonPathEntries: ['C:\\repo\\kopi-ai-agent'],
-    venvRoot: 'C:\\Users\\test\\AppData\\Local\\hermes\\kopi-ai-agent\\venv',
+    venvRoot: 'C:\\Users\\test\\AppData\\Local\\kopi\\kopi-ai-agent\\venv',
     currentEnv: {
       Path: 'C:\\Windows\\System32;C:\\Windows',
       PYTHONPATH: 'C:\\existing\\pythonpath'
@@ -94,7 +95,7 @@ test('Windows PATH casing and delimiter are preserved without POSIX sane entries
 
   assert.equal(pathEnvKey({ Path: 'x' }, 'win32'), 'Path')
   assert.equal(env.PATH, undefined)
-  assert.ok(env.Path.startsWith('C:\\Users\\test\\AppData\\Local\\hermes\\node\\bin;'))
+  assert.ok(env.Path.startsWith('C:\\Users\\test\\AppData\\Local\\kopi\\node\\bin;'))
   assert.ok(env.Path.includes('\\venv\\Scripts;'))
   assert.ok(env.Path.includes(';C:\\Windows\\System32;C:\\Windows'))
   assert.equal(env.Path.includes('/opt/homebrew/bin'), false)

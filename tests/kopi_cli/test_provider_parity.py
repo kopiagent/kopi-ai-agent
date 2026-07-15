@@ -18,7 +18,7 @@ from kopi_cli.provider_catalog import provider_catalog
 from kopi_cli.web_server import _SESSION_TOKEN, app
 
 client = TestClient(app)
-HEADERS = {"X-Hermes-Session-Token": _SESSION_TOKEN}
+HEADERS = {"X-Kopi-Session-Token": _SESSION_TOKEN}
 
 # `custom` is the bring-your-own-endpoint pseudo-provider configured inline via
 # the model picker's local-endpoint flow, not a fixed credential card. It is in

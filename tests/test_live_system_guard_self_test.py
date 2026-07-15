@@ -237,7 +237,7 @@ def test_systemctl_list_units_passes_through():
 
 
 def test_systemctl_unrelated_unit_passes_through():
-    """systemctl restart of a non-kopi unit is allowed (we only protect hermes)."""
+    """systemctl restart of a non-kopi unit is allowed (we only protect kopi)."""
     # Use --dry-run so we don't actually try to restart anything; just
     # verify the guard doesn't block the call. systemctl supports
     # --dry-run via the privileged API; on user scope it usually fails

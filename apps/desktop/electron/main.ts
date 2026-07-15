@@ -1,6 +1,5 @@
-type Method = string
-import type { ExecFileSyncOptionsWithStringEncoding } from 'node:child_process'
-import { execFileSync, spawn } from 'node:child_process'
+
+import { execFile, execFileSync, spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
@@ -30,9 +29,10 @@ import {
 } from 'electron'
 import nodePty from 'node-pty'
 
+import { stopBackendChild as stopBackendChildImpl } from './backend-child'
 import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
-import { buildDesktopBackendEnv, normalizeHermesHomeRoot } from './backend-env'
-import { canImportHermesCli, verifyHermesCli } from './backend-probes'
+import { buildDesktopBackendEnv, normalizeKopiHomeRoot } from './backend-env'
+import { canImportKopiCli, verifyKopiCli } from './backend-probes'
 import { waitForDashboardPortAnnouncement } from './backend-ready'
 import { detectRemoteDisplay, isWindowsBinaryPathInWsl, isWslEnvironment } from './bootstrap-platform'
 import { runBootstrap } from './bootstrap-runner'
@@ -42,7 +42,9 @@ import {
   buildGatewayWsUrlWithTicket,
   connectionScopeKey,
   cookiesHaveLiveSession,
+  cookiesHavePrivySession,
   cookiesHaveSession,
+  modeIsRemoteLike,
   normalizeRemoteBaseUrl,
   normAuthMode,
   pathWithGlobalRemoteProfile,
@@ -63,6 +65,7 @@ import {
 } from './desktop-uninstall'
 import { installEmbedReferer } from './embed-referer'
 import { readDirForIpc } from './fs-read-dir'
+import { resolvePickerDefaultPath } from './wsl-path-bridge'
 import { probeGatewayWebSocket } from './gateway-ws-probe'
 import { scanGitRepos } from './git-repo-scan'
 import {
@@ -81,7 +84,7 @@ import {
   reviewUnstage
 } from './git-review-ops'
 import { gitRootForIpc } from './git-root'
-import { addWorktree, listBranches, listWorktrees, removeWorktree, switchBranch } from './git-worktree-ops'
+import { addWorktree, listBaseBranches, listBranches, listWorktrees, removeWorktree, switchBranch } from './git-worktree-ops'
 import {
   DATA_URL_READ_MAX_BYTES,
   DEFAULT_FETCH_TIMEOUT_MS,
@@ -93,6 +96,7 @@ import {
 } from './hardening'
 import { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } from './link-title-window'
 import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
+import { decideProfileDeleteAction, profileNameFromDeleteRequest, resolveRouteProfile } from './profile-delete-routing'
 import {
   buildSessionWindowUrl,
   chatWindowWebPreferences,
@@ -122,6 +126,8 @@ import {
   MIN_HEIGHT as WINDOW_MIN_HEIGHT,
   MIN_WIDTH as WINDOW_MIN_WIDTH
 } from './window-state'
+import { hiddenWindowsChildOptions } from './windows-child-options'
+import { buildPathExtCandidates, chooseUpdaterArgs, getVenvSitePackagesEntries, resolveVenvKopiCommand } from './windows-kopi-path'
 import { readWindowsUserEnvVar } from './windows-user-env'
 import { isPackagedInstallPath as isPackagedInstallPathUnderRoots } from './workspace-cwd'
 import { readWslWindowsClipboardImage } from './wsl-clipboard-image'
@@ -144,19 +150,10 @@ const IS_WSL = isWslEnvironment()
 const DARWIN_MAJOR = IS_MAC ? Number.parseInt(os.release(), 10) || 0 : 0
 const APP_ROOT = app.getAppPath()
 
-// Preload script path: in dev we load the .ts source directly (tsx handles
-// the transform); in prod we load the bundled .js from dist/.
-const PRELOAD_PATH = IS_PACKAGED
-  ? path.join(APP_ROOT, 'dist', 'electron-preload.js')
-  : path.join(import.meta.dirname, 'preload.ts')
-
-function hiddenWindowsChildOptions(options: any = {}): ExecFileSyncOptionsWithStringEncoding {
-  if (!IS_WINDOWS || Object.prototype.hasOwnProperty.call(options, 'windowsHide')) {
-    return options as any
-  }
-
-  return { ...options, windowsHide: true } as any
-}
+// Preload must be plain JS — Electron's sandbox can't run .ts, and tsx's
+// ESM loader is broken on Electron 40's Node (ERR_INVALID_RETURN_PROPERTY_VALUE).
+// Dev (`npm run dev`) and prod both load the esbuild output from dist/.
+const PRELOAD_PATH = path.join(APP_ROOT, 'dist', 'electron-preload.js')
 
 // Remote displays (SSH X11 forwarding, VNC, RDP) make Chromium's GPU
 // compositor flicker — accelerated layers can't be presented cleanly over the
@@ -175,7 +172,7 @@ if (REMOTE_DISPLAY_REASON) {
   // with only --disable-gpu: force compositing onto the CPU too.
   app.commandLine.appendSwitch('disable-gpu-compositing')
   console.log(
-    `[hermes] remote display detected (${REMOTE_DISPLAY_REASON}); disabling GPU hardware acceleration to prevent flicker`
+    `[kopi] remote display detected (${REMOTE_DISPLAY_REASON}); disabling GPU hardware acceleration to prevent flicker`
   )
 }
 
@@ -186,10 +183,10 @@ if (IS_WSL && !REMOTE_DISPLAY_REASON && fs.existsSync('/dev/dxg')) {
   app.commandLine.appendSwitch('ignore-gpu-blocklist')
   app.commandLine.appendSwitch('enable-gpu-rasterization')
   app.commandLine.appendSwitch('enable-zero-copy')
-  console.log('[hermes] WSL GPU passthrough (/dev/dxg) detected; enabling GPU acceleration')
+  console.log('[kopi] WSL GPU passthrough (/dev/dxg) detected; enabling GPU acceleration')
 }
 
-ipcMain.handle('hermes:get-remote-display-reason', () => REMOTE_DISPLAY_REASON)
+ipcMain.handle('kopi:get-remote-display-reason', () => REMOTE_DISPLAY_REASON)
 
 // Keep the renderer running at full speed while the window is in the background
 // or occluded. The chat transcript streams to screen through a
@@ -239,7 +236,7 @@ function loadInstallStamp() {
       if (parsed && typeof parsed === 'object' && typeof parsed.commit === 'string' && parsed.commit.length >= 7) {
         if (parsed.schemaVersion !== INSTALL_STAMP_SCHEMA_VERSION) {
           console.warn(
-            `[hermes] install-stamp.json schemaVersion ${parsed.schemaVersion} != expected ${INSTALL_STAMP_SCHEMA_VERSION}; ignoring`
+            `[kopi] install-stamp.json schemaVersion ${parsed.schemaVersion} != expected ${INSTALL_STAMP_SCHEMA_VERSION}; ignoring`
           )
 
           continue
@@ -256,7 +253,7 @@ function loadInstallStamp() {
         })
       }
     } catch (e) {
-      console.warn(`[hermes] install-stamp.json found at ${p} , but parsing failed with ${e}`)
+      console.warn(`[kopi] install-stamp.json found at ${p} , but parsing failed with ${e}`)
       // Either ENOENT or malformed JSON; try the next candidate
     }
   }
@@ -268,18 +265,18 @@ const INSTALL_STAMP = loadInstallStamp()
 
 if (INSTALL_STAMP) {
   console.log(
-    `[hermes] install stamp: ${INSTALL_STAMP.commit.slice(0, 12)}${INSTALL_STAMP.branch ? ` (${INSTALL_STAMP.branch})` : ''}${INSTALL_STAMP.dirty ? ' [DIRTY]' : ''} from ${INSTALL_STAMP.source || 'unknown'}`
+    `[kopi] install stamp: ${INSTALL_STAMP.commit.slice(0, 12)}${INSTALL_STAMP.branch ? ` (${INSTALL_STAMP.branch})` : ''}${INSTALL_STAMP.dirty ? ' [DIRTY]' : ''} from ${INSTALL_STAMP.source || 'unknown'}`
   )
 } else if (IS_PACKAGED) {
   // Dev builds without a stamp are normal; packaged builds without one
   // mean the bootstrap won't know what to clone. Surface clearly.
   console.error(
-    '[hermes] WARNING: no install-stamp.json found in packaged build. First-launch bootstrap will not have a pinned ref to install.'
+    '[kopi] WARNING: no install-stamp.json found in packaged build. First-launch bootstrap will not have a pinned ref to install.'
   )
 }
 
-// KOPI_HOME — the user-facing root for everything Hermes-related. Mirrors
-// scripts/install.ps1's $HermesHome and scripts/install.sh's $KOPI_HOME.
+// KOPI_HOME — the user-facing root for everything Kopi-related. Mirrors
+// scripts/install.ps1's $KopiHome and scripts/install.sh's $KOPI_HOME.
 //
 // Defaults:
 //   Windows: %LOCALAPPDATA%\kopi (matches install.ps1)
@@ -293,9 +290,9 @@ if (INSTALL_STAMP) {
 // KOPI_DESKTOP_USER_DATA_DIR (used by test:desktop:fresh) puts the sandbox
 // KOPI_HOME beneath the throwaway userData dir so a fresh-install run never
 // touches the user's real ~/.kopi / %LOCALAPPDATA%\kopi.
-function resolveHermesHome() {
+function resolveKopiHome() {
   if (process.env.KOPI_HOME) {
-    return normalizeHermesHomeRoot(process.env.KOPI_HOME)
+    return normalizeKopiHomeRoot(process.env.KOPI_HOME)
   }
 
   if (USER_DATA_OVERRIDE) {
@@ -312,7 +309,7 @@ function resolveHermesHome() {
     const fromRegistry = readWindowsUserEnvVar('KOPI_HOME')
 
     if (fromRegistry) {
-      return normalizeHermesHomeRoot(fromRegistry)
+      return normalizeKopiHomeRoot(fromRegistry)
     }
   }
 
@@ -332,9 +329,9 @@ function resolveHermesHome() {
   return path.join(app.getPath('home'), '.kopi')
 }
 
-const KOPI_HOME = resolveHermesHome()
+const KOPI_HOME = resolveKopiHome()
 
-function hermesManagedNodePathEntries() {
+function kopiManagedNodePathEntries() {
   // NOTE: keep this ordering in sync with iter_kopi_node_dirs() in
   // kopi_constants.py — this Node main process cannot import the Python
   // module, so the platform-ordering rule is mirrored here.
@@ -345,11 +342,11 @@ function hermesManagedNodePathEntries() {
   return entries.filter(directoryExists)
 }
 
-function pathWithHermesManagedNode(...entries) {
+function pathWithKopiManagedNode(...entries) {
   return [...kopiManagedNodePathEntries(), ...entries, process.env.PATH].filter(Boolean).join(path.delimiter)
 }
 
-// ACTIVE_KOPI_ROOT — the canonical mutable Hermes install. Same path
+// ACTIVE_KOPI_ROOT — the canonical mutable Kopi install. Same path
 // install.ps1 / install.sh use, so a desktop-only user and a CLI-only user end
 // up with identical layouts and can share one install.
 const ACTIVE_KOPI_ROOT = path.join(KOPI_HOME, 'kopi-ai-agent')
@@ -359,7 +356,7 @@ const VENV_ROOT = path.join(ACTIVE_KOPI_ROOT, 'venv')
 // (Phase 1D) after install.ps1 has completed all stages and the user has
 // finished initial configuration. Presence of this marker means the install
 // is in a known-good state and we can skip the bootstrap flow on subsequent
-// boots, going straight to `resolveHermesBackend()`. Missing or stale marker
+// boots, going straight to `resolveKopiBackend()`. Missing or stale marker
 // means we re-run the bootstrap; install.ps1's stages are idempotent so a
 // re-run on an already-good install just discovers everything in place.
 //
@@ -372,8 +369,8 @@ const BOOTSTRAP_MARKER_SCHEMA_VERSION = 1
 const DESKTOP_CONNECTION_CONFIG_PATH = path.join(app.getPath('userData'), 'connection.json')
 const DESKTOP_UPDATE_CONFIG_PATH = path.join(app.getPath('userData'), 'updates.json')
 const DESKTOP_WINDOW_STATE_PATH = path.join(app.getPath('userData'), 'window-state.json')
-// active-profile.json records which Hermes profile the desktop launches its
-// local backend as. When set, startHermes() passes `kopi --profile <name>
+// active-profile.json records which Kopi profile the desktop launches its
+// local backend as. When set, startKopi() passes `kopi --profile <name>
 // dashboard …`, which deterministically pins KOPI_HOME (see
 // _apply_profile_override in kopi_cli/main.py) and bypasses the sticky
 // ~/.kopi/active_profile file. Unset (null) preserves the legacy behavior:
@@ -384,7 +381,7 @@ const DESKTOP_PROFILE_CONFIG_PATH = path.join(app.getPath('userData'), 'active-p
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
 // Branch we track for self-update. The GUI work has merged to main, so this
 // tracks main. User can also override at runtime via
-// hermesDesktop.updates.setBranch().
+// kopiDesktop.updates.setBranch().
 const DEFAULT_UPDATE_BRANCH = 'main'
 // desktop.log lives under KOPI_HOME/logs/ so it sits next to agent.log,
 // errors.log, gateway.log produced by kopi_logging.setup_logging — one log
@@ -423,7 +420,7 @@ const BOOT_FAKE_STEP_MS = (() => {
   return Math.max(120, raw)
 })()
 
-const APP_NAME = 'Hermes'
+const APP_NAME = process.env.KOPI_DESKTOP_APP_NAME || 'Kopi'
 const TITLEBAR_HEIGHT = 34
 const MACOS_TRAFFIC_LIGHTS_HEIGHT = 14
 
@@ -451,7 +448,7 @@ const terminalSessions = new Map()
 // tracks the window's effective appearance and ignores `backgroundColor` —
 // so a dark-themed app on a light-mode Mac flashes a white material on every
 // new window until the renderer covers it. The renderer reports its mode via
-// 'hermes:native-theme' ('dark' | 'light' | 'system'); we pin
+// 'kopi:native-theme' ('dark' | 'light' | 'system'); we pin
 // nativeTheme.themeSource to it and persist the value so cold launches paint
 // correctly before the renderer has even loaded.
 const NATIVE_THEME_CONFIG_PATH = path.join(app.getPath('userData'), 'native-theme.json')
@@ -724,14 +721,14 @@ if (IS_WINDOWS) {
   app.setAppUserModelId('com.nousresearch.kopi')
 }
 
-// Seed the native About panel with the live Hermes version. This is refreshed
+// Seed the native About panel with the live Kopi version. This is refreshed
 // on every open via the explicit "About" menu handler (refreshAboutPanel), so
 // an in-place `kopi update` mid-session is reflected without an app restart;
 // the seed here just covers the first open and any non-menu invocation path.
 app.setAboutPanelOptions({
   applicationName: APP_NAME,
-  applicationVersion: resolveHermesVersion(),
-  copyright: 'Copyright © 2026 Kopi Ai Agent Pte Ltd'
+  applicationVersion: resolveKopiVersion(),
+  copyright: 'Copyright © 2026 Nous Research'
 })
 
 // Custom scheme for streaming local media (video/audio) into the renderer.
@@ -799,11 +796,14 @@ function registerMediaProtocol() {
 }
 
 let mainWindow = null
-let hermesProcess = null
+let kopiProcess = null
 let connectionPromise = null
+// True while connection-config:apply soft-rehomes the primary — suppresses the
+// backend-exit toast so an intentional kill doesn't look like a crash.
+let softRehomeInProgress = false
 // Additional per-profile backends, keyed by profile name. The PRIMARY backend
-// (the desktop's launch profile) stays managed by hermesProcess +
-// connectionPromise + startHermes(); this pool only holds EXTRA profile
+// (the desktop's launch profile) stays managed by kopiProcess +
+// connectionPromise + startKopi(); this pool only holds EXTRA profile
 // backends spawned lazily when a session belongs to a different profile. A user
 // with no named profiles never populates this map, so their experience is
 // byte-for-byte the single-backend behavior.
@@ -827,7 +827,7 @@ const RENDERER_RELOAD_WINDOW_MS = 60_000
 const RENDERER_RELOAD_MAX = 3
 let rendererReloadTimes = []
 // Latched bootstrap failure: when the first-launch install fails, we hold
-// onto the error so subsequent startHermes() calls (e.g. the renderer's
+// onto the error so subsequent startKopi() calls (e.g. the renderer's
 // ensureGatewayOpen retrying after the WS won't open) return the same error
 // instead of re-running install.ps1 in a hot loop. Cleared explicitly by
 // the renderer's "Reload and retry" path or by quitting the app.
@@ -840,7 +840,7 @@ let backendStartFailure = null
 let bootstrapAbortController = null
 let connectionConfigCache = null
 let connectionConfigCacheMtime = null
-const hermesLog = []
+const kopiLog = []
 const previewWatchers = new Map()
 let previewShortcutActive = false
 let desktopLogBuffer = ''
@@ -851,7 +851,7 @@ let nativeThemeListenerInstalled = false
 let bootProgressState = {
   error: null,
   fakeMode: BOOT_FAKE_MODE,
-  message: 'Waiting to start Hermes backend',
+  message: 'Waiting to start Kopi backend',
   phase: 'idle',
   progress: 0,
   running: false,
@@ -865,6 +865,7 @@ function planDesktopLogRotation(size) {
   if (size < DESKTOP_LOG_MAX_BYTES) {
     return []
   }
+
   const backups = n => Array.from({ length: n }, (_, i) => desktopLogBackupPath(i + 1))
 
   // Pathological boot-loop log: reclaim live + every backup outright.
@@ -932,6 +933,7 @@ function flushDesktopLogBufferSync() {
   if (!desktopLogBuffer) {
     return
   }
+
   const chunk = desktopLogBuffer
   desktopLogBuffer = ''
 
@@ -948,6 +950,7 @@ function flushDesktopLogBufferAsync() {
   if (!desktopLogBuffer) {
     return desktopLogFlushPromise
   }
+
   const chunk = desktopLogBuffer
   desktopLogBuffer = ''
 
@@ -968,6 +971,7 @@ function scheduleDesktopLogFlush() {
   if (desktopLogFlushTimer) {
     return
   }
+
   desktopLogFlushTimer = setTimeout(() => {
     desktopLogFlushTimer = null
     void flushDesktopLogBufferAsync()
@@ -980,11 +984,12 @@ function rememberLog(chunk) {
   if (!text) {
     return
   }
-  const lines = text.split(/\r?\n/).map(line => `[hermes] ${line}`)
-  hermesLog.push(...lines)
 
-  if (hermesLog.length > 300) {
-    hermesLog.splice(0, hermesLog.length - 300)
+  const lines = text.split(/\r?\n/).map(line => `[kopi] ${line}`)
+  kopiLog.push(...lines)
+
+  if (kopiLog.length > 300) {
+    kopiLog.splice(0, kopiLog.length - 300)
   }
 
   desktopLogBuffer += `${lines.join('\n')}\n`
@@ -1178,12 +1183,14 @@ function broadcastBootProgress() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return
   }
+
   const { webContents } = mainWindow
 
   if (!webContents || webContents.isDestroyed()) {
     return
   }
-  webContents.send('hermes:boot-progress', bootProgressState)
+
+  webContents.send('kopi:boot-progress', bootProgressState)
 }
 
 // Bootstrap-event broadcast channel + state. The bootstrap runner emits a
@@ -1197,7 +1204,7 @@ function broadcastBootProgress() {
 //   - log:      bounded ring buffer of the last 200 log lines for the
 //               "Show details" affordance in the overlay
 //
-// The snapshot is queryable via the hermes:bootstrap:get IPC handler so a
+// The snapshot is queryable via the kopi:bootstrap:get IPC handler so a
 // reloaded renderer (e.g. devtools reload during dev) recovers state.
 // Bootstrap log ring: bounded buffer so a long install (npm + playwright
 // downloads can emit thousands of lines) doesn't grow unbounded in memory
@@ -1262,12 +1269,14 @@ function broadcastBootstrapEvent(ev) {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return
   }
+
   const { webContents } = mainWindow
 
   if (!webContents || webContents.isDestroyed()) {
     return
   }
-  webContents.send('hermes:bootstrap:event', ev)
+
+  webContents.send('kopi:bootstrap:event', ev)
 }
 
 function getBootstrapState() {
@@ -1332,7 +1341,7 @@ function directoryExists(filePath) {
 // relaunches the desktop mid-update — because the window vanished with no
 // progress and looks crashed — a fresh instance must NOT spawn its own local
 // backend: that backend re-locks the venv shim, the updater's straggler cleanup
-// (`force_kill_other_hermes`, taskkill /IM hermes.exe) kills it, the launch
+// (`force_kill_other_kopi`, taskkill /IM kopi.exe) kills it, the launch
 // fails with the 45s "backend didn't come up" error, and the relaunch/kill
 // cycle loops. Instead the fresh instance parks until the update finishes, then
 // brings the backend up itself (it is the surviving instance — the updater's
@@ -1369,7 +1378,7 @@ async function waitForUpdateToFinish() {
   while (marker && Date.now() < deadline) {
     await advanceBootProgress(
       'backend.update-wait',
-      'An update is finishing — Hermes will start automatically when it completes…',
+      'An update is finishing — Kopi will start automatically when it completes…',
       12
     )
     await new Promise(r => setTimeout(r, UPDATE_WAIT_POLL_MS))
@@ -1413,12 +1422,10 @@ function findOnPath(command) {
   // On Windows, try PATHEXT extensions BEFORE the bare (empty-extension) name.
   // A real command must resolve via its .exe/.cmd (Windows command-resolution
   // semantics consult PATHEXT); an extensionless file — e.g. a Git-Bash
-  // shell-script shim named `kopi` — must not shadow `hermes.cmd`/`hermes.exe`.
+  // shell-script shim named `kopi` — must not shadow `kopi.cmd`/`kopi.exe`.
   // The empty entry is kept LAST so callers that already include the extension
   // (py.exe, pwsh.exe, powershell.exe) still resolve.
-  const extensions = IS_WINDOWS
-    ? [...(process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean), '']
-    : ['']
+  const extensions = buildPathExtCandidates(process.env.PATHEXT, IS_WINDOWS)
 
   for (const entry of pathEntries) {
     for (const extension of extensions) {
@@ -1437,72 +1444,22 @@ function isCommandScript(command) {
   return IS_WINDOWS && /\.(cmd|bat)$/i.test(command || '')
 }
 
-function unwrapWindowsVenvHermesCommand(command, backendArgs) {
-  if (!IS_WINDOWS || !command || isCommandScript(command)) {
-    return null
-  }
-
-  const resolved = path.resolve(String(command))
-
-  if (!/^hermes(?:\.exe)?$/i.test(path.basename(resolved))) {
-    return null
-  }
-
-  const scriptsDir = path.dirname(resolved)
-
-  if (path.basename(scriptsDir).toLowerCase() !== 'scripts') {
-    return null
-  }
-
-  const venvRoot = path.dirname(scriptsDir)
-  const python = getVenvPython(venvRoot)
-
-  if (!fileExists(python)) {
-    return null
-  }
-
-  const root = path.dirname(venvRoot)
-
-  // Smoke-test the venv interpreter before trusting it. A venv whose update
-  // died mid-`pip install` still has python.exe + hermes.exe on disk, but the
-  // backend dies on its first import (e.g. ModuleNotFoundError: dotenv) before
-  // the gateway ever binds. Returning it here also BYPASSED the caller's
-  // `--version` probe, so Retry/"Repair install" re-resolved the same broken
-  // venv forever instead of falling through to the bootstrap installer.
-  // Mirror isActiveRuntimeUsable(): probe with the checkout on PYTHONPATH so a
-  // healthy source-tree venv passes.
-  if (
-    !canImportHermesCli(python, {
-      env: {
-        PYTHONPATH: [...(directoryExists(root) ? [root] : []), process.env.PYTHONPATH]
-          .filter(Boolean)
-          .join(path.delimiter)
-      }
-    })
-  ) {
-    rememberLog(
-      `Ignoring venv Hermes at ${python}: runtime import probe failed (broken/partial venv); falling through to bootstrap.`
-    )
-
-    return null
-  }
-
-  return {
-    label: `existing Hermes Python at ${python}`,
-    command: python,
-    args: ['-m', 'kopi_cli.main', ...backendArgs],
-    bootstrap: false,
-    env: buildDesktopBackendEnv({
-      hermesHome: KOPI_HOME,
-      pythonPathEntries: [...(directoryExists(root) ? [root] : []), ...getVenvSitePackagesEntries(venvRoot)],
-      venvRoot
-    }),
-    kind: 'python',
-    // Surfaced so backendSupportsServe() can read this runtime's source for the
-    // `serve` capability check instead of falling back to a heavyweight probe.
-    root,
-    shell: false
-  }
+function unwrapWindowsVenvKopiCommand(command, backendArgs) {
+  return resolveVenvKopiCommand(command, backendArgs, {
+    isWindows: IS_WINDOWS,
+    isCommandScript,
+    fileExists,
+    directoryExists,
+    canImportKopiCli,
+    getVenvPython,
+    getVenvSitePackagesEntries,
+    buildDesktopBackendEnv,
+    kopiHome: KOPI_HOME,
+    resolvePath: (...segments) => path.resolve(...segments),
+    dirname: p => path.dirname(p),
+    basename: p => path.basename(p),
+    rememberLog
+  })
 }
 
 // Does the resolved runtime understand the `serve` subcommand? The desktop
@@ -1521,6 +1478,7 @@ function backendSupportsServe(backend) {
   if (!backend || !backend.command) {
     return true
   }
+
   const key = `${backend.command}::${backend.root || ''}`
 
   if (_serveSupportCache.has(key)) {
@@ -1612,7 +1570,7 @@ function looksLikeDesktopAppBinary(commandPath) {
   )
 }
 
-function isHermesSourceRoot(root) {
+function isKopiSourceRoot(root) {
   return directoryExists(root) && fileExists(path.join(root, 'kopi_cli', 'main.py'))
 }
 
@@ -1665,7 +1623,7 @@ function findSystemPython() {
   //      miss real Python 3.13 installs (user-reported case).
   //
   // We also restrict ourselves to Python 3.11–3.13. 3.14 is the latest
-  // CPython but several Hermes deps (notably pywinpty's Rust-built
+  // CPython but several Kopi deps (notably pywinpty's Rust-built
   // windows_x86_64_msvc crate) don't yet publish 3.14 wheels, and
   // `pip install -e .` falls back to source-build, which fails without
   // a Rust toolchain. install.ps1 sidesteps this by pinning to 3.11
@@ -1781,7 +1739,7 @@ function findSystemPython() {
   return null
 }
 
-// findGitBash — locate bash.exe on Windows. Hermes' terminal tool requires
+// findGitBash — locate bash.exe on Windows. Kopi' terminal tool requires
 // bash (POSIX shell), and on Windows that's almost always Git for Windows'
 // bundled Git Bash. We check the same set of locations tools/environments/
 // local.py:_find_bash() checks at runtime, so a positive result here means
@@ -1849,45 +1807,6 @@ function getVenvPython(venvRoot) {
 // console python also restores stdout, so the backend announces its port on the
 // normal KOPI_DASHBOARD_READY stdout line and no ready-file side channel is
 // needed.
-
-function getVenvSitePackagesEntries(venvRoot) {
-  const entries = []
-
-  if (!venvRoot) {
-    return entries
-  }
-
-  if (IS_WINDOWS) {
-    const sitePackages = path.join(venvRoot, 'Lib', 'site-packages')
-
-    if (directoryExists(sitePackages)) {
-      entries.push(sitePackages)
-    }
-
-    return entries
-  }
-
-  const version = (() => {
-    try {
-      const cfg = fs.readFileSync(path.join(venvRoot, 'pyvenv.cfg'), 'utf8')
-      const match = cfg.match(/^version_info\s*=\s*(\d+\.\d+)/im)
-
-      return match ? match[1].trim() : null
-    } catch {
-      return null
-    }
-  })()
-
-  if (version) {
-    const sitePackages = path.join(venvRoot, 'lib', `python${version}`, 'site-packages')
-
-    if (directoryExists(sitePackages)) {
-      entries.push(sitePackages)
-    }
-  }
-
-  return entries
-}
 
 function makeDashboardReadyFile() {
   const dir = path.join(app.getPath('userData'), 'backend-ready')
@@ -1963,8 +1882,8 @@ function resolveGhBinary() {
   return _ghBinaryCache
 }
 
-function recentHermesLog() {
-  return hermesLog.slice(-20).join('\n')
+function recentKopiLog() {
+  return kopiLog.slice(-20).join('\n')
 }
 
 // ─── Self-update (git-pull against the running backend's kopi root) ──────
@@ -2032,8 +1951,8 @@ const schedulePersistWindowState = debounce(persistWindowState, 250)
 function resolveUpdateRoot() {
   const candidates = [
     process.env.KOPI_DESKTOP_KOPI_ROOT && path.resolve(process.env.KOPI_DESKTOP_KOPI_ROOT),
-    !IS_PACKAGED && isHermesSourceRoot(SOURCE_REPO_ROOT) ? SOURCE_REPO_ROOT : null,
-    isHermesSourceRoot(ACTIVE_KOPI_ROOT) ? ACTIVE_KOPI_ROOT : null
+    !IS_PACKAGED && isKopiSourceRoot(SOURCE_REPO_ROOT) ? SOURCE_REPO_ROOT : null,
+    isKopiSourceRoot(ACTIVE_KOPI_ROOT) ? ACTIVE_KOPI_ROOT : null
   ].filter(Boolean)
 
   return candidates.find(c => directoryExists(path.join(c, '.git'))) || candidates[0] || ACTIVE_KOPI_ROOT
@@ -2081,7 +2000,7 @@ function emitUpdateProgress(payload) {
   rememberLog(`[updates] ${merged.stage}: ${merged.message || merged.error || ''}`)
 
   for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send('hermes:updates:progress', merged)
+    window.webContents.send('kopi:updates:progress', merged)
   }
 }
 
@@ -2124,7 +2043,7 @@ async function checkUpdates() {
       supported: false,
       reason: 'not-a-git-checkout',
       message: `${updateRoot} isn't a git checkout — desktop self-update only runs against a source install.`,
-      hermesRoot: updateRoot,
+      kopiRoot: updateRoot,
       branch
     }
   }
@@ -2150,7 +2069,7 @@ async function checkUpdates() {
         branch,
         error: 'fetch-failed',
         message: firstLine(target.stderr) || 'git ls-remote failed.',
-        hermesRoot: updateRoot,
+        kopiRoot: updateRoot,
         fetchedAt: Date.now()
       }
     }
@@ -2164,7 +2083,7 @@ async function checkUpdates() {
       targetSha,
       commits: [],
       dirty: dirtyStr.length > 0,
-      hermesRoot: updateRoot,
+      kopiRoot: updateRoot,
       fetchedAt: Date.now()
     }
   }
@@ -2177,7 +2096,7 @@ async function checkUpdates() {
       branch,
       error: 'fetch-failed',
       message: firstLine(fetched.stderr) || 'git fetch failed.',
-      hermesRoot: updateRoot,
+      kopiRoot: updateRoot,
       fetchedAt: Date.now()
     }
   }
@@ -2225,7 +2144,7 @@ async function checkUpdates() {
     targetSha,
     commits,
     dirty: dirtyStr.length > 0,
-    hermesRoot: updateRoot,
+    kopiRoot: updateRoot,
     fetchedAt: Date.now()
   }
 }
@@ -2306,10 +2225,10 @@ function repairMacUpdaterHelper(updater) {
 
 // Path to the venv shim whose lock decides whether `kopi update` can write
 // fresh entry points. On Windows this is the file the running backend
-// `hermes.exe` holds open; on POSIX it's never mandatory-locked.
-function venvHermesShimPath(updateRoot) {
+// `kopi.exe` holds open; on POSIX it's never mandatory-locked.
+function venvKopiShimPath(updateRoot) {
   return IS_WINDOWS
-    ? path.join(updateRoot, 'venv', 'Scripts', 'hermes.exe')
+    ? path.join(updateRoot, 'venv', 'Scripts', 'kopi.exe')
     : path.join(updateRoot, 'venv', 'bin', 'kopi')
 }
 
@@ -2321,6 +2240,7 @@ function isShimLocked(shimPath) {
   if (!IS_WINDOWS) {
     return false
   }
+
   let fd
 
   try {
@@ -2343,7 +2263,7 @@ function isShimLocked(shimPath) {
 }
 
 // Force-kill the entire process TREE rooted at each PID. Node's child.kill()
-// only signals the direct child, so on Windows a backend `hermes.exe` that
+// only signals the direct child, so on Windows a backend `kopi.exe` that
 // spawned its own grandchildren (a `kopi` REPL, a pty terminal session, the
 // gateway) would survive and keep the venv shim locked. taskkill /T /F reaps
 // the whole tree synchronously. Windows-only: this is called solely from the
@@ -2369,9 +2289,9 @@ function forceKillProcessTree(pid) {
 
 // Before handing off the update on Windows, the desktop MUST stop every backend
 // it spawned and WAIT for the venv shim to actually unlock. The old code did
-// `hermesProcess.kill('SIGTERM')` + `app.quit()` fire-and-forget: SIGTERM on
+// `kopiProcess.kill('SIGTERM')` + `app.quit()` fire-and-forget: SIGTERM on
 // Windows doesn't reap the backend's grandchildren, and quit didn't wait for
-// teardown, so the updater raced a still-locked `hermes.exe`, the quarantine
+// teardown, so the updater raced a still-locked `kopi.exe`, the quarantine
 // rename failed, uv's `pip install` hit "Access is denied", and the git path
 // bailed into a full ZIP re-download that ALSO couldn't write the locked shim —
 // a half-applied install (ryanc's update.log). Here we tree-kill the primary +
@@ -2389,8 +2309,8 @@ async function releaseBackendLockForUpdate(updateRoot) {
 
 // Shared backend teardown + venv-shim unlock wait. Used by BOTH the self-update
 // hand-off and the desktop uninstaller — they have the identical Windows
-// problem: the desktop's backend (and the grandchildren IT spawned — a hermes
-// REPL, a pty terminal, the gateway) keep `hermes.exe` and other files in the
+// problem: the desktop's backend (and the grandchildren IT spawned — a kopi
+// REPL, a pty terminal, the gateway) keep `kopi.exe` and other files in the
 // venv mandatory-locked, so any in-place replace/delete of the install tree
 // races a live handle and half-fails (#37532). We tree-kill every backend PID
 // the desktop owns, then poll the shim until it's genuinely writable.
@@ -2405,8 +2325,8 @@ async function releaseBackendLock(updateRoot, tag) {
   // Collect every backend PID the desktop owns: primary window backend + pool.
   const pids = []
 
-  if (hermesProcess && Number.isInteger(hermesProcess.pid)) {
-    pids.push(hermesProcess.pid)
+  if (kopiProcess && Number.isInteger(kopiProcess.pid)) {
+    pids.push(kopiProcess.pid)
   }
 
   for (const entry of backendPool.values()) {
@@ -2416,9 +2336,9 @@ async function releaseBackendLock(updateRoot, tag) {
   }
 
   // Graceful first (lets Python flush), then tree-kill to catch grandchildren.
-  if (hermesProcess && !hermesProcess.killed) {
+  if (kopiProcess && !kopiProcess.killed) {
     try {
-      hermesProcess.kill('SIGTERM')
+      kopiProcess.kill('SIGTERM')
     } catch {
       void 0
     }
@@ -2430,7 +2350,7 @@ async function releaseBackendLock(updateRoot, tag) {
     forceKillProcessTree(pid)
   }
 
-  const shim = venvHermesShimPath(updateRoot)
+  const shim = venvKopiShimPath(updateRoot)
   const deadlineMs = Date.now() + 15000
 
   while (Date.now() < deadlineMs) {
@@ -2445,8 +2365,8 @@ async function releaseBackendLock(updateRoot, tag) {
     // instead of trusting the initial sweep.
     const stragglers = []
 
-    if (hermesProcess && Number.isInteger(hermesProcess.pid)) {
-      stragglers.push(hermesProcess.pid)
+    if (kopiProcess && Number.isInteger(kopiProcess.pid)) {
+      stragglers.push(kopiProcess.pid)
     }
 
     for (const entry of backendPool.values()) {
@@ -2458,6 +2378,7 @@ async function releaseBackendLock(updateRoot, tag) {
     for (const pid of stragglers) {
       forceKillProcessTree(pid)
     }
+
     await new Promise(r => setTimeout(r, 300))
   }
 
@@ -2479,7 +2400,7 @@ async function releaseBackendLock(updateRoot, tag) {
 //
 // The desktop is a pure consumer: it does NOT git pull / pip install / rebuild
 // itself (the old open-coded git dance lived here and drifted from
-// `kopi update`). Instead we spawn the staged Hermes-Setup binary with
+// `kopi update`). Instead we spawn the staged Kopi-Setup binary with
 // --update and quit, so it can run `kopi update` (which refuses while we
 // hold the venv shim) and rebuild the desktop with our exe already gone.
 //
@@ -2536,13 +2457,13 @@ async function applyUpdates(opts = {}) {
       rememberLog(`[updates] no staged updater; surfacing manual \`${command}\` for CLI install at ${updateRoot}`)
       emitUpdateProgress({ stage: 'manual', message: command, percent: null })
 
-      return { ok: true, manual: true, command, hermesRoot: updateRoot }
+      return { ok: true, manual: true, command, kopiRoot: updateRoot }
     }
 
     emitUpdateProgress({
       stage: 'restart',
       message:
-        'Updating Hermes — this window will close and the updater will open. Don’t reopen Hermes yourself; it restarts automatically when the update finishes.',
+        'Updating Kopi — this window will close and the updater will open. Don’t reopen Kopi yourself; it restarts automatically when the update finishes.',
       percent: 100
     })
     repairMacUpdaterHelper(updater)
@@ -2561,22 +2482,22 @@ async function applyUpdates(opts = {}) {
 
     // Stop our own backend(s) and wait for the venv shim to unlock BEFORE we
     // spawn the updater. Without this the updater races a still-locked
-    // hermes.exe (held by the backend child / its grandchildren) and the update
+    // kopi.exe (held by the backend child / its grandchildren) and the update
     // bricks. See releaseBackendLockForUpdate for the full failure analysis.
     const lock = await releaseBackendLockForUpdate(updateRoot)
 
     if (!lock.unlocked) {
       // Something OUTSIDE this app holds the venv (a second window, a user
-      // terminal running hermes, an unkillable child). Handing off anyway
+      // terminal running kopi, an unkillable child). Handing off anyway
       // guarantees a half-updated venv — abort loudly instead and let the
       // user close the holder and retry. Restart our own backend so the app
       // keeps working after the failed attempt.
       const message =
-        'Update aborted: another process is holding the Hermes install open ' +
-        '(a second Hermes window or a terminal running hermes?). Close it and retry.'
+        'Update aborted: another process is holding the Kopi install open ' +
+        '(a second Kopi window or a terminal running kopi?). Close it and retry.'
 
       emitUpdateProgress({ stage: 'error', message, percent: null })
-      startHermes().catch(() => {})
+      startKopi().catch(() => {})
 
       return { ok: false, error: message }
     }
@@ -2588,7 +2509,7 @@ async function applyUpdates(opts = {}) {
       env: {
         ...process.env,
         KOPI_HOME,
-        PATH: pathWithHermesManagedNode(venvBin)
+        PATH: pathWithKopiManagedNode(venvBin)
       },
       detached: true,
       stdio: 'ignore',
@@ -2645,19 +2566,19 @@ async function handOffWindowsBootstrapRecovery(reason) {
     : configuredBranch || DEFAULT_UPDATE_BRANCH
 
   const venvBin = path.join(updateRoot, 'venv', IS_WINDOWS ? 'Scripts' : 'bin')
-  const venvHermes = path.join(venvBin, IS_WINDOWS ? 'hermes.exe' : 'kopi')
+  const venvKopi = path.join(venvBin, IS_WINDOWS ? 'kopi.exe' : 'kopi')
   const venvPython = path.join(venvBin, IS_WINDOWS ? 'python.exe' : 'python')
 
   // Choose the gentle in-place --update when ANY real-install signal is present,
-  // not just the `hermes.exe` console-script shim. That shim is generated at the
+  // not just the `kopi.exe` console-script shim. That shim is generated at the
   // END of venv setup and is absent in exactly the interrupted/quarantined states
   // this recovery exists to heal — gating on it alone forced the destructive
   // --repair (full venv recreate) and drove reinstall loops. The venv interpreter
   // and the bootstrap-complete marker are present earlier and are better signals.
   const haveRealInstall =
-    fileExists(venvPython) || fileExists(venvHermes) || fileExists(path.join(updateRoot, '.kopi-bootstrap-complete'))
+    fileExists(venvPython) || fileExists(venvKopi) || fileExists(path.join(updateRoot, '.kopi-bootstrap-complete'))
 
-  const updaterArgs = haveRealInstall ? ['--update', '--branch', branch] : ['--repair', '--branch', branch]
+  const updaterArgs = chooseUpdaterArgs(haveRealInstall, branch)
 
   await releaseBackendLockForUpdate(updateRoot)
 
@@ -2666,7 +2587,7 @@ async function handOffWindowsBootstrapRecovery(reason) {
     env: {
       ...process.env,
       KOPI_HOME,
-      PATH: pathWithHermesManagedNode(venvBin)
+      PATH: pathWithKopiManagedNode(venvBin)
     },
     detached: true,
     stdio: 'ignore',
@@ -2698,11 +2619,11 @@ async function handOffWindowsBootstrapRecovery(reason) {
 
 // Resolve the kopi CLI to drive an in-app update: prefer the venv shim in
 // the install we're updating, fall back to `kopi` on PATH.
-function resolveHermesCliBinary(updateRoot) {
-  const venvHermes = path.join(updateRoot, 'venv', 'bin', 'kopi')
+function resolveKopiCliBinary(updateRoot) {
+  const venvKopi = path.join(updateRoot, 'venv', 'bin', 'kopi')
 
-  if (fileExists(venvHermes)) {
-    return venvHermes
+  if (fileExists(venvKopi)) {
+    return venvKopi
   }
 
   return findOnPath('kopi') || null
@@ -2752,6 +2673,7 @@ function runningAppBundle() {
   if (!IS_MAC) {
     return null
   }
+
   let dir = path.dirname(app.getPath('exe')) // .../Contents/MacOS
 
   for (let i = 0; i < 2; i++) {
@@ -2771,20 +2693,20 @@ function shellQuote(value) {
 // restart to load the new GUI" if the swap can't be performed.
 async function applyUpdatesPosixInApp(opts: any) {
   const updateRoot = resolveUpdateRoot()
-  const kopi = resolveHermesCliBinary(updateRoot)
+  const kopi = resolveKopiCliBinary(updateRoot)
 
-  if (!hermes) {
+  if (!kopi) {
     emitUpdateProgress({ stage: 'manual', message: 'kopi update', percent: null })
 
-    return { ok: true, manual: true, command: 'kopi update', hermesRoot: updateRoot }
+    return { ok: true, manual: true, command: 'kopi update', kopiRoot: updateRoot }
   }
 
-  // Put the Hermes-managed Node and the venv on PATH so `kopi desktop`'s
+  // Put the Kopi-managed Node and the venv on PATH so `kopi desktop`'s
   // npm build can find them on a machine with no system Node. Windows portable
   // Node lives directly under %LOCALAPPDATA%\kopi\node, not node\bin.
   const env: Record<string, string> = {
     KOPI_HOME,
-    PATH: pathWithHermesManagedNode(path.join(updateRoot, 'venv', 'bin'))
+    PATH: pathWithKopiManagedNode(path.join(updateRoot, 'venv', 'bin'))
   }
 
   // `kopi update` reaps stale `kopi serve` backends (a code update
@@ -2800,8 +2722,8 @@ async function applyUpdatesPosixInApp(opts: any) {
   // list (a single int still parses for back-compat).
   const desktopChildPids = []
 
-  if (hermesProcess && Number.isInteger(hermesProcess.pid)) {
-    desktopChildPids.push(hermesProcess.pid)
+  if (kopiProcess && Number.isInteger(kopiProcess.pid)) {
+    desktopChildPids.push(kopiProcess.pid)
   }
 
   for (const entry of backendPool.values()) {
@@ -2829,9 +2751,9 @@ async function applyUpdatesPosixInApp(opts: any) {
     // best effort
   }
 
-  emitUpdateProgress({ stage: 'update', message: 'Updating Hermes (git + dependencies)…', percent: 10 })
+  emitUpdateProgress({ stage: 'update', message: 'Updating Kopi (git + dependencies)…', percent: 10 })
 
-  const updated = (await runStreamedUpdate(hermes, ['update', '--yes', ...branchArgs], {
+  const updated = (await runStreamedUpdate(kopi, ['update', '--yes', ...branchArgs], {
     cwd: updateRoot,
     env,
     stage: 'update'
@@ -2853,13 +2775,13 @@ async function applyUpdatesPosixInApp(opts: any) {
       emitUpdateProgress({ stage: 'rebuild', message: 'Retrying the desktop rebuild…', percent: 60 })
     }
 
-    return runStreamedUpdate(hermes, ['desktop', '--build-only'], { cwd: updateRoot, env, stage: 'rebuild' })
+    return runStreamedUpdate(kopi, ['desktop', '--build-only'], { cwd: updateRoot, env, stage: 'rebuild' })
   })
 
   if (rebuilt.code !== 0) {
     emitUpdateProgress({
       stage: 'error',
-      message: 'Backend updated, but the desktop rebuild failed. Restart Hermes to retry.',
+      message: 'Backend updated, but the desktop rebuild failed. Restart Kopi to retry.',
       error: rebuilt.error || 'rebuild-failed'
     })
 
@@ -2906,7 +2828,7 @@ async function applyUpdatesPosixInApp(opts: any) {
     const outcome = decideRelaunchOutcome({ underUnpacked, sandboxOk })
 
     if (outcome === 'relaunch') {
-      emitUpdateProgress({ stage: 'restart', message: 'Restarting Hermes…', percent: 100 })
+      emitUpdateProgress({ stage: 'restart', message: 'Restarting Kopi…', percent: 100 })
       // Preserve launch context across the re-exec: replay the original args
       // (filtered of Electron internals) and the env/cwd that define which
       // backend/profile/root this instance talks to. Without this the
@@ -2944,7 +2866,7 @@ async function applyUpdatesPosixInApp(opts: any) {
           backendUpdated: true,
           guiUpdated: false,
           manualRestart: true,
-          message: 'Backend updated. Quit and reopen Hermes to load the new version.'
+          message: 'Backend updated. Quit and reopen Kopi to load the new version.'
         }
       }
     }
@@ -2954,7 +2876,7 @@ async function applyUpdatesPosixInApp(opts: any) {
         stage: 'guiSkew',
         message:
           'Backend updated, but the desktop app package was not changed. ' +
-          'Update or reinstall the Hermes desktop app to match.',
+          'Update or reinstall the Kopi desktop app to match.',
         percent: 100
       })
       rememberLog(
@@ -2980,13 +2902,13 @@ async function applyUpdatesPosixInApp(opts: any) {
       sandboxBlocked: true,
       message:
         'Backend updated. The rebuilt app can’t relaunch automatically ' +
-        '(sandbox helper needs root). Quit and reopen Hermes to finish.'
+        '(sandbox helper needs root). Quit and reopen Kopi to finish.'
     }
   }
 
   const rebuiltApp = [
-    path.join(updateRoot, 'apps', 'desktop', 'release', 'mac-arm64', 'Hermes.app'),
-    path.join(updateRoot, 'apps', 'desktop', 'release', 'mac', 'Hermes.app')
+    path.join(updateRoot, 'apps', 'desktop', 'release', 'mac-arm64', 'Kopi.app'),
+    path.join(updateRoot, 'apps', 'desktop', 'release', 'mac', 'Kopi.app')
   ].find(directoryExists)
 
   const targetApp = runningAppBundle()
@@ -2996,7 +2918,7 @@ async function applyUpdatesPosixInApp(opts: any) {
   if (!rebuiltApp || !targetApp) {
     emitUpdateProgress({
       stage: 'done',
-      message: 'Backend updated. Restart Hermes to load the new version.',
+      message: 'Backend updated. Restart Kopi to load the new version.',
       percent: 100
     })
 
@@ -3035,7 +2957,7 @@ fi
   } catch (err) {
     emitUpdateProgress({
       stage: 'done',
-      message: 'Backend + app updated. Restart Hermes to load the new version.',
+      message: 'Backend + app updated. Restart Kopi to load the new version.',
       percent: 100
     })
     rememberLog(`[updates] could not write swap script: ${err.message}; rebuilt app at ${rebuiltApp}`)
@@ -3088,9 +3010,9 @@ function isActiveRuntimeUsable() {
   const venvPython = getVenvPython(VENV_ROOT)
 
   return (
-    isHermesSourceRoot(ACTIVE_KOPI_ROOT) &&
+    isKopiSourceRoot(ACTIVE_KOPI_ROOT) &&
     fileExists(venvPython) &&
-    canImportHermesCli(venvPython, {
+    canImportKopiCli(venvPython, {
       env: {
         PYTHONPATH: [ACTIVE_KOPI_ROOT, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter)
       }
@@ -3114,7 +3036,7 @@ function isBootstrapComplete() {
   }
 
   // We DELIBERATELY do NOT verify that the checkout is currently at the
-  // pinned commit -- users update via the in-app update path or `hermes
+  // pinned commit -- users update via the in-app update path or `kopi
   // update`, which moves HEAD legitimately. The marker just attests "we
   // ran the bootstrap successfully at least once." We DO additionally require
   // a runnable venv: an interrupted or split-home install can leave the marker
@@ -3178,6 +3100,7 @@ function resolveRendererIndex() {
   if (found) {
     return found
   }
+
   // Nothing on disk. A packaged build with no renderer bundle blank-pages with
   // a bare ERR_FILE_NOT_FOUND and no clue why (see #39484). Surface the cause
   // and the fix before Electron loads the missing file.
@@ -3205,9 +3128,9 @@ function isPackagedInstallPath(dir) {
   })
 }
 
-function resolveHermesCwd() {
+function resolveKopiCwd() {
   // In a packaged build, `process.cwd()` resolves to the install root (e.g.
-  // `…/win-unpacked` on Windows or `/Applications/Hermes.app/Contents/...`
+  // `…/win-unpacked` on Windows or `/Applications/Kopi.app/Contents/...`
   // on macOS). Sessions spawned there leave files inside the app bundle
   // and bewilder users when "where did my files go?" is the install dir.
   // The user-configurable default project directory wins over everything,
@@ -3226,6 +3149,7 @@ function resolveHermesCwd() {
     if (!candidate) {
       continue
     }
+
     const resolved = path.resolve(String(candidate))
 
     if (isPackagedInstallPath(resolved)) {
@@ -3244,7 +3168,7 @@ function sanitizeWorkspaceCwd(cwd) {
   const trimmed = typeof cwd === 'string' ? cwd.trim() : ''
 
   if (!trimmed || isPackagedInstallPath(trimmed)) {
-    return { cwd: resolveHermesCwd(), sanitized: Boolean(trimmed) }
+    return { cwd: resolveKopiCwd(), sanitized: Boolean(trimmed) }
   }
 
   try {
@@ -3257,7 +3181,7 @@ function sanitizeWorkspaceCwd(cwd) {
     // Fall through to the resolved default.
   }
 
-  return { cwd: resolveHermesCwd(), sanitized: Boolean(trimmed) }
+  return { cwd: resolveKopiCwd(), sanitized: Boolean(trimmed) }
 }
 
 // Persisted "Default project directory" — surfaced as a setting in the
@@ -3319,7 +3243,7 @@ function createPythonBackend(root, label, backendArgs, options: any = {}) {
     command,
     args: ['-m', 'kopi_cli.main', ...backendArgs],
     env: buildDesktopBackendEnv({
-      hermesHome: KOPI_HOME,
+      kopiHome: KOPI_HOME,
       pythonPathEntries: [root, ...getVenvSitePackagesEntries(venvRoot)],
       venvRoot
     }),
@@ -3339,11 +3263,11 @@ function createActiveBackend(backendArgs) {
 
   return {
     kind: 'python',
-    label: `Hermes at ${ACTIVE_KOPI_ROOT}`,
+    label: `Kopi at ${ACTIVE_KOPI_ROOT}`,
     command,
     args: ['-m', 'kopi_cli.main', ...backendArgs],
     env: buildDesktopBackendEnv({
-      hermesHome: KOPI_HOME,
+      kopiHome: KOPI_HOME,
       pythonPathEntries: [ACTIVE_KOPI_ROOT, ...getVenvSitePackagesEntries(VENV_ROOT)],
       venvRoot: VENV_ROOT
     }),
@@ -3353,13 +3277,13 @@ function createActiveBackend(backendArgs) {
   }
 }
 
-function resolveHermesBackend(backendArgs) {
+function resolveKopiBackend(backendArgs) {
   // 1. Explicit override -- KOPI_DESKTOP_KOPI_ROOT points at a developer
   //    checkout. Honour it as-is (no bootstrap; the user is driving).
   const overrideRoot = process.env.KOPI_DESKTOP_KOPI_ROOT && path.resolve(process.env.KOPI_DESKTOP_KOPI_ROOT)
 
-  if (overrideRoot && isHermesSourceRoot(overrideRoot)) {
-    const backend = createPythonBackend(overrideRoot, `Hermes source at ${overrideRoot}`, backendArgs)
+  if (overrideRoot && isKopiSourceRoot(overrideRoot)) {
+    const backend = createPythonBackend(overrideRoot, `Kopi source at ${overrideRoot}`, backendArgs)
 
     if (backend) {
       return backend
@@ -3369,9 +3293,9 @@ function resolveHermesBackend(backendArgs) {
   // 2. Development source -- when running `npm run dev` from a checkout, the
   //    cloned repo at SOURCE_REPO_ROOT takes precedence over ACTIVE and any
   //    installed `kopi` on PATH so local Python edits are actually exercised.
-  //    (In dev with no checkout, SOURCE_REPO_ROOT won't pass isHermesSourceRoot.)
-  if (!IS_PACKAGED && isHermesSourceRoot(SOURCE_REPO_ROOT)) {
-    const backend = createPythonBackend(SOURCE_REPO_ROOT, `Hermes source at ${SOURCE_REPO_ROOT}`, backendArgs)
+  //    (In dev with no checkout, SOURCE_REPO_ROOT won't pass isKopiSourceRoot.)
+  if (!IS_PACKAGED && isKopiSourceRoot(SOURCE_REPO_ROOT)) {
+    const backend = createPythonBackend(SOURCE_REPO_ROOT, `Kopi source at ${SOURCE_REPO_ROOT}`, backendArgs)
 
     if (backend) {
       return backend
@@ -3382,7 +3306,7 @@ function resolveHermesBackend(backendArgs) {
   //    %LOCALAPPDATA%\kopi\kopi-ai-agent (Windows) or ~/.kopi/kopi-ai-agent.
   //    The bootstrap marker means install.ps1 stages finished and the user
   //    completed initial configuration; we trust the install and go straight
-  //    to spawning hermes. Updates flow through the in-app update path
+  //    to spawning kopi. Updates flow through the in-app update path
   //    (applyUpdates -> git pull) or `kopi update` from the CLI.
   if (isBootstrapComplete()) {
     return createActiveBackend(backendArgs)
@@ -3394,32 +3318,32 @@ function resolveHermesBackend(backendArgs) {
   //    don't want to take ownership of an install we didn't perform.
   //    KOPI_DESKTOP_IGNORE_EXISTING=1 forces the bootstrap path for testing.
   if (process.env.KOPI_DESKTOP_IGNORE_EXISTING !== '1') {
-    let hermesCommand = null
-    const hermesOverride = process.env.KOPI_DESKTOP_HERMES
+    let kopiCommand = null
+    const kopiOverride = process.env.KOPI_DESKTOP_KOPI
 
-    if (hermesOverride) {
-      const resolvedOverride = findOnPath(hermesOverride)
+    if (kopiOverride) {
+      const resolvedOverride = findOnPath(kopiOverride)
 
       if (resolvedOverride) {
-        hermesCommand = resolvedOverride
-      } else if (!isWindowsBinaryPathInWsl(hermesOverride, { isWsl: IS_WSL })) {
-        hermesCommand = hermesOverride
+        kopiCommand = resolvedOverride
+      } else if (!isWindowsBinaryPathInWsl(kopiOverride, { isWsl: IS_WSL })) {
+        kopiCommand = kopiOverride
       } else {
-        rememberLog(`Ignoring Windows Hermes override under WSL: ${hermesOverride}`)
+        rememberLog(`Ignoring Windows Kopi override under WSL: ${kopiOverride}`)
       }
     } else {
-      hermesCommand = findOnPath('kopi')
+      kopiCommand = findOnPath('kopi')
     }
 
-    if (hermesCommand) {
-      if (looksLikeDesktopAppBinary(hermesCommand)) {
-        rememberLog(`Ignoring desktop app executable on PATH while resolving Hermes CLI: ${hermesCommand}`)
-        hermesCommand = null
+    if (kopiCommand) {
+      if (looksLikeDesktopAppBinary(kopiCommand)) {
+        rememberLog(`Ignoring desktop app executable on PATH while resolving Kopi CLI: ${kopiCommand}`)
+        kopiCommand = null
       }
     }
 
-    if (hermesCommand) {
-      const unwrapped = unwrapWindowsVenvHermesCommand(hermesCommand, backendArgs)
+    if (kopiCommand) {
+      const unwrapped = unwrapWindowsVenvKopiCommand(kopiCommand, backendArgs)
 
       if (unwrapped) {
         return unwrapped
@@ -3432,13 +3356,13 @@ function resolveHermesBackend(backendArgs) {
       // dead backend instead of the first-launch installer. The cheap
       // `--version` probe (see backend-probes.ts) catches that case
       // and lets the resolver fall through to step 6 / bootstrap.
-      const shellForProbe = isCommandScript(hermesCommand)
+      const shellForProbe = isCommandScript(kopiCommand)
 
-      if (verifyHermesCli(hermesCommand, { shell: shellForProbe })) {
+      if (verifyKopiCli(kopiCommand, { shell: shellForProbe })) {
         return (
-          unwrapWindowsVenvHermesCommand(hermesCommand, backendArgs) || {
-            label: `existing Hermes CLI at ${hermesCommand}`,
-            command: hermesCommand,
+          unwrapWindowsVenvKopiCommand(kopiCommand, backendArgs) || {
+            label: `existing Kopi CLI at ${kopiCommand}`,
+            command: kopiCommand,
             args: backendArgs,
             bootstrap: false,
             env: {},
@@ -3449,7 +3373,7 @@ function resolveHermesBackend(backendArgs) {
       }
 
       rememberLog(
-        `Ignoring existing Hermes CLI at ${hermesCommand}: --version probe failed; falling through to bootstrap.`
+        `Ignoring existing Kopi CLI at ${kopiCommand}: --version probe failed; falling through to bootstrap.`
       )
     }
   }
@@ -3468,7 +3392,7 @@ function resolveHermesBackend(backendArgs) {
     // Verify the import works before trusting the candidate; on
     // failure, fall through to step 6 so the bootstrap runner pulls
     // a uv-managed 3.11 into %LOCALAPPDATA%\kopi\kopi-ai-agent\venv.
-    if (canImportHermesCli(python)) {
+    if (canImportKopiCli(python)) {
       return {
         kind: 'python',
         label: `installed kopi_cli module via ${python}`,
@@ -3490,12 +3414,12 @@ function resolveHermesBackend(backendArgs) {
   //    explaining what's missing.
   //
   //    We deliberately do NOT throw here -- throwing inside
-  //    resolveHermesBackend was the old "no payload" path and forced the
+  //    resolveKopiBackend was the old "no payload" path and forced the
   //    user into a dead end. With the bootstrap protocol, "no install yet"
   //    is a recoverable state the GUI can drive through.
   return {
     kind: 'bootstrap-needed',
-    label: 'KOPI AI AGENT not installed yet; bootstrap required',
+    label: 'Kopi Agent not installed yet; bootstrap required',
     command: null,
     args: backendArgs,
     bootstrap: true,
@@ -3516,7 +3440,7 @@ async function ensureRuntime(backend) {
     return backend
   }
 
-  // backend.kind === 'bootstrap-needed' means resolveHermesBackend couldn't
+  // backend.kind === 'bootstrap-needed' means resolveKopiBackend couldn't
   // find anything to spawn. Hand off to the bootstrap runner which drives the
   // platform installer, writes the bootstrap-complete marker on success, then
   // we re-resolve to get the now-installed backend.
@@ -3526,11 +3450,11 @@ async function ensureRuntime(backend) {
   // will rewire startup to spawn the window first and route bootstrap events
   // to a renderer-side install overlay.
   if (backend.kind === 'bootstrap-needed') {
-    rememberLog('[bootstrap] no Hermes install found; starting first-launch bootstrap')
+    rememberLog('[bootstrap] no Kopi install found; starting first-launch bootstrap')
 
     if (await handOffWindowsBootstrapRecovery('bootstrap-needed')) {
       const handoffError: Error & { isBootstrapFailure?: boolean; bootstrapHandedOff?: boolean } = new Error(
-        'Hermes recovery was handed off to Hermes Setup. The desktop will restart when recovery completes.'
+        'Kopi recovery was handed off to Kopi Setup. The desktop will restart when recovery completes.'
       )
 
       handoffError.isBootstrapFailure = true
@@ -3561,7 +3485,7 @@ async function ensureRuntime(backend) {
       installStamp: backend.installStamp,
       activeRoot: backend.activeRoot,
       sourceRepoRoot: SOURCE_REPO_ROOT,
-      hermesHome: KOPI_HOME,
+      kopiHome: KOPI_HOME,
       logRoot: path.join(KOPI_HOME, 'logs'),
       abortSignal: bootstrapAbortController.signal,
       onEvent: ev => {
@@ -3587,7 +3511,7 @@ async function ensureRuntime(backend) {
     bootstrapAbortController = null
 
     if (bootstrapResult.cancelled) {
-      const cancelledError = new Error('Hermes install was cancelled.') as any
+      const cancelledError = new Error('Kopi install was cancelled.') as any
       cancelledError.isBootstrapFailure = true
       cancelledError.bootstrapCancelled = true
       bootstrapFailure = cancelledError
@@ -3596,16 +3520,16 @@ async function ensureRuntime(backend) {
 
     if (!bootstrapResult.ok) {
       const bootstrapError = new Error(
-        `Hermes bootstrap failed${bootstrapResult.failedStage ? ` at stage '${bootstrapResult.failedStage}'` : ''}: ` +
+        `Kopi bootstrap failed${bootstrapResult.failedStage ? ` at stage '${bootstrapResult.failedStage}'` : ''}: ` +
           `${bootstrapResult.error || 'unknown error'}. ` +
           `Check ${path.join(KOPI_HOME, 'logs', 'desktop.log')} for the full transcript.`
       ) as any
 
       bootstrapError.isBootstrapFailure = true
       bootstrapError.failedStage = bootstrapResult.failedStage || null
-      // Latch the failure so subsequent startHermes() calls return this
+      // Latch the failure so subsequent startKopi() calls return this
       // same error without re-running install.ps1.  Cleared by the
-      // hermes:bootstrap:reset IPC (renderer's "Reload and retry").
+      // kopi:bootstrap:reset IPC (renderer's "Reload and retry").
       bootstrapFailure = bootstrapError
       throw bootstrapError
     }
@@ -3614,7 +3538,7 @@ async function ensureRuntime(backend) {
 
     // Re-resolve now that the install exists. The new resolution lands in
     // step 3 (bootstrap-complete marker) and we recurse to wire venvPython.
-    return ensureRuntime(resolveHermesBackend(backend.args))
+    return ensureRuntime(resolveKopiBackend(backend.args))
   }
 
   // bootstrap=true with a real backend (createActiveBackend path) means we
@@ -3623,14 +3547,14 @@ async function ensureRuntime(backend) {
   // sync flow exited through, minus all the factory/pip/marker machinery
   // (install.ps1 owns those concerns now and the bootstrap-complete marker
   // attests they ran successfully).
-  if (!isHermesSourceRoot(ACTIVE_KOPI_ROOT)) {
+  if (!isKopiSourceRoot(ACTIVE_KOPI_ROOT)) {
     throw new Error(
-      `Hermes install at ${ACTIVE_KOPI_ROOT} is missing or incomplete. ` +
+      `Kopi install at ${ACTIVE_KOPI_ROOT} is missing or incomplete. ` +
         'Reinstall via the desktop installer or scripts/install.ps1.'
     )
   }
 
-  // On Windows, preflight Git Bash. Hermes' terminal tool calls bash.exe
+  // On Windows, preflight Git Bash. Kopi' terminal tool calls bash.exe
   // directly (tools/environments/local.py); without it the agent can't run
   // terminal commands. install.ps1's Stage-Git puts PortableGit at
   // %LOCALAPPDATA%\kopi\git\, which findGitBash() picks up, so for any
@@ -3638,10 +3562,10 @@ async function ensureRuntime(backend) {
   // here via an external `kopi` on PATH, this check still helps.
   if (IS_WINDOWS && !findGitBash()) {
     throw new Error(
-      'Git for Windows is required for Hermes on Windows (provides Git Bash, ' +
+      'Git for Windows is required for Kopi on Windows (provides Git Bash, ' +
         "which the agent's terminal tool uses). Install it from " +
         'https://git-scm.com/download/win or run `winget install -e --id Git.Git`, ' +
-        'then relaunch Hermes.'
+        'then relaunch Kopi.'
     )
   }
 
@@ -3652,19 +3576,19 @@ async function ensureRuntime(backend) {
     // means we have a half-installed checkout: .git exists, source files
     // exist, but venv is missing or broken. This shouldn't happen in
     // normal flow because isBootstrapComplete() requires
-    // isHermesSourceRoot() and the bootstrap writes the marker only after
+    // isKopiSourceRoot() and the bootstrap writes the marker only after
     // install.ps1 succeeds. If we hit this, the user (or a deleted venv)
     // broke the invariant; tell them to re-run the install.
     throw new Error(
-      `Hermes venv missing at ${VENV_ROOT}. Re-run the desktop installer or ` + '`scripts/install.ps1` to rebuild it.'
+      `Kopi venv missing at ${VENV_ROOT}. Re-run the desktop installer or ` + '`scripts/install.ps1` to rebuild it.'
     )
   }
 
   backend.command = getVenvPython(VENV_ROOT)
-  backend.label = `Hermes at ${ACTIVE_KOPI_ROOT} (venv: ${VENV_ROOT})`
+  backend.label = `Kopi at ${ACTIVE_KOPI_ROOT} (venv: ${VENV_ROOT})`
   updateBootProgress({
     phase: 'runtime.ready',
-    message: 'Hermes runtime is ready',
+    message: 'Kopi runtime is ready',
     progress: 82,
     running: true,
     error: null
@@ -3681,7 +3605,7 @@ function fetchJson(url, token, options: any = {}) {
     const timeoutMs = resolveTimeoutMs(options.timeoutMs, DEFAULT_FETCH_TIMEOUT_MS)
 
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      reject(new Error(`Unsupported Hermes backend URL protocol: ${parsed.protocol}`))
+      reject(new Error(`Unsupported Kopi backend URL protocol: ${parsed.protocol}`))
 
       return
     }
@@ -3692,7 +3616,7 @@ function fetchJson(url, token, options: any = {}) {
         method: options.method || 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'X-Hermes-Session-Token': token,
+          'X-Kopi-Session-Token': token,
           ...(body ? { 'Content-Length': String(body.length) } : {})
         }
       },
@@ -3726,7 +3650,7 @@ function fetchJson(url, token, options: any = {}) {
             reject(
               new Error(
                 `Expected JSON from ${url} but got HTML (status ${res.statusCode}). ` +
-                  'The endpoint is likely missing on the Hermes backend.'
+                  'The endpoint is likely missing on the Kopi backend.'
               )
             )
 
@@ -3744,12 +3668,13 @@ function fetchJson(url, token, options: any = {}) {
 
     req.on('error', reject)
     req.setTimeout(timeoutMs, () => {
-      req.destroy(new Error(`Timed out connecting to Hermes backend after ${timeoutMs}ms`))
+      req.destroy(new Error(`Timed out connecting to Kopi backend after ${timeoutMs}ms`))
     })
 
     if (body) {
       req.write(body)
     }
+
     req.end()
   })
 }
@@ -3757,7 +3682,7 @@ function fetchJson(url, token, options: any = {}) {
 function fetchPublicJson(url, options: any = {}) {
   // Credential-free JSON GET/POST for public gateway endpoints
   // (``/api/status``, ``/api/auth/providers``). Unlike ``fetchJson`` it sends
-  // NO ``X-Hermes-Session-Token`` header — used by the auth-mode probe before
+  // NO ``X-Kopi-Session-Token`` header — used by the auth-mode probe before
   // any credentials exist, and any time we must not leak a token to an
   // endpoint that doesn't need one.
   return new Promise((resolve, reject) => {
@@ -3776,7 +3701,7 @@ function fetchPublicJson(url, options: any = {}) {
     const timeoutMs = resolveTimeoutMs(options.timeoutMs, DEFAULT_FETCH_TIMEOUT_MS)
 
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      reject(new Error(`Unsupported Hermes backend URL protocol: ${parsed.protocol}`))
+      reject(new Error(`Unsupported Kopi backend URL protocol: ${parsed.protocol}`))
 
       return
     }
@@ -3815,7 +3740,7 @@ function fetchPublicJson(url, options: any = {}) {
             reject(
               new Error(
                 `Expected JSON from ${url} but got HTML (status ${res.statusCode}). ` +
-                  'The endpoint is likely missing on the Hermes backend.'
+                  'The endpoint is likely missing on the Kopi backend.'
               )
             )
 
@@ -3833,12 +3758,13 @@ function fetchPublicJson(url, options: any = {}) {
 
     req.on('error', reject)
     req.setTimeout(timeoutMs, () => {
-      req.destroy(new Error(`Timed out connecting to Hermes backend after ${timeoutMs}ms`))
+      req.destroy(new Error(`Timed out connecting to Kopi backend after ${timeoutMs}ms`))
     })
 
     if (body) {
       req.write(body)
     }
+
     req.end()
   })
 }
@@ -3956,6 +3882,7 @@ function cacheTitle(key, title) {
   if (titleCache.size >= TITLE_CACHE_LIMIT) {
     titleCache.delete(titleCache.keys().next().value)
   }
+
   titleCache.set(key, title)
 }
 
@@ -4010,6 +3937,7 @@ function fetchHtmlTitleWithCurl(rawUrl: string): Promise<string> {
       if (bytes >= TITLE_BYTE_BUDGET) {
         return
       }
+
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
       const remaining = TITLE_BYTE_BUDGET - bytes
       const next = buffer.length > remaining ? buffer.subarray(0, remaining) : buffer
@@ -4022,6 +3950,7 @@ function fetchHtmlTitleWithCurl(rawUrl: string): Promise<string> {
       if (!chunks.length) {
         return resolve('')
       }
+
       resolve(parseHtmlTitle(Buffer.concat(chunks).toString('utf8')))
     })
   })
@@ -4031,7 +3960,8 @@ function getLinkTitleSession() {
   if (linkTitleSession || !app.isReady()) {
     return linkTitleSession
   }
-  linkTitleSession = session.fromPartition('hermes:link-titles', { cache: false })
+
+  linkTitleSession = session.fromPartition('kopi:link-titles', { cache: false })
   linkTitleSession.webRequest.onBeforeRequest((details, callback) => {
     callback({ cancel: RENDER_TITLE_BLOCKED_RESOURCES.has(details.resourceType) })
   })
@@ -4073,6 +4003,7 @@ function runRenderTitleJob(rawUrl) {
       if (settled) {
         return
       }
+
       settled = true
 
       if (hardTimer) {
@@ -4082,6 +4013,7 @@ function runRenderTitleJob(rawUrl) {
       if (graceTimer) {
         clearTimeout(graceTimer)
       }
+
       const value = (title || '').replace(/\s+/g, ' ').trim()
 
       try {
@@ -4107,6 +4039,7 @@ function runRenderTitleJob(rawUrl) {
       if (graceTimer) {
         clearTimeout(graceTimer)
       }
+
       graceTimer = setTimeout(finishWithTitle, RENDER_TITLE_GRACE_MS)
     }
 
@@ -4188,6 +4121,7 @@ async function resourceBufferFromUrl(rawUrl) {
     if (!match) {
       throw new Error('Invalid data URL')
     }
+
     const mimeType = match[1] || 'application/octet-stream'
     const encoded = match[3] || ''
     const buffer = match[2] ? Buffer.from(encoded, 'base64') : Buffer.from(decodeURIComponent(encoded), 'utf8')
@@ -4236,6 +4170,7 @@ async function copyImageFromUrl(rawUrl) {
   if (image.isEmpty()) {
     throw new Error('Could not read image')
   }
+
   clipboard.writeImage(image)
 }
 
@@ -4251,6 +4186,7 @@ async function saveImageFromUrl(rawUrl) {
   if (result.canceled || !result.filePath) {
     return false
   }
+
   await fs.promises.writeFile(result.filePath, buffer)
 
   return true
@@ -4293,7 +4229,7 @@ function expandUserPath(filePath) {
 
 async function previewFileTarget(rawTarget, baseDir) {
   const raw = String(rawTarget || '').trim()
-  const base = baseDir ? path.resolve(expandUserPath(baseDir)) : resolveHermesCwd()
+  const base = baseDir ? path.resolve(expandUserPath(baseDir)) : resolveKopiCwd()
 
   let resolved = resolveRequestedPathForIpc(/^file:/i.test(raw) ? raw : expandUserPath(raw), {
     baseDir: base,
@@ -4385,12 +4321,14 @@ function sendPreviewFileChanged(payload) {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return
   }
+
   const { webContents } = mainWindow
 
   if (!webContents || webContents.isDestroyed()) {
     return
   }
-  webContents.send('hermes:preview-file-changed', payload)
+
+  webContents.send('kopi:preview-file-changed', payload)
 }
 
 async function watchPreviewFile(rawUrl) {
@@ -4410,12 +4348,14 @@ async function watchPreviewFile(rawUrl) {
     if (timer) {
       clearTimeout(timer)
     }
+
     timer = setTimeout(() => {
       timer = null
 
       if (!fileExists(filePath)) {
         return
       }
+
       sendPreviewFileChanged({ id, path: filePath, url: pathToFileURL(filePath).toString() })
     }, PREVIEW_WATCH_DEBOUNCE_MS)
   })
@@ -4425,6 +4365,7 @@ async function watchPreviewFile(rawUrl) {
       if (timer) {
         clearTimeout(timer)
       }
+
       watcher.close()
     }
   })
@@ -4451,7 +4392,7 @@ function closePreviewWatchers() {
   }
 }
 
-async function waitForHermes(baseUrl, token) {
+async function waitForKopi(baseUrl, token) {
   const deadline = Date.now() + 45_000
   let lastError = null
 
@@ -4466,7 +4407,7 @@ async function waitForHermes(baseUrl, token) {
     }
   }
 
-  throw new Error(`Hermes backend did not become ready: ${lastError?.message || 'timeout'}`)
+  throw new Error(`Kopi backend did not become ready: ${lastError?.message || 'timeout'}`)
 }
 
 function getWindowButtonPosition() {
@@ -4490,42 +4431,54 @@ function getWindowState() {
 }
 
 function sendBackendExit(payload) {
+  // Intentional soft re-home (gateway mode apply) kills the child on purpose —
+  // don't surface the "backend stopped" error toast / boot-failure path.
+  if (softRehomeInProgress) {
+    return
+  }
+
   if (!mainWindow || mainWindow.isDestroyed()) {
     return
   }
+
   const { webContents } = mainWindow
 
   if (!webContents || webContents.isDestroyed()) {
     return
   }
-  webContents.send('hermes:backend-exit', payload)
+
+  webContents.send('kopi:backend-exit', payload)
 }
 
 function sendClosePreviewRequested() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return
   }
+
   const { webContents } = mainWindow
 
   if (!webContents || webContents.isDestroyed()) {
     return
   }
-  webContents.send('hermes:close-preview-requested')
+
+  webContents.send('kopi:close-preview-requested')
 }
 
 // Tell the renderer the machine just woke. Sleep silently drops the
 // renderer's WebSocket to the local backend; the renderer reconnects on this
-// signal so the chat composer doesn't stay stuck on "Starting Hermes...".
+// signal so the chat composer doesn't stay stuck on "Starting Kopi...".
 function sendPowerResume() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return
   }
+
   const { webContents } = mainWindow
 
   if (!webContents || webContents.isDestroyed()) {
     return
   }
-  webContents.send('hermes:power-resume')
+
+  webContents.send('kopi:power-resume')
 }
 
 let powerResumeRegistered = false
@@ -4534,6 +4487,7 @@ function registerPowerResumeListeners() {
   if (powerResumeRegistered) {
     return
   }
+
   powerResumeRegistered = true
 
   try {
@@ -4555,16 +4509,19 @@ function sendOpenUpdatesRequested() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return
   }
+
   const { webContents } = mainWindow
 
   if (!webContents || webContents.isDestroyed()) {
     return
   }
-  webContents.send('hermes:open-updates')
+
+  webContents.send('kopi:open-updates')
 
   if (!mainWindow.isVisible()) {
     mainWindow.show()
   }
+
   mainWindow.focus()
 }
 
@@ -4572,18 +4529,20 @@ function sendWindowStateChanged(nextIsFullscreen?: boolean) {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return
   }
+
   const { webContents } = mainWindow
 
   if (!webContents || webContents.isDestroyed()) {
     return
   }
+
   const state = getWindowState()
 
   if (typeof nextIsFullscreen === 'boolean') {
     state.isFullscreen = nextIsFullscreen
   }
 
-  webContents.send('hermes:window-state-changed', state)
+  webContents.send('kopi:window-state-changed', state)
 }
 
 function buildApplicationMenu() {
@@ -4721,6 +4680,7 @@ function installDevToolsShortcut(window) {
     if (!isInspectShortcut) {
       return
     }
+
     event.preventDefault()
     toggleDevTools(window)
   })
@@ -4744,17 +4704,23 @@ function installPreviewShortcut(window) {
 // survives reloads/restarts) rather than a main-process JSON file. The main
 // process owns setZoomLevel, so we mirror each change into localStorage and
 // read it back on did-finish-load to re-apply after reloads or crash recovery.
-import { clampZoomLevel, percentToZoomLevel, ZOOM_STORAGE_KEY, zoomLevelToPercent } from './zoom'
+import {
+  applyZoomLevel,
+  installZoomReassertOnWindowEvents,
+  percentToZoomLevel,
+  ZOOM_STORAGE_KEY,
+  zoomLevelToPercent,
+  zoomWiringForWindowKind
+} from './zoom'
 
 function setAndPersistZoomLevel(window, zoomLevel) {
   if (!window || window.isDestroyed()) {
     return
   }
-  const next = clampZoomLevel(zoomLevel)
-  window.webContents.setZoomLevel(next)
-  // Keep any open settings UI in sync, including changes made via the
-  // keyboard shortcuts or the View menu.
-  window.webContents.send('hermes:zoom:changed', { level: next, percent: zoomLevelToPercent(next) })
+
+  // Apply + notify in one funnel so the settings UI stays in sync, including
+  // changes made via the keyboard shortcuts or the View menu.
+  const next = applyZoomLevel(window.webContents, zoomLevel)
   window.webContents
     .executeJavaScript(
       `try { localStorage.setItem(${JSON.stringify(ZOOM_STORAGE_KEY)}, ${JSON.stringify(String(next))}) } catch {}`
@@ -4766,6 +4732,7 @@ function restorePersistedZoomLevel(window) {
   if (!window || window.isDestroyed()) {
     return
   }
+
   window.webContents
     .executeJavaScript(
       `(() => { try { return localStorage.getItem(${JSON.stringify(ZOOM_STORAGE_KEY)}) } catch { return null } })()`
@@ -4774,8 +4741,10 @@ function restorePersistedZoomLevel(window) {
       if (stored == null || !window || window.isDestroyed()) {
         return
       }
-      const level = clampZoomLevel(Number(stored))
-      window.webContents.setZoomLevel(level)
+
+      // Notify the renderer too — otherwise the Appearance UI Scale control
+      // can stay stuck at 100% even though the window zoom was restored.
+      applyZoomLevel(window.webContents, Number(stored))
     })
     .catch(error => rememberLog(`[zoom] restore failed: ${error?.message || error}`))
 }
@@ -4850,6 +4819,7 @@ function installContextMenu(window) {
       if (template.length) {
         template.push({ type: 'separator' })
       }
+
       template.push(
         {
           label: 'Open Link',
@@ -4971,8 +4941,8 @@ function installMediaPermissions() {
 // ---------------------------------------------------------------------------
 // OAuth remote-gateway auth.
 //
-// Hosted Hermes gateways gate the dashboard behind an OAuth provider (e.g.
-// Kopi Ai Agent Pte Ltd) instead of a static session token. The auth model is
+// Hosted Kopi gateways gate the dashboard behind an OAuth provider (e.g.
+// Nous Research) instead of a static session token. The auth model is
 // fundamentally different from the token path:
 //
 //   * REST is authed by HttpOnly session cookies (``kopi_session_at``),
@@ -5003,6 +4973,7 @@ function getOauthSession() {
   if (oauthSession || !app.isReady()) {
     return oauthSession
   }
+
   oauthSession = session.fromPartition(OAUTH_SESSION_PARTITION)
 
   return oauthSession
@@ -5018,6 +4989,7 @@ async function hasOauthSessionCookie(baseUrl) {
   if (!sess) {
     return false
   }
+
   const parsed = new URL(baseUrl)
 
   try {
@@ -5050,6 +5022,7 @@ async function hasLiveOauthSession(baseUrl) {
   if (!sess) {
     return false
   }
+
   const parsed = new URL(baseUrl)
 
   try {
@@ -5089,12 +5062,25 @@ async function clearOauthSession(baseUrl) {
   }
 }
 
-// Open the gateway's /login page in a visible window using the OAuth session
-// partition, and resolve once the access-token cookie appears (login done) or
-// reject if the user closes the window first. The window navigates through the
-// IDP and back to /auth/callback, which sets the session cookies on the
-// partition; we poll the cookie jar rather than try to read the HttpOnly value.
-function openOauthLoginWindow(baseUrl) {
+// Open a gateway login window in the OAuth session partition, resolving once
+// the access-token cookie appears (login done) or rejecting if the user closes
+// the window first. The window navigates through the IDP and back to
+// /auth/callback, which sets the session cookies on the partition; we poll the
+// cookie jar rather than try to read the HttpOnly value.
+//
+// `silent` selects the URL the window loads, which decides interactive-vs-silent:
+//   - silent=false (default): load ``/login`` — the public interstitial that
+//     renders the "Log in with X" provider chooser. This is the interactive
+//     remote-gateway login the settings UI drives.
+//   - silent=true: load the PROTECTED root ``/`` instead. ``/login`` is a public
+//     route, so loading it NEVER triggers the gate's auto-SSO and always shows
+//     the chooser. Loading a protected page with no session cookie makes the
+//     gate run ``_auto_sso_response``: single registered provider + a live
+//     portal session in this partition → a silent 302 through
+//     ``/auth/login`` → portal ``/oauth/authorize`` (auto-approves org members)
+//     → ``/auth/callback``, which sets the gateway cookie with NO interactive
+//     prompt. This is the per-agent cloud cascade (decisions.md Q5).
+function openOauthLoginWindow(baseUrl, { silent = false } = {}) {
   return new Promise((resolve, reject) => {
     if (!app.isReady()) {
       reject(new Error('Desktop is not ready to start an OAuth login.'))
@@ -5113,15 +5099,21 @@ function openOauthLoginWindow(baseUrl) {
     let settled = false
     let win = null
     let pollTimer = null
+    let revealTimer = null
 
     const finish = err => {
       if (settled) {
         return
       }
+
       settled = true
 
       if (pollTimer) {
         clearInterval(pollTimer)
+      }
+
+      if (revealTimer) {
+        clearTimeout(revealTimer)
       }
 
       try {
@@ -5153,8 +5145,14 @@ function openOauthLoginWindow(baseUrl) {
       win = new BrowserWindow({
         width: 520,
         height: 720,
-        title: 'Sign in to Hermes gateway',
+        title: silent ? 'Connecting to Kopi Cloud agent…' : 'Sign in to Kopi gateway',
         autoHideMenuBar: true,
+        // Silent cascade: start HIDDEN. The auto-SSO 302 chain completes in
+        // well under a second, so the window normally never needs to show. We
+        // only reveal it as a fallback if the cascade DOESN'T complete quickly
+        // (e.g. the portal session lapsed and the gate fell through to the
+        // interactive chooser) — see the reveal timer below.
+        show: !silent,
         webPreferences: {
           contextIsolation: true,
           nodeIntegration: false,
@@ -5177,6 +5175,23 @@ function openOauthLoginWindow(baseUrl) {
     win.webContents.on('did-frame-navigate', () => void checkCookie())
     pollTimer = setInterval(() => void checkCookie(), 750)
 
+    // Silent-mode reveal fallback: if the cascade hasn't settled shortly, the
+    // auto-SSO didn't go through silently (no portal session, multi-provider,
+    // loop-guard tripped, etc.) and the window is now showing an interactive
+    // page. Reveal it so the user can complete sign-in manually rather than
+    // staring at nothing. Cleared on finish().
+    if (silent && win) {
+      revealTimer = setTimeout(() => {
+        try {
+          if (!settled && win && !win.isDestroyed() && !win.isVisible()) {
+            win.show()
+          }
+        } catch {
+          // window torn down
+        }
+      }, 2500)
+    }
+
     win.on('closed', () => {
       if (!settled) {
         finish(new Error('Login window closed before authentication completed.'))
@@ -5186,7 +5201,11 @@ function openOauthLoginWindow(baseUrl) {
     // ``next`` is intentionally omitted: the gateway lands on ``/`` after
     // login, which is a valid authenticated page that sets the cookies. We
     // only care that the cookie jar is populated.
-    const loginUrl = `${normalizeRemoteBaseUrl(baseUrl)}/login`
+    //
+    // silent=true loads the protected root so the gate auto-SSOs (no chooser);
+    // silent=false loads the public ``/login`` chooser for interactive sign-in.
+    const normalizedBase = normalizeRemoteBaseUrl(baseUrl)
+    const loginUrl = silent ? `${normalizedBase}/` : `${normalizedBase}/login`
     win.loadURL(loginUrl).catch(error => {
       finish(error instanceof Error ? error : new Error(String(error)))
     })
@@ -5217,7 +5236,7 @@ function fetchJsonViaOauthSession(url, options: any = {}) {
     }
 
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      reject(new Error(`Unsupported Hermes backend URL protocol: ${parsed.protocol}`))
+      reject(new Error(`Unsupported Kopi backend URL protocol: ${parsed.protocol}`))
 
       return
     }
@@ -5246,7 +5265,7 @@ function fetchJsonViaOauthSession(url, options: any = {}) {
         // already finished
       }
 
-      reject(new Error(`Timed out connecting to Hermes backend after ${timeoutMs}ms`))
+      reject(new Error(`Timed out connecting to Kopi backend after ${timeoutMs}ms`))
     }, timeoutMs)
 
     request.on('response', res => {
@@ -5256,6 +5275,7 @@ function fetchJsonViaOauthSession(url, options: any = {}) {
         if (timedOut) {
           return
         }
+
         clearTimeout(timer)
         const text = Buffer.concat(chunks).toString('utf8')
         const statusCode = res.statusCode || 500
@@ -5294,6 +5314,7 @@ function fetchJsonViaOauthSession(url, options: any = {}) {
       if (timedOut) {
         return
       }
+
       clearTimeout(timer)
       reject(error)
     })
@@ -5301,6 +5322,7 @@ function fetchJsonViaOauthSession(url, options: any = {}) {
     if (body) {
       request.write(body)
     }
+
     request.end()
   })
 }
@@ -5348,6 +5370,310 @@ async function freshGatewayWsUrl(profile) {
   return connection.wsUrl
 }
 
+// --- Kopi Cloud discovery + silent per-agent sign-in (cloud-auto-discovery
+// Phase 3) ---------------------------------------------------------------
+//
+// The "cloud" connection mode lets a user sign in to the Nous portal ONCE in
+// the OAuth session partition, then (a) discover their hosted agents and (b)
+// connect to any of them with no second interactive sign-in. Both ride the one
+// portal session cookie living in `persist:kopi-remote-oauth`:
+//   - discovery  → GET {portal}/api/agents over the partition-bound net; the
+//     portal session cookie authenticates it (NAS Phase 2.5 accepts the cookie).
+//   - cascade    → opening an agent's own /login in the same partition hits the
+//     portal's silent auto-approve (org member, existing session) and 302s back
+//     with that agent's session cookie — no prompt. Each agent still completes
+//     its own PKCE exchange; SSO removes the human click, not a security check.
+
+// Canonical Nous portal base URL, overridable for staging/dev. Mirrors the CLI
+// convention (kopi_cli/auth.py DEFAULT_NOUS_PORTAL_URL + the same env names)
+// so a single override flips every Kopi surface to the same portal.
+const DEFAULT_NOUS_PORTAL_URL = 'https://portal.nousresearch.com'
+
+function resolvePortalBaseUrl() {
+  const raw = process.env.KOPI_PORTAL_BASE_URL || process.env.NOUS_PORTAL_BASE_URL || DEFAULT_NOUS_PORTAL_URL
+
+  return String(raw).trim().replace(/\/+$/, '')
+}
+
+// Whether the OAuth partition currently holds a live Nous portal session — the
+// credential that powers both discovery and the silent cascade. The portal
+// authenticates via PRIVY, not the Kopi gateway session cookies, so this
+// checks for the `privy-token` cookie on the portal host (NOT
+// hasLiveOauthSession, which looks for kopi_session_at/rt that the portal
+// never sets). See connection-config.ts cookiesHavePrivySession.
+async function hasLivePortalSession() {
+  const sess = getOauthSession()
+
+  if (!sess) {
+    return false
+  }
+
+  const portalBaseUrl = resolvePortalBaseUrl()
+  const parsed = new URL(portalBaseUrl)
+
+  try {
+    const cookies = await sess.cookies.get({ url: portalBaseUrl })
+
+    return cookiesHavePrivySession(cookies)
+  } catch {
+    try {
+      const cookies = await sess.cookies.get({ domain: parsed.hostname })
+
+      return cookiesHavePrivySession(cookies)
+    } catch {
+      return false
+    }
+  }
+}
+
+// Drive a one-time interactive portal sign-in in the OAuth partition. Unlike
+// openOauthLoginWindow (which targets a gateway's /login), this lands on the
+// portal itself so the resulting session cookie is portal-scoped — the cookie
+// that authenticates discovery AND is reused for every silent per-agent
+// cascade. Resolves once the portal session cookie appears.
+function openPortalLoginWindow() {
+  const portalBaseUrl = resolvePortalBaseUrl()
+
+  return new Promise((resolve, reject) => {
+    if (!app.isReady()) {
+      reject(new Error('Desktop is not ready to start a Kopi Cloud sign-in.'))
+
+      return
+    }
+
+    const sess = getOauthSession()
+
+    if (!sess) {
+      reject(new Error('OAuth session partition is unavailable.'))
+
+      return
+    }
+
+    let settled = false
+    let win = null
+    let pollTimer = null
+
+    const finish = err => {
+      if (settled) {
+        return
+      }
+      settled = true
+
+      if (pollTimer) {
+        clearInterval(pollTimer)
+      }
+
+      try {
+        if (win && !win.isDestroyed()) {
+          win.destroy()
+        }
+      } catch {
+        // window already torn down
+      }
+
+      if (err) {
+        reject(err)
+      } else {
+        resolve({ portalBaseUrl, ok: true })
+      }
+    }
+
+    const checkCookie = async () => {
+      if (settled) {
+        return
+      }
+
+      // A live portal (Privy) session cookie means sign-in completed.
+      if (await hasLivePortalSession()) {
+        finish(null)
+      }
+    }
+
+    try {
+      win = new BrowserWindow({
+        width: 520,
+        height: 720,
+        title: 'Sign in to Kopi Cloud',
+        autoHideMenuBar: true,
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true,
+          session: sess,
+          webSecurity: true
+        }
+      })
+    } catch (error) {
+      finish(error instanceof Error ? error : new Error(String(error)))
+
+      return
+    }
+
+    win.webContents.on('did-navigate', () => void checkCookie())
+    win.webContents.on('did-redirect-navigation', () => void checkCookie())
+    win.webContents.on('did-frame-navigate', () => void checkCookie())
+    pollTimer = setInterval(() => void checkCookie(), 750)
+
+    win.on('closed', () => {
+      if (!settled) {
+        finish(new Error('Sign-in window closed before authentication completed.'))
+      }
+    })
+
+    // Land on the portal root; any authenticated portal page sets the session
+    // cookie. We only care that the partition cookie jar is populated.
+    win.loadURL(portalBaseUrl).catch(error => {
+      finish(error instanceof Error ? error : new Error(String(error)))
+    })
+  })
+}
+
+// Discover the hosted (Kopi Cloud) agents the signed-in user can see. Calls
+// the NAS trimmed-summary endpoint over the partition-bound net, so the portal
+// session cookie is attached automatically (no bearer needed — NAS accepts the
+// cookie). Returns { agents } on success, or { needsOrgSelection: true, orgs }
+// when the user belongs to multiple orgs and hasn't picked one yet (NAS 409
+// org_selection_required). Pass `org` (a slug/id from a prior org list) to
+// scope discovery to that org. Throws a needsCloudLogin-tagged error when no
+// portal session is present.
+async function discoverCloudAgents(org?: string) {
+  const portalBaseUrl = resolvePortalBaseUrl()
+
+  if (!(await hasLivePortalSession())) {
+    const err = new Error(
+      'You are not signed in to Kopi Cloud. Open Settings → Gateway, choose Kopi Cloud, and sign in.'
+    ) as any
+    err.needsCloudLogin = true
+    throw err
+  }
+
+  const orgQuery = org ? `?org=${encodeURIComponent(org)}` : ''
+  let body
+
+  try {
+    body = (await fetchJsonViaOauthSession(`${portalBaseUrl}/api/agents${orgQuery}`, {
+      method: 'GET',
+      timeoutMs: 15_000
+    })) as any
+  } catch (error) {
+    // A 401 means the portal session lapsed between the liveness check and the
+    // call — surface it as a re-login, not a generic failure.
+    if (error && error.statusCode === 401) {
+      const err = new Error('Your Kopi Cloud session has expired. Open Settings → Gateway and sign in again.') as any
+      err.needsCloudLogin = true
+      err.cause = error
+      throw err
+    }
+
+    // A 409 means we're a multi-org user who hasn't picked an org. The body
+    // carries the user's org list; surface it so the renderer shows a picker
+    // and re-calls discovery with the chosen org. (fetchJsonViaOauthSession
+    // throws on >=400 with err.statusCode + err.message "409: <json body>".)
+    if (error && error.statusCode === 409) {
+      const orgs = parseOrgSelectionError(error)
+
+      if (orgs) {
+        return { needsOrgSelection: true, orgs }
+      }
+    }
+
+    throw error
+  }
+
+  return { agents: trimCloudAgents(body), org: trimCloudOrg(body?.org) }
+}
+
+// Project a NAS response org ({ id, slug, name, isPersonal }) to the trimmed
+// shape the renderer persists, or null when absent/malformed.
+function trimCloudOrg(org) {
+  if (!org || typeof org !== 'object' || typeof org.id !== 'string') {
+    return null
+  }
+
+  return {
+    id: org.id,
+    slug: typeof org.slug === 'string' ? org.slug : null,
+    name: typeof org.name === 'string' ? org.name : org.id,
+    isPersonal: Boolean(org.isPersonal),
+    role: typeof org.role === 'string' ? org.role : 'MEMBER'
+  }
+}
+
+// Extract the org list from a 409 org_selection_required error body. The error
+// message is "409: <raw json>" (see fetchJsonViaOauthSession); parse defensively
+// and return null if it isn't the shape we expect (caller then rethrows).
+function parseOrgSelectionError(error) {
+  const msg = String(error?.message || '')
+  const jsonStart = msg.indexOf('{')
+
+  if (jsonStart < 0) {
+    return null
+  }
+
+  let parsed
+
+  try {
+    parsed = JSON.parse(msg.slice(jsonStart))
+  } catch {
+    return null
+  }
+
+  if (parsed?.error !== 'org_selection_required' || !Array.isArray(parsed.orgs)) {
+    return null
+  }
+
+  return parsed.orgs
+    .filter(o => o && typeof o === 'object' && typeof o.id === 'string')
+    .map(o => ({
+      id: o.id,
+      slug: typeof o.slug === 'string' ? o.slug : null,
+      name: typeof o.name === 'string' ? o.name : o.id,
+      isPersonal: Boolean(o.isPersonal),
+      role: typeof o.role === 'string' ? o.role : 'MEMBER'
+    }))
+}
+
+// Project NAS's agent rows to the trimmed DTO the renderer consumes.
+function trimCloudAgents(body) {
+  const agents = Array.isArray(body?.agents) ? body.agents : []
+
+  return agents
+    .filter(a => a && typeof a === 'object' && typeof a.id === 'string')
+    .map(a => ({
+      id: a.id,
+      name: typeof a.name === 'string' ? a.name : a.id,
+      status: typeof a.status === 'string' ? a.status : 'unknown',
+      dashboardUrl: typeof a.dashboardUrl === 'string' ? a.dashboardUrl : null,
+      dashboardGatewayState: typeof a.dashboardGatewayState === 'string' ? a.dashboardGatewayState : 'unknown'
+    }))
+}
+
+// Silent per-agent sign-in: open the selected agent dashboard's /login in the
+// SAME OAuth partition. Because the user already holds a live portal session
+// there, the agent's /oauth/authorize auto-approves (org member) and 302s back,
+// setting that agent's gateway session cookie WITHOUT a second interactive
+// prompt. Reuses openOauthLoginWindow — the window self-closes the instant the
+// agent's session cookie lands (a silent flow finishes in well under a second;
+// if the portal session were absent it would fall through to an interactive
+// login, which the discovery gate already prevents). Returns once the agent's
+// gateway session cookie is present.
+async function cloudAgentSilentSignIn(dashboardUrl) {
+  const baseUrl = normalizeRemoteBaseUrl(dashboardUrl)
+
+  // Pre-req: a live portal session must exist, or this would surface an
+  // interactive prompt rather than a silent cascade. Discovery already gates on
+  // this, but a selection can arrive after the session lapsed.
+  if (!(await hasLivePortalSession())) {
+    const err = new Error('Your Kopi Cloud session has expired. Sign in to Kopi Cloud again.') as any
+    err.needsCloudLogin = true
+    throw err
+  }
+
+  await openOauthLoginWindow(baseUrl, { silent: true })
+
+  return { baseUrl, connected: await hasOauthSessionCookie(baseUrl) }
+}
+
 function encryptDesktopSecret(value) {
   return encryptDesktopSecretStrict(value, safeStorage)
 }
@@ -5393,9 +5719,16 @@ function sanitizeConnectionProfiles(raw: Record<string, any>) {
       continue
     }
 
-    const cleaned: { mode: 'remote' | 'local'; url?: string; authMode?: string; token?: object } = {
-      mode: entry.mode === 'remote' ? 'remote' : 'local'
+    const cleaned: {
+      mode: 'remote' | 'local' | 'cloud'
+      url?: string
+      authMode?: string
+      token?: object
+      org?: string
+    } = {
+      mode: modeIsRemoteLike(entry.mode) ? entry.mode : 'local'
     }
+
     const url = String(entry.url || '').trim()
 
     if (url) {
@@ -5406,6 +5739,16 @@ function sanitizeConnectionProfiles(raw: Record<string, any>) {
 
     if ((entry as any).token && typeof entry.token === 'object') {
       cleaned.token = entry.token
+    }
+
+    // Preserve the Kopi Cloud org tag on cloud-mode entries so Settings can
+    // reopen into the same org for a per-profile cloud connection.
+    if (cleaned.mode === 'cloud') {
+      const org = String(entry.org || '').trim()
+
+      if (org) {
+        cleaned.org = org
+      }
     }
 
     out[name] = cleaned
@@ -5443,7 +5786,7 @@ function readDesktopConnectionConfig() {
       // backward compatibility with configs written before OAuth support.
       remote.authMode = remote.authMode === 'oauth' ? 'oauth' : 'token'
       config = {
-        mode: parsed.mode === 'remote' ? 'remote' : 'local',
+        mode: modeIsRemoteLike(parsed.mode) ? parsed.mode : 'local',
         remote,
         // Per-profile remote overrides: each profile may point at its own
         // backend (local spawn or its own remote URL). Preserved verbatim so
@@ -5514,7 +5857,11 @@ async function sanitizeDesktopConnectionConfig(config = readDesktopConnectionCon
   const remoteToken = decryptDesktopSecret(block.token)
   const authMode = normAuthMode(block.authMode)
   const remoteUrl = envOverride ? String(process.env.KOPI_DESKTOP_REMOTE_URL || '') : String(block.url || '')
-  const mode = envOverride || (key ? scoped?.mode : config.mode) === 'remote' ? 'remote' : 'local'
+  // The env override forces a plain remote connection. Otherwise reflect the
+  // saved mode, preserving 'cloud' (a Kopi Cloud connection — Q6) so the UI
+  // reopens into the cloud picker; any non-remote-like value collapses to local.
+  const savedMode = key ? scoped?.mode : config.mode
+  const mode = envOverride ? 'remote' : modeIsRemoteLike(savedMode) ? savedMode : 'local'
 
   let remoteOauthConnected = false
 
@@ -5537,6 +5884,9 @@ async function sanitizeDesktopConnectionConfig(config = readDesktopConnectionCon
     remoteAuthMode: authMode,
     remoteOauthConnected,
     remoteUrl,
+    // The persisted Kopi Cloud org (slug/id) for a cloud connection, or '' for
+    // remote/local. Lets Settings → Gateway reopen into the same org.
+    cloudOrg: mode === 'cloud' ? String(block.org || '') : '',
     remoteTokenPreview: tokenPreview(remoteToken),
     remoteTokenSet: Boolean(remoteToken),
     // The env override only forces the global/primary connection; a per-profile
@@ -5548,24 +5898,55 @@ async function sanitizeDesktopConnectionConfig(config = readDesktopConnectionCon
 // Build + validate a `{ url, authMode, token }` remote block. OAuth gateways
 // authenticate via the login-window session cookie (verified at connect time in
 // resolveRemoteBackend), so only token-auth remotes require a saved token.
-function buildRemoteBlock(remoteUrl, authMode, token) {
+// `org` (optional) is the Kopi Cloud org slug/id the instance was discovered
+// under — persisted so Settings can reopen into the same org; omitted from the
+// block when empty so plain remote connections stay unchanged.
+function buildRemoteBlock(remoteUrl, authMode, token, org?: string) {
   if (authMode !== 'oauth' && !decryptDesktopSecret(token)) {
     throw new Error('Remote gateway session token is required.')
   }
 
-  return { url: normalizeRemoteBaseUrl(remoteUrl), authMode, token }
+  const block: { url: string; authMode: string; token: object; org?: string } = {
+    url: normalizeRemoteBaseUrl(remoteUrl),
+    authMode,
+    token
+  }
+  const orgValue = typeof org === 'string' ? org.trim() : ''
+
+  if (orgValue) {
+    block.org = orgValue
+  }
+
+  return block
 }
 
 function coerceDesktopConnectionConfig(input: any = {}, existing = readDesktopConnectionConfig(), options: any = {}) {
   const persistToken = options.persistToken !== false
   const key = connectionScopeKey(input.profile)
-  const mode = input.mode === 'remote' ? 'remote' : 'local'
+  // 'cloud' and 'remote' both persist a remote-shaped block; 'cloud' is
+  // remembered as its own provenance (Q6) and resolves to remote downstream.
+  // Anything else collapses to local.
+  const mode = modeIsRemoteLike(input.mode) ? input.mode : 'local'
+  const remoteLike = modeIsRemoteLike(mode)
 
   // The block being edited: a per-profile entry or the global remote block.
-  const existingBlock = key ? existing.profiles?.[key] || {} : existing.remote || {}
+  const rawExistingBlock = key ? existing.profiles?.[key] || {} : existing.remote || {}
+  // Leaving a CLOUD connection unselects it: a cloud block's url/org/token
+  // describe a discovered Kopi Cloud instance, NOT a user-owned remote gateway,
+  // so switching to local or remote must NOT inherit them (otherwise the stale
+  // cloud URL lingers and re-selecting Cloud looks "already connected"). When the
+  // saved block was cloud and the new mode is not cloud, start from an empty
+  // block. (remote↔local toggles still preserve a real remote URL as before.)
+  const existingMode = key ? existing.profiles?.[key]?.mode : existing.mode
+  const leavingCloud = existingMode === 'cloud' && mode !== 'cloud'
+  const existingBlock = leavingCloud ? {} : rawExistingBlock
   const remoteUrl = String(input.remoteUrl ?? existingBlock.url ?? '').trim()
   // authMode: explicit input wins; otherwise inherit the saved value, default 'token'.
   const authMode = resolveAuthMode(input.remoteAuthMode, existingBlock.authMode)
+  // Cloud org: only meaningful for 'cloud' mode. Explicit input wins; otherwise
+  // inherit the saved org. A plain 'remote' connection never carries an org
+  // (switching cloud→remote drops it), so it stays unset unless mode is cloud.
+  const cloudOrg = mode === 'cloud' ? String(input.cloudOrg ?? existingBlock.org ?? '').trim() : ''
   const incomingToken = typeof input.remoteToken === 'string' ? input.remoteToken.trim() : ''
 
   const nextToken = incomingToken
@@ -5575,23 +5956,27 @@ function coerceDesktopConnectionConfig(input: any = {}, existing = readDesktopCo
     : existingBlock.token
 
   if (key) {
-    // Per-profile scope: a remote entry pins this profile to its own backend; a
-    // local entry clears the override so the profile inherits the default.
+    // Per-profile scope: a remote/cloud entry pins this profile to its own
+    // backend; a local entry clears the override so the profile inherits the
+    // default. The mode tag (remote vs cloud) is preserved on the entry.
     const profiles = { ...(existing.profiles || {}) }
 
-    if (mode === 'remote') {
-      profiles[key] = { mode: 'remote', ...buildRemoteBlock(remoteUrl, authMode, nextToken) }
+    if (remoteLike) {
+      profiles[key] = { mode, ...buildRemoteBlock(remoteUrl, authMode, nextToken, cloudOrg) }
     } else {
       delete profiles[key]
     }
 
-    return { mode: existing.mode === 'remote' ? 'remote' : 'local', remote: existing.remote || {}, profiles }
+    return {
+      mode: modeIsRemoteLike(existing.mode) ? existing.mode : 'local',
+      remote: existing.remote || {},
+      profiles
+    }
   }
 
-  const nextRemote =
-    mode === 'remote'
-      ? buildRemoteBlock(remoteUrl, authMode, nextToken)
-      : { url: remoteUrl ? normalizeRemoteBaseUrl(remoteUrl) : remoteUrl, authMode, token: nextToken }
+  const nextRemote = remoteLike
+    ? buildRemoteBlock(remoteUrl, authMode, nextToken, cloudOrg)
+    : { url: remoteUrl ? normalizeRemoteBaseUrl(remoteUrl) : remoteUrl, authMode, token: nextToken }
 
   // Preserve per-profile overrides when saving the global connection.
   return { mode, remote: nextRemote, profiles: existing.profiles || {} }
@@ -5616,7 +6001,7 @@ async function buildRemoteConnection(rawUrl, authMode, token, source) {
     // the authoritative liveness check.
     if (!(await hasLiveOauthSession(baseUrl))) {
       const err = new Error(
-        'Remote Hermes gateway uses OAuth, but you are not signed in. ' +
+        'Remote Kopi gateway uses OAuth, but you are not signed in. ' +
           'Open Settings → Gateway and click "Sign in", or switch back to Local.'
       ) as any
 
@@ -5651,7 +6036,7 @@ async function buildRemoteConnection(rawUrl, authMode, token, source) {
 
   if (!token) {
     throw new Error(
-      'Remote Hermes gateway is selected, but no session token is saved. ' +
+      'Remote Kopi gateway is selected, but no session token is saved. ' +
         'Open Settings → Gateway and save a token, or switch back to Local.'
     )
   }
@@ -5695,15 +6080,15 @@ async function resolveRemoteBackend(profile) {
     if (!rawEnvToken) {
       throw new Error(
         'KOPI_DESKTOP_REMOTE_URL is set but KOPI_DESKTOP_REMOTE_TOKEN is not. ' +
-          'Both must be provided to connect to a remote Hermes backend.'
+          'Both must be provided to connect to a remote Kopi backend.'
       )
     }
 
     return buildRemoteConnection(rawEnvUrl, 'token', rawEnvToken, 'env')
   }
 
-  // 3. Global remote.
-  if (config.mode !== 'remote') {
+  // 3. Global remote (or cloud — cloud resolves to a remote backend, Q6).
+  if (!modeIsRemoteLike(config.mode)) {
     return null
   }
 
@@ -5728,14 +6113,15 @@ function configuredRemoteProfileNames() {
 }
 
 // True when the app is in app-global remote mode (Settings → "All profiles" →
-// Remote, or the env override): a SINGLE remote backend serves every profile via
-// ?profile=. Distinct from per-profile overrides — here there's one host for all.
+// Remote/Cloud, or the env override): a SINGLE remote backend serves every
+// profile via ?profile=. Cloud counts — it resolves to a remote backend (Q6).
+// Distinct from per-profile overrides — here there's one host for all.
 function globalRemoteActive() {
   if (process.env.KOPI_DESKTOP_REMOTE_URL) {
     return true
   }
 
-  return readDesktopConnectionConfig().mode === 'remote'
+  return modeIsRemoteLike(readDesktopConnectionConfig().mode)
 }
 
 // GET a profile's resolved backend (remote pool or local primary), parsed JSON.
@@ -5744,7 +6130,7 @@ async function fetchJsonForProfile(profile, path) {
 }
 
 // Issue an arbitrary method against a profile's resolved backend, parsed JSON.
-async function requestJsonForProfile(profile: string, path: string, method: Method, body?: string) {
+async function requestJsonForProfile(profile: string, path: string, method: string, body?: string) {
   const conn = await ensureBackend(profile)
   const url = `${conn.baseUrl}${path}`
   const opts = { method, body, timeoutMs: DEFAULT_FETCH_TIMEOUT_MS }
@@ -5754,7 +6140,7 @@ async function requestJsonForProfile(profile: string, path: string, method: Meth
 
 async function probeRemoteAuthMode(rawUrl) {
   // Determine how a remote gateway expects callers to authenticate, WITHOUT
-  // sending any credentials. ``/api/status`` is public on every Hermes
+  // sending any credentials. ``/api/status`` is public on every Kopi
   // gateway (it backs the portal liveness probe) and reports:
   //   auth_required: true  → OAuth gate is engaged (cookie + ws-ticket auth)
   //   auth_required: false → loopback/--insecure: legacy session-token auth
@@ -5787,7 +6173,7 @@ async function probeRemoteAuthMode(rawUrl) {
 
   if (authRequired) {
     // Best-effort: a gated gateway exposes the registered providers so the
-    // button can read "Sign in with Kopi Ai Agent Pte Ltd" instead of a generic
+    // button can read "Sign in with Nous Research" instead of a generic
     // label, and so a username/password provider can be distinguished from
     // an OAuth-redirect one (``supports_password``). A failure here doesn't
     // change the auth mode, so swallow it.
@@ -5827,7 +6213,7 @@ async function testDesktopConnectionConfig(input: any = {}) {
   const block = key ? config.profiles?.[key] || null : config.remote
 
   const wantRemote =
-    block?.mode === 'remote' || (!key && config.mode === 'remote') || (input.mode === 'remote' && block)
+    modeIsRemoteLike(block?.mode) || (!key && modeIsRemoteLike(config.mode)) || (modeIsRemoteLike(input.mode) && block)
 
   // ``/api/status`` is public on every gateway (no creds needed), so a
   // reachability test works for local, token, and oauth modes alike — we only
@@ -5845,7 +6231,7 @@ async function testDesktopConnectionConfig(input: any = {}) {
       token = decryptDesktopSecret(block.token)
     }
   } else {
-    const remote = (await resolveRemoteBackend(key)) || (await startHermes())
+    const remote = (await resolveRemoteBackend(key)) || (await startKopi())
     baseUrl = remote.baseUrl
     token = remote.token
     authMode = normAuthMode(remote.authMode)
@@ -5858,7 +6244,7 @@ async function testDesktopConnectionConfig(input: any = {}) {
   // connects — a separate transport with separate server-side guards (Host/
   // Origin, ws-ticket/token auth). Validating only the HTTP side produced a
   // false-positive "reachable" while the real boot still failed with "Could not
-  // connect to Hermes gateway". Mirror the renderer's connect here so the test
+  // connect to Kopi gateway". Mirror the renderer's connect here so the test
   // reflects the full path the app actually uses.
   const wsUrl = await resolveTestWsUrl(baseUrl, authMode, token, { mintTicket: mintGatewayWsTicket })
 
@@ -5897,41 +6283,60 @@ function resetBootProgressForReconnect() {
 }
 
 function stopBackendChild(child) {
-  if (!child || child.killed) {
-    return
-  }
-
-  try {
-    if (IS_WINDOWS && Number.isInteger(child.pid)) {
-      forceKillProcessTree(child.pid)
-    } else {
-      child.kill('SIGTERM')
-    }
-  } catch {
-    // Already gone.
-  }
+  stopBackendChildImpl(child, { forceKillProcessTree, isWindows: IS_WINDOWS })
 }
 
-function resetHermesConnection() {
+// Soft gateway-mode apply: tear down the primary without resetting boot UI or
+// reloading the renderer. The shell stays up; the renderer wipes session lists
+// (so skeletons retrigger) and re-dials. Distinct from hard re-home (profile
+// switch / crash recovery), which still resets boot progress + reloads.
+function resetKopiConnection({ soft = false } = {}) {
   connectionPromise = null
   backendStartFailure = null
 
-  stopBackendChild(hermesProcess)
+  stopBackendChild(kopiProcess)
 
-  hermesProcess = null
-  resetBootProgressForReconnect()
+  kopiProcess = null
+
+  if (!soft) {
+    resetBootProgressForReconnect()
+  }
 }
 
 // Re-home the primary backend: reset connection state, then wait for the live
 // dashboard process to actually exit (SIGKILL after 5s) so the next
-// startHermes() spawns fresh instead of racing the dying one. Shared by the
+// startKopi() spawns fresh instead of racing the dying one. Shared by the
 // connection-config and profile switch flows.
-async function teardownPrimaryBackendAndWait() {
-  // Capture the reference before resetHermesConnection() nulls hermesProcess.
-  const dying = hermesProcess && !hermesProcess.killed ? hermesProcess : null
-  resetHermesConnection()
+async function teardownPrimaryBackendAndWait({ soft = false } = {}) {
+  // Capture the reference before resetKopiConnection() nulls kopiProcess.
+  const dying = kopiProcess && !kopiProcess.killed ? kopiProcess : null
 
-  await waitForBackendExit(dying)
+  if (soft) {
+    softRehomeInProgress = true
+  }
+
+  try {
+    resetKopiConnection({ soft })
+    await waitForBackendExit(dying)
+  } finally {
+    if (soft) {
+      softRehomeInProgress = false
+    }
+  }
+}
+
+function sendConnectionApplied() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return
+  }
+
+  const { webContents } = mainWindow
+
+  if (!webContents || webContents.isDestroyed()) {
+    return
+  }
+
+  webContents.send('kopi:connection:applied')
 }
 
 async function waitForBackendExit(child, timeoutMs = 5000) {
@@ -5973,14 +6378,14 @@ function primaryProfileKey() {
 }
 
 // Resolve a backend connection for the given profile. Routes the primary
-// profile to startHermes() (the window backend: boot UI, bootstrap, remote
+// profile to startKopi() (the window backend: boot UI, bootstrap, remote
 // mode), and any OTHER profile to a lazily-spawned pool backend. An empty /
 // unknown profile resolves to the primary, so all legacy callers are unchanged.
 async function ensureBackend(profile) {
   const key = profile && String(profile).trim() ? String(profile).trim() : primaryProfileKey()
 
   if (key === primaryProfileKey()) {
-    return startHermes()
+    return startKopi()
   }
 
   const existing = backendPool.get(key)
@@ -6013,6 +6418,7 @@ function touchPoolBackend(profile) {
   if (!key) {
     return
   }
+
   const entry = backendPool.get(key)
 
   if (entry) {
@@ -6028,6 +6434,7 @@ function evictLruPoolBackends(keep) {
   if (backendPool.size <= keep) {
     return
   }
+
   const now = Date.now()
 
   const evictable = [...backendPool.entries()]
@@ -6040,6 +6447,7 @@ function evictLruPoolBackends(keep) {
     if (removable <= 0) {
       break
     }
+
     rememberLog(`Evicting idle profile backend "${profile}" (LRU cap ${POOL_MAX_BACKENDS})`)
     stopPoolBackend(profile)
     removable -= 1
@@ -6050,6 +6458,7 @@ function startPoolIdleReaper() {
   if (poolIdleReaper) {
     return
   }
+
   poolIdleReaper = setInterval(() => {
     const now = Date.now()
 
@@ -6072,7 +6481,7 @@ function startPoolIdleReaper() {
 }
 
 // Spawn an additional dashboard backend pinned to a named profile. Mirrors the
-// local-spawn portion of startHermes() but without the boot-progress UI,
+// local-spawn portion of startKopi() but without the boot-progress UI,
 // bootstrap, or remote handling (those belong to the primary backend only).
 async function spawnPoolBackend(profile, entry) {
   // A profile may point at its OWN remote backend (connection.json
@@ -6084,12 +6493,12 @@ async function spawnPoolBackend(profile, entry) {
   const remote = await resolveRemoteBackend(profile)
 
   if (remote) {
-    await waitForHermes(remote.baseUrl, remote.token)
+    await waitForKopi(remote.baseUrl, remote.token)
 
     return {
       ...remote,
       profile,
-      logs: hermesLog.slice(-80),
+      logs: kopiLog.slice(-80),
       ...getWindowState()
     }
   }
@@ -6099,20 +6508,20 @@ async function spawnPoolBackend(profile, entry) {
   // step 3 in kopi_cli/main.py), so the child re-homes to this profile.
   // --port 0: the OS assigns an ephemeral port; the child announces it on stdout.
   const backendArgs = ['--profile', profile, 'serve', '--host', '127.0.0.1', '--port', '0']
-  const backend = await ensureRuntime(resolveHermesBackend(backendArgs))
+  const backend = await ensureRuntime(resolveKopiBackend(backendArgs))
   // Route old runtimes (no `serve`) through the legacy `dashboard --no-open`.
   backend.args = getBackendArgsForRuntime(backend)
-  const hermesCwd = resolveHermesCwd()
+  const kopiCwd = resolveKopiCwd()
   const webDist = resolveWebDist()
   const readyFile = backend.readyFile ? makeDashboardReadyFile() : null
 
-  rememberLog(`Starting Hermes backend for profile "${profile}" via ${backend.label}`)
+  rememberLog(`Starting Kopi backend for profile "${profile}" via ${backend.label}`)
 
   const child = spawn(
     backend.command,
     backend.args,
     hiddenWindowsChildOptions({
-      cwd: hermesCwd,
+      cwd: kopiCwd,
       env: {
         ...process.env,
         KOPI_HOME,
@@ -6120,7 +6529,7 @@ async function spawnPoolBackend(profile, entry) {
         // Pin the gateway's tool/terminal cwd to the same directory we chose for
         // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
         // can still point at the install dir even when spawn cwd is home.
-        TERMINAL_CWD: hermesCwd,
+        TERMINAL_CWD: kopiCwd,
         KOPI_DASHBOARD_SESSION_TOKEN: token,
         // Marks this dashboard backend as desktop-spawned so it runs the cron
         // scheduler tick loop (the gateway isn't running under the app).
@@ -6147,17 +6556,17 @@ async function spawnPoolBackend(profile, entry) {
   })
 
   child.once('error', error => {
-    rememberLog(`Hermes backend for profile "${profile}" failed to start: ${error.message}`)
+    rememberLog(`Kopi backend for profile "${profile}" failed to start: ${error.message}`)
     backendPool.delete(profile)
     rejectStart?.(error)
   })
   child.once('exit', (code, signal) => {
-    rememberLog(`Hermes backend for profile "${profile}" exited (${signal || code})`)
+    rememberLog(`Kopi backend for profile "${profile}" exited (${signal || code})`)
     backendPool.delete(profile)
 
     if (!ready) {
       rejectStart?.(
-        new Error(`Hermes backend for profile "${profile}" exited before it became ready (${signal || code}).`)
+        new Error(`Kopi backend for profile "${profile}" exited before it became ready (${signal || code}).`)
       )
     }
   })
@@ -6172,12 +6581,12 @@ async function spawnPoolBackend(profile, entry) {
   entry.port = port
 
   const baseUrl = `http://127.0.0.1:${port}`
-  await Promise.race([waitForHermes(baseUrl, token), startFailed])
+  await Promise.race([waitForKopi(baseUrl, token), startFailed])
   ready = true
 
   const authToken = await adoptServedDashboardToken(baseUrl, token, {
     childAlive: () => child.exitCode === null && !child.killed,
-    label: `Hermes backend for profile "${profile}"`,
+    label: `Kopi backend for profile "${profile}"`,
     rememberLog
   })
 
@@ -6191,7 +6600,7 @@ async function spawnPoolBackend(profile, entry) {
     token: authToken,
     profile,
     wsUrl: `ws://127.0.0.1:${port}/api/ws?token=${encodeURIComponent(authToken)}`,
-    logs: hermesLog.slice(-80),
+    logs: kopiLog.slice(-80),
     ...getWindowState()
   }
 }
@@ -6202,6 +6611,7 @@ function stopPoolBackend(profile) {
   if (!entry) {
     return
   }
+
   backendPool.delete(profile)
   stopBackendChild(entry.process)
 }
@@ -6212,6 +6622,7 @@ async function teardownPoolBackendAndWait(profile) {
   if (!entry) {
     return
   }
+
   backendPool.delete(profile)
 
   stopBackendChild(entry.process)
@@ -6225,64 +6636,43 @@ function stopAllPoolBackends() {
   }
 }
 
-function profileNameFromDeleteRequest(request) {
-  if (!request || String(request.method || 'GET').toUpperCase() !== 'DELETE') {
-    return null
-  }
-
-  const match = String(request.path || '').match(/^\/api\/profiles\/([^/?#]+)(?:[?#].*)?$/)
-
-  if (!match) {
-    return null
-  }
-
-  let raw = ''
-
-  try {
-    raw = decodeURIComponent(match[1])
-  } catch {
-    return null
-  }
-
-  const name = raw.trim()
-
-  if (!name) {
-    return null
-  }
-
-  if (name.toLowerCase() === 'default') {
-    return 'default'
-  }
-
-  return name.toLowerCase()
-}
-
 // Returns the profile name whose backend was torn down, or null when the
 // request is not a profile-delete.  The caller uses this to skip ensureBackend
 // for the just-torn-down profile — otherwise ensureBackend respawns a pool
 // backend whose ensure_kopi_home() recreates the deleted profile directory.
+//
+// The routing *decision* (which branch fires, what profile name gets
+// returned) lives in the pure decideProfileDeleteAction() in
+// profile-delete-routing.ts; this function only performs the side effects
+// that decision calls for.
 async function prepareProfileDeleteRequest(request) {
   const profile = profileNameFromDeleteRequest(request)
 
-  if (!profile || profile === 'default' || !PROFILE_NAME_RE.test(profile)) {
+  const decision = decideProfileDeleteAction(profile, {
+    isDefaultProfile: p => p === 'default',
+    isValidProfileName: p => PROFILE_NAME_RE.test(p),
+    primaryProfileKey
+  })
+
+  if (decision.action === 'noop') {
     return null
   }
 
-  if (profile === primaryProfileKey()) {
+  if (decision.action === 'teardown-primary') {
     writeActiveDesktopProfile('default')
     await teardownPrimaryBackendAndWait()
 
-    return profile
+    return decision.profile
   }
 
-  await teardownPoolBackendAndWait(profile)
+  await teardownPoolBackendAndWait(decision.profile)
 
-  return profile
+  return decision.profile
 }
 
-async function startHermes() {
+async function startKopi() {
   // Latched-failure short-circuit: once bootstrap has failed in this
-  // process, every subsequent startHermes() call re-throws the same error
+  // process, every subsequent startKopi() call re-throws the same error
   // without re-running install.ps1. This prevents the renderer's
   // ensureGatewayOpen retries (and any other getConnection callers) from
   // restarting a 5-10 minute install loop while the user is still reading
@@ -6300,17 +6690,17 @@ async function startHermes() {
   }
 
   connectionPromise = (async () => {
-    await advanceBootProgress('backend.resolve', 'Resolving Hermes backend', 8)
+    await advanceBootProgress('backend.resolve', 'Resolving Kopi backend', 8)
     // Resolve for the desktop's primary profile so a per-profile remote
     // override on the active profile is honored (falls back to env / global).
     const remote = await resolveRemoteBackend(primaryProfileKey())
 
     if (remote) {
-      await advanceBootProgress('backend.remote', `Connecting to remote Hermes backend at ${remote.baseUrl}`, 24)
-      await waitForHermes(remote.baseUrl, remote.token)
+      await advanceBootProgress('backend.remote', `Connecting to remote Kopi backend at ${remote.baseUrl}`, 24)
+      await waitForKopi(remote.baseUrl, remote.token)
       updateBootProgress({
         phase: 'backend.ready',
-        message: 'Remote Hermes backend is ready',
+        message: 'Remote Kopi backend is ready',
         progress: 94,
         running: true,
         error: null
@@ -6323,7 +6713,7 @@ async function startHermes() {
         authMode: remote.authMode || 'token',
         token: remote.token,
         wsUrl: remote.wsUrl,
-        logs: hermesLog.slice(-80),
+        logs: kopiLog.slice(-80),
         ...getWindowState()
       }
     }
@@ -6350,26 +6740,26 @@ async function startHermes() {
       backendArgs.unshift('--profile', activeProfile)
     }
 
-    await advanceBootProgress('backend.runtime', 'Resolving Hermes runtime', 28)
-    const backend = await ensureRuntime(resolveHermesBackend(backendArgs))
+    await advanceBootProgress('backend.runtime', 'Resolving Kopi runtime', 28)
+    const backend = await ensureRuntime(resolveKopiBackend(backendArgs))
     // Route old runtimes (no `serve`) through the legacy `dashboard --no-open`.
     backend.args = getBackendArgsForRuntime(backend)
-    const hermesCwd = resolveHermesCwd()
+    const kopiCwd = resolveKopiCwd()
     const webDist = resolveWebDist()
     const readyFile = backend.readyFile ? makeDashboardReadyFile() : null
 
-    await advanceBootProgress('backend.spawn', `Starting Hermes backend via ${backend.label}`, 84)
-    rememberLog(`Starting Hermes backend via ${backend.label}`)
+    await advanceBootProgress('backend.spawn', `Starting Kopi backend via ${backend.label}`, 84)
+    rememberLog(`Starting Kopi backend via ${backend.label}`)
 
-    hermesProcess = spawn(
+    kopiProcess = spawn(
       backend.command,
       backend.args,
       hiddenWindowsChildOptions({
-        cwd: hermesCwd,
+        cwd: kopiCwd,
         env: {
           ...process.env,
           // Explicitly pin KOPI_HOME for the child so Python's get_kopi_home()
-          // resolves to the SAME location our resolveHermesHome() picked. Without
+          // resolves to the SAME location our resolveKopiHome() picked. Without
           // this pin, Python falls back to ~/.kopi on every platform — fine on
           // mac/linux (where our default matches), but on Windows our default is
           // %LOCALAPPDATA%\kopi, which differs from C:\Users\<u>\.kopi.
@@ -6378,7 +6768,7 @@ async function startHermes() {
           // can't reliably do that, so we set it inline for every spawn.
           KOPI_HOME,
           ...backend.env,
-          TERMINAL_CWD: hermesCwd,
+          TERMINAL_CWD: kopiCwd,
           KOPI_DASHBOARD_SESSION_TOKEN: token,
           // Marks this dashboard backend as desktop-spawned so it runs the cron
           // scheduler tick loop (the gateway isn't running under the app).
@@ -6391,8 +6781,8 @@ async function startHermes() {
       })
     )
 
-    hermesProcess.stdout.on('data', rememberLog)
-    hermesProcess.stderr.on('data', rememberLog)
+    kopiProcess.stdout.on('data', rememberLog)
+    kopiProcess.stderr.on('data', rememberLog)
     let backendReady = false
     let rejectBackendStart = null
 
@@ -6400,30 +6790,30 @@ async function startHermes() {
       rejectBackendStart = reject
     })
 
-    hermesProcess.once('error', error => {
-      rememberLog(`Hermes backend failed to start: ${error.message}`)
+    kopiProcess.once('error', error => {
+      rememberLog(`Kopi backend failed to start: ${error.message}`)
       updateBootProgress(
         {
           error: error.message,
-          message: `Hermes backend failed to start: ${error.message}`,
+          message: `Kopi backend failed to start: ${error.message}`,
           phase: 'backend.error',
           running: false
         },
         { allowDecrease: true }
       )
-      hermesProcess = null
+      kopiProcess = null
       connectionPromise = null
       sendBackendExit({ code: null, signal: null, error: error.message })
       rejectBackendStart?.(error)
     })
-    hermesProcess.once('exit', (code, signal) => {
-      rememberLog(`Hermes backend exited (${signal || code})`)
-      hermesProcess = null
+    kopiProcess.once('exit', (code, signal) => {
+      rememberLog(`Kopi backend exited (${signal || code})`)
+      kopiProcess = null
       connectionPromise = null
       sendBackendExit({ code, signal })
 
       if (!backendReady) {
-        const message = `Hermes backend exited before it became ready (${signal || code}).`
+        const message = `Kopi backend exited before it became ready (${signal || code}).`
         updateBootProgress(
           {
             error: message,
@@ -6435,17 +6825,17 @@ async function startHermes() {
         )
         rejectBackendStart?.(
           new Error(
-            `Hermes backend exited before it became ready (${signal || code}). Log: ${DESKTOP_LOG_PATH}\n${recentHermesLog()}`
+            `Kopi backend exited before it became ready (${signal || code}). Log: ${DESKTOP_LOG_PATH}\n${recentKopiLog()}`
           )
         )
       }
     })
 
-    await advanceBootProgress('backend.port', 'Waiting for Hermes backend to launch', 86)
+    await advanceBootProgress('backend.port', 'Waiting for Kopi backend to launch', 86)
 
     // Discover the ephemeral port the child bound to
     const port = await Promise.race([
-      waitForDashboardPortAnnouncement(hermesProcess, { readyFile }),
+      waitForDashboardPortAnnouncement(kopiProcess, { readyFile }),
       backendStartFailed
     ])
 
@@ -6454,20 +6844,20 @@ async function startHermes() {
     }
 
     const baseUrl = `http://127.0.0.1:${port}`
-    await advanceBootProgress('backend.wait', 'Waiting for Hermes backend to become ready', 90)
-    await Promise.race([waitForHermes(baseUrl, token), backendStartFailed])
+    await advanceBootProgress('backend.wait', 'Waiting for Kopi backend to become ready', 90)
+    await Promise.race([waitForKopi(baseUrl, token), backendStartFailed])
     backendReady = true
     backendStartFailure = null
 
     const authToken = await adoptServedDashboardToken(baseUrl, token, {
-      // The exit/error handlers null hermesProcess when the child dies.
-      childAlive: () => hermesProcess !== null && hermesProcess.exitCode === null && !hermesProcess.killed,
+      // The exit/error handlers null kopiProcess when the child dies.
+      childAlive: () => kopiProcess !== null && kopiProcess.exitCode === null && !kopiProcess.killed,
       rememberLog
     })
 
     updateBootProgress({
       phase: 'backend.ready',
-      message: 'Hermes backend is ready. Finalizing desktop startup',
+      message: 'Kopi backend is ready. Finalizing desktop startup',
       progress: 94,
       running: true,
       error: null
@@ -6480,7 +6870,7 @@ async function startHermes() {
       authMode: 'token',
       token: authToken,
       wsUrl: `ws://127.0.0.1:${port}/api/ws?token=${encodeURIComponent(authToken)}`,
-      logs: hermesLog.slice(-80),
+      logs: kopiLog.slice(-80),
       ...getWindowState()
     }
   })().catch(error => {
@@ -6508,10 +6898,21 @@ async function startHermes() {
 // security posture: external links open in the OS browser, in-app navigation
 // stays confined to the dev server / packaged file URL, and the preview /
 // devtools / zoom / context-menu affordances behave identically everywhere.
-function wireCommonWindowHandlers(win) {
+//
+// `zoom` is opt-out for the pet overlay: it sizes its own OS window to fit the
+// sprite in unzoomed CSS px (overlayWindowSize -> setBounds) and has its own
+// Alt+wheel scale, so inheriting the global UI zoom would render the mascot
+// larger than its window and crop it. Chat windows keep zoom on.
+function wireCommonWindowHandlers(win, { zoom = true }: { zoom?: boolean } = {}) {
   installPreviewShortcut(win)
   installDevToolsShortcut(win)
-  installZoomShortcuts(win)
+  if (zoom) {
+    installZoomShortcuts(win)
+    // Re-apply persisted zoom on show/restore (Windows drops webContents zoom on
+    // minimize/restore) and on first load (reloads / crash recovery).
+    installZoomReassertOnWindowEvents(win, () => restorePersistedZoomLevel(win))
+    win.webContents.once('did-finish-load', () => restorePersistedZoomLevel(win))
+  }
   installContextMenu(win)
   win.webContents.setWindowOpenHandler(details => {
     openExternalUrl(details.url)
@@ -6547,6 +6948,7 @@ function focusWindow(win) {
   if (!win.isVisible()) {
     win.show()
   }
+
   win.focus()
 }
 
@@ -6562,7 +6964,7 @@ function spawnSecondaryWindow({
     height: SESSION_WINDOW_MIN_HEIGHT,
     minWidth: SESSION_WINDOW_MIN_WIDTH,
     minHeight: SESSION_WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
+    title: 'Kopi',
     titleBarStyle: 'hidden',
     titleBarOverlay: getTitleBarOverlayOptions(),
     trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,
@@ -6593,7 +6995,7 @@ function spawnSecondaryWindow({
   win.on('enter-full-screen', () => sendWindowStateChanged(true))
   win.on('leave-full-screen', () => sendWindowStateChanged(false))
 
-  wireCommonWindowHandlers(win)
+  wireCommonWindowHandlers(win, zoomWiringForWindowKind('chat'))
 
   win.loadURL(
     buildSessionWindowUrl(sessionId, {
@@ -6621,11 +7023,11 @@ function createNewSessionWindow() {
 
 // The pet overlay: a single transparent, frameless, always-on-top window that
 // hosts ONLY the floating mascot. Shift-clicking the in-window pet "pops it out"
-// here so it can leave the app's bounds and stay visible while Hermes is
+// here so it can leave the app's bounds and stay visible while Kopi is
 // minimized (Codex-style task-completion glance). It carries no gateway
 // connection of its own — the main renderer is the single source of truth and
-// pushes pet state over IPC (hermes:pet-overlay:state); the overlay just renders
-// it. Control flows back (pop-in, composer submit) via hermes:pet-overlay:control.
+// pushes pet state over IPC (kopi:pet-overlay:state); the overlay just renders
+// it. Control flows back (pop-in, composer submit) via kopi:pet-overlay:control.
 let petOverlayWindow = null
 
 function petOverlayUrl() {
@@ -6653,7 +7055,7 @@ function spawnPetOverlayWindow(bounds) {
     // taskbar/alt-tab entry. On macOS, cmd-tab is app-level and this can make
     // the whole app look like it vanished when the only newly-created visible
     // window is a frameless overlay. Use NSPanel + Mission Control hiding below
-    // instead, leaving the main Hermes app as the Dock/cmd-tab anchor.
+    // instead, leaving the main Kopi app as the Dock/cmd-tab anchor.
     skipTaskbar: !IS_MAC,
     hasShadow: false,
     alwaysOnTop: true,
@@ -6663,9 +7065,9 @@ function spawnPetOverlayWindow(bounds) {
     hiddenInMissionControl: IS_MAC,
     // Non-activating: the overlay must never become the app's key/main window,
     // or it (a frameless, taskbar-skipping panel) becomes the app's switcher
-    // anchor and the Hermes icon drops out of cmd/alt-tab — especially when the
+    // anchor and the Kopi icon drops out of cmd/alt-tab — especially when the
     // main window is minimized. We flip this on only while the composer needs
-    // the keyboard (see hermes:pet-overlay:set-focusable).
+    // the keyboard (see kopi:pet-overlay:set-focusable).
     focusable: false,
     show: false,
     // Fully transparent — the renderer paints only the sprite + bubble.
@@ -6692,7 +7094,7 @@ function spawnPetOverlayWindow(bounds) {
   try {
     // Electron docs: macOS may transform process type on each
     // setVisibleOnAllWorkspaces() call unless skipTransformProcessType=true,
-    // which briefly hides the Dock/cmd-tab presence. Keep Hermes in the normal
+    // which briefly hides the Dock/cmd-tab presence. Keep Kopi in the normal
     // ForegroundApplication class so shift-clicking the pet never drops the app
     // out of app switchers.
     win.setVisibleOnAllWorkspaces(
@@ -6703,7 +7105,9 @@ function spawnPetOverlayWindow(bounds) {
     // Not supported everywhere — best effort.
   }
 
-  wireCommonWindowHandlers(win)
+  // Pet overlay opts out of global UI zoom (see zoomWiringForWindowKind): it
+  // owns its window-fit + scale, and inheriting zoom would crop the sprite.
+  wireCommonWindowHandlers(win, zoomWiringForWindowKind('petOverlay'))
 
   win.once('ready-to-show', () => {
     if (!win.isDestroyed()) {
@@ -6720,7 +7124,7 @@ function spawnPetOverlayWindow(bounds) {
     // pop the pet back in so it doesn't stay hidden. Harmless echo when we're
     // the ones who closed it (popInPet already cleared the active flag).
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('hermes:pet-overlay:control', { type: 'pop-in' })
+      mainWindow.webContents.send('kopi:pet-overlay:control', { type: 'pop-in' })
     }
   })
 
@@ -6765,7 +7169,7 @@ function createWindow() {
     ...computeWindowOptions(savedWindowState, screen.getAllDisplays()),
     minWidth: WINDOW_MIN_WIDTH,
     minHeight: WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
+    title: 'Kopi',
     // Frameless title bar on every platform so the renderer can paint the
     // "hide sidebar" button (and other left-side titlebar tools) flush with
     // the top edge — matching the macOS layout where the traffic lights sit
@@ -6835,7 +7239,7 @@ function createWindow() {
   // window-all-closed from quitting on Windows/Linux).
   mainWindow.on('closed', () => closePetOverlay())
 
-  wireCommonWindowHandlers(mainWindow)
+  wireCommonWindowHandlers(mainWindow, zoomWiringForWindowKind('chat'))
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     rememberLog(`[renderer] render-process-gone reason=${details?.reason} exitCode=${details?.exitCode}`)
@@ -6894,23 +7298,24 @@ function createWindow() {
   }
 
   mainWindow.webContents.once('did-finish-load', () => {
-    restorePersistedZoomLevel(mainWindow)
+    // Zoom restore is handled by wireCommonWindowHandlers (shared with session
+    // windows); no need to reapply it here.
     broadcastBootProgress()
     sendWindowStateChanged()
-    startHermes().catch(error => rememberLog(error.stack || error.message))
+    startKopi().catch(error => rememberLog(error.stack || error.message))
   })
 }
 
-ipcMain.handle('hermes:connection', async (_event, profile) => ensureBackend(profile))
+ipcMain.handle('kopi:connection', async (_event, profile) => ensureBackend(profile))
 // Reconnect-after-wake recovery. A REMOTE primary backend has no child process,
 // so the 'exit'/'error' handlers that would clear a dead connectionPromise never
 // fire — once the remote becomes unreachable across a sleep/wake the renderer
 // re-dials the same dead descriptor forever and the composer stays stuck on
-// "Starting Hermes…". Before the renderer's backoff loop reconnects, it asks us
+// "Starting Kopi…". Before the renderer's backoff loop reconnects, it asks us
 // to confirm the cached PRIMARY backend is still reachable; if a remote one is
 // not, we drop the cache so the next getConnection() rebuilds it. Local backends
 // self-heal via their child 'exit' handler, so we never touch them here.
-ipcMain.handle('hermes:connection:revalidate', async () => {
+ipcMain.handle('kopi:connection:revalidate', async () => {
   if (!connectionPromise) {
     return { ok: true, rebuilt: false }
   }
@@ -6937,21 +7342,21 @@ ipcMain.handle('hermes:connection:revalidate', async () => {
     return { ok: true, rebuilt: false }
   } catch {
     // Unreachable remote: drop the stale cache so the renderer's next reconnect
-    // tick rebuilds a fresh, reachable descriptor. resetHermesConnection only
+    // tick rebuilds a fresh, reachable descriptor. resetKopiConnection only
     // nulls connectionPromise for a remote (no child to SIGTERM).
-    rememberLog('Cached remote Hermes backend failed liveness probe; dropping stale connection.')
-    resetHermesConnection()
+    rememberLog('Cached remote Kopi backend failed liveness probe; dropping stale connection.')
+    resetKopiConnection()
 
     return { ok: true, rebuilt: true }
   }
 })
-ipcMain.handle('hermes:backend:touch', async (_event, profile) => {
+ipcMain.handle('kopi:backend:touch', async (_event, profile) => {
   touchPoolBackend(profile)
 
   return { ok: true }
 })
-ipcMain.handle('hermes:gateway:ws-url', async (_event, profile) => freshGatewayWsUrl(profile))
-ipcMain.handle('hermes:window:openSession', async (_event, sessionId, opts) => {
+ipcMain.handle('kopi:gateway:ws-url', async (_event, profile) => freshGatewayWsUrl(profile))
+ipcMain.handle('kopi:window:openSession', async (_event, sessionId, opts) => {
   if (typeof sessionId !== 'string' || !sessionId.trim()) {
     return { ok: false, error: 'invalid-session-id' }
   }
@@ -6960,7 +7365,7 @@ ipcMain.handle('hermes:window:openSession', async (_event, sessionId, opts) => {
 
   return { ok: true }
 })
-ipcMain.handle('hermes:window:openNewSession', async () => {
+ipcMain.handle('kopi:window:openNewSession', async () => {
   createNewSessionWindow()
 
   return { ok: true }
@@ -6969,18 +7374,19 @@ ipcMain.handle('hermes:window:openNewSession', async () => {
 // --- Text size (zoom) -------------------------------------------------------
 // The settings UI drives the same clamped zoom scale as the Ctrl/Cmd
 // shortcuts and the View menu. Reads and writes target the asking window.
-ipcMain.handle('hermes:zoom:get', event => {
+ipcMain.handle('kopi:zoom:get', event => {
   const window = BrowserWindow.fromWebContents(event.sender)
   const level = window && !window.isDestroyed() ? window.webContents.getZoomLevel() : 0
 
   return { level, percent: zoomLevelToPercent(level) }
 })
-ipcMain.on('hermes:zoom:set-percent', (event, percent) => {
+ipcMain.on('kopi:zoom:set-percent', (event, percent) => {
   const window = BrowserWindow.fromWebContents(event.sender)
 
   if (!window || window.isDestroyed()) {
     return
   }
+
   setAndPersistZoomLevel(window, percentToZoomLevel(Number(percent)))
 })
 
@@ -6990,7 +7396,7 @@ ipcMain.on('hermes:zoom:set-percent', (event, percent) => {
 // content origin so the pet lands where it sat in-window. A remembered/dragged
 // spot passes screen-space bounds (screen=true) and is used as-is. We return the
 // resolved screen bounds so the renderer can persist exactly where it opened.
-ipcMain.handle('hermes:pet-overlay:open', async (_event, request) => {
+ipcMain.handle('kopi:pet-overlay:open', async (_event, request) => {
   const bounds = request && request.bounds ? request.bounds : request
   const isScreen = Boolean(request && request.screen)
   let screenBounds = bounds
@@ -7013,7 +7419,7 @@ ipcMain.handle('hermes:pet-overlay:open', async (_event, request) => {
 
   return { ok: true, bounds: screenBounds }
 })
-ipcMain.handle('hermes:pet-overlay:close', async () => {
+ipcMain.handle('kopi:pet-overlay:close', async () => {
   closePetOverlay()
 
   return { ok: true }
@@ -7024,7 +7430,7 @@ ipcMain.handle('hermes:pet-overlay:close', async () => {
 // The window is created non-resizable (no stray edge-drag on the transparent
 // frameless panel), which on Windows/Linux also blocks programmatic setBounds
 // sizing — so briefly flip resizable on whenever the size actually changes.
-ipcMain.on('hermes:pet-overlay:set-bounds', (_event, bounds) => {
+ipcMain.on('kopi:pet-overlay:set-bounds', (_event, bounds) => {
   if (!petOverlayWindow || petOverlayWindow.isDestroyed() || !bounds) {
     return
   }
@@ -7048,7 +7454,7 @@ ipcMain.on('hermes:pet-overlay:set-bounds', (_event, bounds) => {
 // Click-through: the overlay window is a full rectangle but only the pet pixels
 // should be interactive. The renderer toggles this as the cursor enters/leaves
 // the sprite so transparent margins pass clicks to whatever is behind.
-ipcMain.on('hermes:pet-overlay:ignore-mouse', (_event, ignore) => {
+ipcMain.on('kopi:pet-overlay:ignore-mouse', (_event, ignore) => {
   if (petOverlayWindow && !petOverlayWindow.isDestroyed()) {
     petOverlayWindow.setIgnoreMouseEvents(Boolean(ignore), { forward: true })
   }
@@ -7057,7 +7463,7 @@ ipcMain.on('hermes:pet-overlay:ignore-mouse', (_event, ignore) => {
 // the app's cmd/alt-tab anchor from the main window. But the pop-up composer
 // needs the keyboard, so the renderer asks us to flip it focusable + focus it
 // while the composer is open, then back to non-activating when it closes.
-ipcMain.on('hermes:pet-overlay:set-focusable', (_event, focusable) => {
+ipcMain.on('kopi:pet-overlay:set-focusable', (_event, focusable) => {
   if (!petOverlayWindow || petOverlayWindow.isDestroyed()) {
     return
   }
@@ -7069,13 +7475,13 @@ ipcMain.on('hermes:pet-overlay:set-focusable', (_event, focusable) => {
   }
 })
 // Main renderer → overlay: forward the latest pet state for the overlay to render.
-ipcMain.on('hermes:pet-overlay:state', (_event, payload) => {
+ipcMain.on('kopi:pet-overlay:state', (_event, payload) => {
   if (petOverlayWindow && !petOverlayWindow.isDestroyed()) {
-    petOverlayWindow.webContents.send('hermes:pet-overlay:state', payload)
+    petOverlayWindow.webContents.send('kopi:pet-overlay:state', payload)
   }
 })
 // Overlay → main renderer: control messages (pop back in, composer submit).
-ipcMain.on('hermes:pet-overlay:control', (_event, payload) => {
+ipcMain.on('kopi:pet-overlay:control', (_event, payload) => {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return
   }
@@ -7105,11 +7511,11 @@ ipcMain.on('hermes:pet-overlay:control', (_event, payload) => {
     mainWindow.focus()
   }
 
-  mainWindow.webContents.send('hermes:pet-overlay:control', payload)
+  mainWindow.webContents.send('kopi:pet-overlay:control', payload)
 })
-ipcMain.handle('hermes:bootstrap:reset', async () => {
+ipcMain.handle('kopi:bootstrap:reset', async () => {
   // Renderer's "Reload and retry" path. Clear the latched failure and
-  // reset connection state so the next startHermes() call restarts the
+  // reset connection state so the next startKopi() call restarts the
   // full backend flow (including a fresh runBootstrap pass).
   rememberLog('[bootstrap] reset requested by renderer; clearing latched failure')
   await teardownPrimaryBackendAndWait()
@@ -7128,9 +7534,9 @@ ipcMain.handle('hermes:bootstrap:reset', async () => {
 
   return { ok: true }
 })
-ipcMain.handle('hermes:bootstrap:repair', async () => {
+ipcMain.handle('kopi:bootstrap:repair', async () => {
   // Forceful repair: drop the bootstrap-complete marker so the next
-  // startHermes() re-runs the full installer (refreshing a broken/partial
+  // startKopi() re-runs the full installer (refreshing a broken/partial
   // venv), and clear any latched failure + live connection. The renderer
   // reloads afterwards to re-drive the boot flow from scratch.
   rememberLog('[bootstrap] repair requested by renderer; clearing marker + latched failure')
@@ -7145,11 +7551,11 @@ ipcMain.handle('hermes:bootstrap:repair', async () => {
 
   bootstrapFailure = null
   backendStartFailure = null
-  resetHermesConnection()
+  resetKopiConnection()
 
   return { ok: true }
 })
-ipcMain.handle('hermes:bootstrap:cancel', async () => {
+ipcMain.handle('kopi:bootstrap:cancel', async () => {
   // Renderer's Cancel button during first-launch install. Abort the running
   // install script (SIGTERM via the runner's abortSignal). runBootstrap
   // resolves with { cancelled: true }, which surfaces the recovery overlay.
@@ -7165,14 +7571,14 @@ ipcMain.handle('hermes:bootstrap:cancel', async () => {
 
   return { ok: false, cancelled: false }
 })
-ipcMain.handle('hermes:boot-progress:get', async () => bootProgressState)
-ipcMain.handle('hermes:bootstrap:get', async () => getBootstrapState())
-ipcMain.handle('hermes:connection-config:get', async (_event, profile) =>
+ipcMain.handle('kopi:boot-progress:get', async () => bootProgressState)
+ipcMain.handle('kopi:bootstrap:get', async () => getBootstrapState())
+ipcMain.handle('kopi:connection-config:get', async (_event, profile) =>
   sanitizeDesktopConnectionConfig(readDesktopConnectionConfig(), profile)
 )
-ipcMain.handle('hermes:connection-config:test', async (_event, payload) => testDesktopConnectionConfig(payload))
-ipcMain.handle('hermes:connection-config:probe', async (_event, rawUrl) => probeRemoteAuthMode(rawUrl))
-ipcMain.handle('hermes:connection-config:oauth-login', async (_event, rawUrl) => {
+ipcMain.handle('kopi:connection-config:test', async (_event, payload) => testDesktopConnectionConfig(payload))
+ipcMain.handle('kopi:connection-config:probe', async (_event, rawUrl) => probeRemoteAuthMode(rawUrl))
+ipcMain.handle('kopi:connection-config:oauth-login', async (_event, rawUrl) => {
   // Open the gateway's OAuth login window and wait for the session cookie to
   // land in the OAuth partition. The caller (settings UI) typically saves the
   // remote config with authMode='oauth' first, then calls this. We normalize
@@ -7182,7 +7588,7 @@ ipcMain.handle('hermes:connection-config:oauth-login', async (_event, rawUrl) =>
 
   return { ok: true, baseUrl, connected: await hasOauthSessionCookie(baseUrl) }
 })
-ipcMain.handle('hermes:connection-config:oauth-logout', async (_event, rawUrl) => {
+ipcMain.handle('kopi:connection-config:oauth-logout', async (_event, rawUrl) => {
   const baseUrl = rawUrl ? normalizeRemoteBaseUrl(rawUrl) : ''
   await clearOauthSession(baseUrl || undefined)
 
@@ -7191,13 +7597,42 @@ ipcMain.handle('hermes:connection-config:oauth-logout', async (_event, rawUrl) =
   // as still-connected rather than silently signed-out.
   return { ok: true, connected: baseUrl ? await hasLiveOauthSession(baseUrl) : false }
 })
-ipcMain.handle('hermes:connection-config:save', async (_event, payload) => {
+
+// --- Kopi Cloud (cloud-auto-discovery Phase 3) ---
+// One portal login in the OAuth partition powers both discovery and the silent
+// per-agent cascade. See the discovery/cascade helpers above.
+ipcMain.handle('kopi:cloud:status', async () => ({
+  portalBaseUrl: resolvePortalBaseUrl(),
+  signedIn: await hasLivePortalSession()
+}))
+ipcMain.handle('kopi:cloud:login', async () => {
+  await openPortalLoginWindow()
+
+  return { ok: true, signedIn: await hasLivePortalSession() }
+})
+ipcMain.handle('kopi:cloud:logout', async () => {
+  await clearOauthSession(resolvePortalBaseUrl())
+
+  return { ok: true, signedIn: await hasLivePortalSession() }
+})
+ipcMain.handle('kopi:cloud:discover', async (_event, org) => {
+  // Returns { agents } or { needsOrgSelection: true, orgs }. `org` (optional)
+  // scopes discovery to a chosen org for multi-org users.
+  return discoverCloudAgents(typeof org === 'string' && org ? org : undefined)
+})
+ipcMain.handle('kopi:cloud:agent-sign-in', async (_event, dashboardUrl) => {
+  // Silent per-agent sign-in via the shared portal session. Returns the agent's
+  // gateway baseUrl + whether its session cookie landed; the renderer then
+  // saves a cloud-mode connection pointed at this dashboardUrl.
+  return cloudAgentSilentSignIn(dashboardUrl)
+})
+ipcMain.handle('kopi:connection-config:save', async (_event, payload) => {
   const config = coerceDesktopConnectionConfig(payload)
   writeDesktopConnectionConfig(config)
 
   return sanitizeDesktopConnectionConfig(config, payload?.profile)
 })
-ipcMain.handle('hermes:connection-config:apply', async (_event, payload) => {
+ipcMain.handle('kopi:connection-config:apply', async (_event, payload) => {
   const config = coerceDesktopConnectionConfig(payload)
   writeDesktopConnectionConfig(config)
 
@@ -7209,17 +7644,18 @@ ipcMain.handle('hermes:connection-config:apply', async (_event, payload) => {
     // re-resolves against the new remote/local target.
     stopPoolBackend(key)
   } else {
-    // Global connection, or the primary profile's connection: re-home the
-    // window backend by tearing it down and reloading the renderer.
-    await teardownPrimaryBackendAndWait()
-    mainWindow?.reload()
+    // Global / primary connection: soft re-home. Tear down the window backend
+    // without resetting boot UI or reloading — the shell stays, the renderer
+    // wipes session lists (skeletons) and re-dials on kopi:connection:applied.
+    await teardownPrimaryBackendAndWait({ soft: true })
+    sendConnectionApplied()
   }
 
   return sanitizeDesktopConnectionConfig(config, payload?.profile)
 })
 
-ipcMain.handle('hermes:profile:get', async () => ({ profile: readActiveDesktopProfile() }))
-ipcMain.handle('hermes:profile:set', async (_event, name) => {
+ipcMain.handle('kopi:profile:get', async () => ({ profile: readActiveDesktopProfile() }))
+ipcMain.handle('kopi:profile:set', async (_event, name) => {
   const next = writeActiveDesktopProfile(name)
 
   // Switching profiles is a backend re-home: relaunch the dashboard under the
@@ -7231,11 +7667,11 @@ ipcMain.handle('hermes:profile:set', async (_event, name) => {
   return { profile: next }
 })
 
-ipcMain.on('hermes:previewShortcutActive', (_event, active) => {
+ipcMain.on('kopi:previewShortcutActive', (_event, active) => {
   previewShortcutActive = Boolean(active)
 })
 
-ipcMain.handle('hermes:requestMicrophoneAccess', async () => {
+ipcMain.handle('kopi:requestMicrophoneAccess', async () => {
   if (!IS_MAC || typeof systemPreferences.askForMediaAccess !== 'function') {
     return true
   }
@@ -7400,7 +7836,7 @@ async function mergeRemoteProfileSessions(searchParams, remoteProfiles) {
   return { ...(base as any), sessions: merged.slice(offset, offset + limit), total, profile_totals: profileTotals }
 }
 
-ipcMain.handle('hermes:api', async (_event, request) => {
+ipcMain.handle('kopi:api', async (_event, request) => {
   // Remote-profile session requests would otherwise hit the local primary off
   // each profile's on-disk state.db — fine for local profiles, but a remote
   // profile's sessions live on its remote host, so the UI's IDs 404 (or mutations
@@ -7418,7 +7854,7 @@ ipcMain.handle('hermes:api', async (_event, request) => {
   // backend instead of spawning a fresh pool backend.  A freshly spawned
   // backend calls ensure_kopi_home() which recreates the profile directory,
   // defeating the deletion and leaving a zombie process.
-  const routeProfile = tornDownProfile ? null : profile
+  const routeProfile = resolveRouteProfile(tornDownProfile, profile)
   const connection = await ensureBackend(routeProfile)
   const timeoutMs = resolveTimeoutMs(request?.timeoutMs, DEFAULT_FETCH_TIMEOUT_MS)
 
@@ -7448,16 +7884,17 @@ ipcMain.handle('hermes:api', async (_event, request) => {
   })
 })
 
-ipcMain.handle('hermes:notify', (_event, payload) => {
+ipcMain.handle('kopi:notify', (_event, payload) => {
   if (!Notification.isSupported()) {
     return false
   }
+
   // Action buttons render only on signed macOS builds; elsewhere they're dropped
   // and the body click still works.
   const actions = Array.isArray(payload?.actions) ? payload.actions : []
 
   const notification = new Notification({
-    title: payload?.title || 'Hermes',
+    title: payload?.title || 'Kopi',
     body: payload?.body || '',
     silent: Boolean(payload?.silent),
     actions: actions.map(action => ({ type: 'button', text: String(action?.text || '') }))
@@ -7467,20 +7904,22 @@ ipcMain.handle('hermes:notify', (_event, payload) => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       return
     }
+
     focusWindow(mainWindow)
 
     if (payload?.sessionId) {
-      mainWindow.webContents.send('hermes:focus-session', payload.sessionId)
+      mainWindow.webContents.send('kopi:focus-session', payload.sessionId)
     }
   })
   notification.on('action', (_actionEvent, index) => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       return
     }
+
     const action = actions[index]
 
     if (action?.id) {
-      mainWindow.webContents.send('hermes:notification-action', { sessionId: payload?.sessionId, actionId: action.id })
+      mainWindow.webContents.send('kopi:notification-action', { sessionId: payload?.sessionId, actionId: action.id })
     }
   })
   notification.show()
@@ -7488,7 +7927,7 @@ ipcMain.handle('hermes:notify', (_event, payload) => {
   return true
 })
 
-ipcMain.handle('hermes:readFileDataUrl', async (_event, filePath) => {
+ipcMain.handle('kopi:readFileDataUrl', async (_event, filePath) => {
   const { resolvedPath } = await resolveReadableFileForIpc(filePath, {
     maxBytes: DATA_URL_READ_MAX_BYTES,
     purpose: 'File preview'
@@ -7499,7 +7938,7 @@ ipcMain.handle('hermes:readFileDataUrl', async (_event, filePath) => {
   return `data:${mimeTypeForPath(resolvedPath)};base64,${data.toString('base64')}`
 })
 
-ipcMain.handle('hermes:readFileText', async (_event, filePath) => {
+ipcMain.handle('kopi:readFileText', async (_event, filePath) => {
   const { resolvedPath, stat } = await resolveReadableFileForIpc(filePath, {
     maxBytes: TEXT_PREVIEW_SOURCE_MAX_BYTES,
     purpose: 'Text preview'
@@ -7527,7 +7966,7 @@ ipcMain.handle('hermes:readFileText', async (_event, filePath) => {
   }
 })
 
-ipcMain.handle('hermes:selectPaths', async (_event, options: any = {}) => {
+ipcMain.handle('kopi:selectPaths', async (_event, options: any = {}) => {
   const properties = options?.directories ? ['openDirectory'] : ['openFile']
 
   if (options?.multiple !== false) {
@@ -7538,7 +7977,10 @@ ipcMain.handle('hermes:selectPaths', async (_event, options: any = {}) => {
 
   if (options?.defaultPath) {
     try {
-      resolvedDefaultPath = path.resolve(String(options.defaultPath))
+      // On a Windows host with a WSL backend the cwd may be a POSIX/WSL path;
+      // bridge it to a UNC/drive form the native dialog can actually open.
+      const bridged = IS_WINDOWS ? resolvePickerDefaultPath(String(options.defaultPath)) : String(options.defaultPath)
+      resolvedDefaultPath = bridged ? path.resolve(bridged) : undefined
     } catch {
       resolvedDefaultPath = undefined
     }
@@ -7558,15 +8000,15 @@ ipcMain.handle('hermes:selectPaths', async (_event, options: any = {}) => {
   return result.filePaths
 })
 
-ipcMain.handle('hermes:writeClipboard', (_event, text) => {
+ipcMain.handle('kopi:writeClipboard', (_event, text) => {
   clipboard.writeText(String(text || ''))
 
   return true
 })
 
-ipcMain.handle('hermes:saveImageFromUrl', (_event, url) => saveImageFromUrl(String(url || '')))
+ipcMain.handle('kopi:saveImageFromUrl', (_event, url) => saveImageFromUrl(String(url || '')))
 
-ipcMain.handle('hermes:saveImageBuffer', async (_event, payload) => {
+ipcMain.handle('kopi:saveImageBuffer', async (_event, payload) => {
   const data = payload?.data
 
   if (!data) {
@@ -7578,7 +8020,7 @@ ipcMain.handle('hermes:saveImageBuffer', async (_event, payload) => {
   return writeComposerImage(buffer, payload?.ext || '.png')
 })
 
-ipcMain.handle('hermes:saveClipboardImage', async () => {
+ipcMain.handle('kopi:saveClipboardImage', async () => {
   const image = clipboard.readImage()
 
   if (image && !image.isEmpty()) {
@@ -7599,15 +8041,15 @@ ipcMain.handle('hermes:saveClipboardImage', async () => {
   return ''
 })
 
-ipcMain.handle('hermes:normalizePreviewTarget', (_event, target, baseDir) =>
+ipcMain.handle('kopi:normalizePreviewTarget', (_event, target, baseDir) =>
   normalizePreviewTarget(String(target || ''), baseDir ? String(baseDir) : '')
 )
 
-ipcMain.handle('hermes:watchPreviewFile', (_event, url) => watchPreviewFile(String(url || '')))
+ipcMain.handle('kopi:watchPreviewFile', (_event, url) => watchPreviewFile(String(url || '')))
 
-ipcMain.handle('hermes:stopPreviewFileWatch', (_event, id) => stopPreviewFileWatch(String(id || '')))
+ipcMain.handle('kopi:stopPreviewFileWatch', (_event, id) => stopPreviewFileWatch(String(id || '')))
 
-ipcMain.on('hermes:titlebar-theme', (_event, payload) => {
+ipcMain.on('kopi:titlebar-theme', (_event, payload) => {
   if (!payload || !isHexColor(payload.background) || !isHexColor(payload.foreground)) {
     return
   }
@@ -7620,7 +8062,7 @@ ipcMain.on('hermes:titlebar-theme', (_event, payload) => {
 })
 
 // Pin the native appearance to the app theme (see NATIVE_THEME_CONFIG_PATH).
-ipcMain.on('hermes:native-theme', (_event, mode) => {
+ipcMain.on('kopi:native-theme', (_event, mode) => {
   if (!THEME_SOURCES.has(mode)) {
     return
   }
@@ -7633,7 +8075,7 @@ ipcMain.on('hermes:native-theme', (_event, mode) => {
 
 // See-through window translucency. Persist + re-apply opacity to every open
 // window at runtime (no recreation, so caching/sessions are untouched).
-ipcMain.on('hermes:translucency', (_event, payload) => {
+ipcMain.on('kopi:translucency', (_event, payload) => {
   const next = clampIntensity(payload && payload.intensity)
 
   if (next === translucencyIntensity) {
@@ -7648,13 +8090,13 @@ ipcMain.on('hermes:translucency', (_event, payload) => {
   }
 })
 
-ipcMain.handle('hermes:openExternal', (_event, url) => {
+ipcMain.handle('kopi:openExternal', (_event, url) => {
   if (!openExternalUrl(url)) {
     throw new Error('Invalid external URL')
   }
 })
 
-ipcMain.handle('hermes:openPreviewInBrowser', async (_event, url) => {
+ipcMain.handle('kopi:openPreviewInBrowser', async (_event, url) => {
   if (!(await openPreviewInBrowser(url))) {
     throw new Error('Invalid preview URL')
   }
@@ -7662,17 +8104,17 @@ ipcMain.handle('hermes:openPreviewInBrowser', async (_event, url) => {
 
 // User-configurable default project directory. The renderer reads this on
 // settings mount and seeds the value into the picker; writing back persists
-// it via writeDefaultProjectDir so resolveHermesCwd picks it up on the next
+// it via writeDefaultProjectDir so resolveKopiCwd picks it up on the next
 // session spawn (no app restart needed).
-ipcMain.handle('hermes:setting:defaultProjectDir:get', async () => ({
+ipcMain.handle('kopi:setting:defaultProjectDir:get', async () => ({
   dir: readDefaultProjectDir(),
   defaultLabel: app.getPath('home'),
-  resolvedCwd: resolveHermesCwd()
+  resolvedCwd: resolveKopiCwd()
 }))
 
-ipcMain.handle('hermes:workspace:sanitize', async (_event, cwd) => sanitizeWorkspaceCwd(cwd))
+ipcMain.handle('kopi:workspace:sanitize', async (_event, cwd) => sanitizeWorkspaceCwd(cwd))
 
-ipcMain.handle('hermes:setting:defaultProjectDir:set', async (_event, dir) => {
+ipcMain.handle('kopi:setting:defaultProjectDir:set', async (_event, dir) => {
   const next = typeof dir === 'string' && dir.trim() ? dir.trim() : null
 
   if (next) {
@@ -7688,7 +8130,7 @@ ipcMain.handle('hermes:setting:defaultProjectDir:set', async (_event, dir) => {
   return { dir: next }
 })
 
-ipcMain.handle('hermes:setting:defaultProjectDir:pick', async () => {
+ipcMain.handle('kopi:setting:defaultProjectDir:pick', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Choose default project directory',
     properties: ['openDirectory', 'createDirectory'],
@@ -7702,9 +8144,9 @@ ipcMain.handle('hermes:setting:defaultProjectDir:pick', async () => {
   return { canceled: false, dir: result.filePaths[0] }
 })
 
-ipcMain.handle('hermes:fetchLinkTitle', (_event, url) => fetchLinkTitle(url))
+ipcMain.handle('kopi:fetchLinkTitle', (_event, url) => fetchLinkTitle(url))
 
-ipcMain.handle('hermes:logs:reveal', async () => {
+ipcMain.handle('kopi:logs:reveal', async () => {
   try {
     await fs.promises.mkdir(path.dirname(DESKTOP_LOG_PATH), { recursive: true })
 
@@ -7720,7 +8162,7 @@ ipcMain.handle('hermes:logs:reveal', async () => {
   }
 })
 
-ipcMain.handle('hermes:logs:recent', async () => ({ path: DESKTOP_LOG_PATH, lines: hermesLog.slice(-200) }))
+ipcMain.handle('kopi:logs:recent', async () => ({ path: DESKTOP_LOG_PATH, lines: kopiLog.slice(-200) }))
 
 function isExecutableFile(filePath) {
   if (!filePath || !path.isAbsolute(filePath)) {
@@ -7830,7 +8272,7 @@ function terminalShellEnv() {
 
   // Strip color/theme-detection vars that ride along when Electron is launched
   // from a non-tty agent shell (Cursor's runner sets NO_COLOR/FORCE_COLOR=0
-  // /TERM=dumb; some terminals set COLORFGBG which would flip Hermes' TUI into
+  // /TERM=dumb; some terminals set COLORFGBG which would flip Kopi' TUI into
   // light-mode). Our PTY is a real xterm-compat terminal — force truecolor.
   delete env.NO_COLOR
   delete env.FORCE_COLOR
@@ -7839,7 +8281,7 @@ function terminalShellEnv() {
   env.COLORTERM = 'truecolor'
   env.LC_CTYPE = env.LC_CTYPE || 'UTF-8'
   env.TERM = 'xterm-256color'
-  env.TERM_PROGRAM = 'Hermes'
+  env.TERM_PROGRAM = 'Kopi'
   env.TERM_PROGRAM_VERSION = app.getVersion()
 
   // Let a kopi/--tui launched in this pane know it's embedded in the desktop
@@ -7851,7 +8293,52 @@ function terminalShellEnv() {
 }
 
 function terminalChannel(id, suffix) {
-  return `hermes:terminal:${id}:${suffix}`
+  return `kopi:terminal:${id}:${suffix}`
+}
+
+// Best-effort read of a live PTY child's current working directory so a
+// reopened tab can restart the shell where the user last `cd`'d, instead of the
+// tab's original launch dir. Shell-agnostic (no prompt/OSC config needed) on
+// POSIX; Windows has no cheap per-process cwd query without a native module, so
+// it returns null and the caller falls back to the launch cwd.
+function readProcessCwd(pid) {
+  return new Promise(resolve => {
+    if (!Number.isInteger(pid) || pid <= 0) {
+      resolve(null)
+
+      return
+    }
+
+    if (process.platform === 'linux') {
+      fs.promises
+        .readlink(`/proc/${pid}/cwd`)
+        .then(target => resolve(target || null))
+        .catch(() => resolve(null))
+
+      return
+    }
+
+    if (process.platform === 'darwin') {
+      // lsof ships with macOS; -Fn emits the cwd fd's path on an `n<path>` line.
+      execFile('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], { timeout: 2000 }, (err, stdout) => {
+        if (err) {
+          resolve(null)
+
+          return
+        }
+
+        const line = String(stdout || '')
+          .split('\n')
+          .find(entry => entry.startsWith('n'))
+
+        resolve(line ? line.slice(1) : null)
+      })
+
+      return
+    }
+
+    resolve(null)
+  })
 }
 
 function disposeTerminalSession(id) {
@@ -7872,12 +8359,12 @@ function disposeTerminalSession(id) {
   return true
 }
 
-ipcMain.handle('hermes:fs:readDir', async (_event, dirPath) => readDirForIpc(dirPath))
+ipcMain.handle('kopi:fs:readDir', async (_event, dirPath) => readDirForIpc(dirPath))
 
-ipcMain.handle('hermes:fs:gitRoot', async (_event, startPath) => gitRootForIpc(startPath))
+ipcMain.handle('kopi:fs:gitRoot', async (_event, startPath) => gitRootForIpc(startPath))
 
 // Reveal a path in the OS file manager (Finder / Explorer / Files).
-ipcMain.handle('hermes:fs:reveal', async (_event, targetPath) => {
+ipcMain.handle('kopi:fs:reveal', async (_event, targetPath) => {
   const target = String(targetPath || '').trim()
 
   if (!target) {
@@ -7896,7 +8383,7 @@ ipcMain.handle('hermes:fs:reveal', async (_event, targetPath) => {
 // Rename a file/folder in place. The renderer passes the existing path + a new
 // base name; the destination is resolved in the SAME parent dir so a rename can
 // never move the item elsewhere or traverse out. Rejects on a name collision.
-ipcMain.handle('hermes:fs:rename', async (_event, targetPath, newName) => {
+ipcMain.handle('kopi:fs:rename', async (_event, targetPath, newName) => {
   const src = String(targetPath || '').trim()
   const name = String(newName || '').trim()
 
@@ -7923,7 +8410,7 @@ ipcMain.handle('hermes:fs:rename', async (_event, targetPath, newName) => {
 // is hardened (resolveRequestedPathForIpc) and the parent must already exist —
 // this never creates directory trees or escapes the allowed roots, and content
 // is size-capped so it can't be abused as a bulk-write primitive.
-ipcMain.handle('hermes:fs:writeText', async (_event, filePath, content) => {
+ipcMain.handle('kopi:fs:writeText', async (_event, filePath, content) => {
   const raw = String(filePath || '').trim()
 
   if (!raw) {
@@ -7949,7 +8436,7 @@ ipcMain.handle('hermes:fs:writeText', async (_event, filePath, content) => {
 
 // Move a file/folder to the OS trash (recoverable) — the VS Code "Delete"
 // default. `shell.trashItem` routes to Finder/Explorer/Files trash per platform.
-ipcMain.handle('hermes:fs:trash', async (_event, targetPath) => {
+ipcMain.handle('kopi:fs:trash', async (_event, targetPath) => {
   const target = String(targetPath || '').trim()
 
   if (!target) {
@@ -7963,67 +8450,71 @@ ipcMain.handle('hermes:fs:trash', async (_event, targetPath) => {
 
 // Git-driven worktree management ("Start work" flow). Errors surface to the
 // renderer as rejected promises so it can toast a friendly message.
-ipcMain.handle('hermes:git:worktreeList', async (_event, repoPath) => listWorktrees(repoPath, resolveGitBinary()))
+ipcMain.handle('kopi:git:worktreeList', async (_event, repoPath) => listWorktrees(repoPath, resolveGitBinary()))
 
-ipcMain.handle('hermes:git:worktreeAdd', async (_event, repoPath, options) =>
+ipcMain.handle('kopi:git:worktreeAdd', async (_event, repoPath, options) =>
   addWorktree(repoPath, options || {}, resolveGitBinary())
 )
 
-ipcMain.handle('hermes:git:worktreeRemove', async (_event, repoPath, worktreePath, options) =>
+ipcMain.handle('kopi:git:worktreeRemove', async (_event, repoPath, worktreePath, options) =>
   removeWorktree(repoPath, worktreePath, options || {}, resolveGitBinary())
 )
 
-ipcMain.handle('hermes:git:branchSwitch', async (_event, repoPath, branch) =>
+ipcMain.handle('kopi:git:branchSwitch', async (_event, repoPath, branch) =>
   switchBranch(repoPath, branch, resolveGitBinary())
 )
 
-ipcMain.handle('hermes:git:branchList', async (_event, repoPath) => listBranches(repoPath, resolveGitBinary()))
+ipcMain.handle('kopi:git:branchList', async (_event, repoPath) => listBranches(repoPath, resolveGitBinary()))
+
+ipcMain.handle('kopi:git:baseBranchList', async (_event, repoPath) =>
+  listBaseBranches(repoPath, resolveGitBinary())
+)
 
 // Compact repo status (branch, ahead/behind, change counts + files) for the
 // composer coding rail. Returns null on a non-repo / remote backend so the rail
 // hides cleanly rather than erroring.
-ipcMain.handle('hermes:git:repoStatus', async (_event, repoPath) => repoStatus(repoPath, resolveGitBinary()))
+ipcMain.handle('kopi:git:repoStatus', async (_event, repoPath) => repoStatus(repoPath, resolveGitBinary()))
 
 // Codex-style review pane: list changed files for a scope, fetch one file's
 // unified diff, and stage / unstage / revert. Reads return empty on failure;
 // mutations reject so the renderer can toast.
-ipcMain.handle('hermes:git:review:list', async (_event, repoPath, scope, baseRef) =>
+ipcMain.handle('kopi:git:review:list', async (_event, repoPath, scope, baseRef) =>
   reviewList(repoPath, scope, baseRef, resolveGitBinary())
 )
-ipcMain.handle('hermes:git:review:diff', async (_event, repoPath, filePath, scope, baseRef, staged) =>
+ipcMain.handle('kopi:git:review:diff', async (_event, repoPath, filePath, scope, baseRef, staged) =>
   reviewDiff(repoPath, filePath, scope, baseRef, staged, resolveGitBinary())
 )
 // Working-tree-vs-HEAD diff for one file (the preview's "show the diff" view).
-ipcMain.handle('hermes:git:fileDiff', async (_event, repoPath, filePath) =>
+ipcMain.handle('kopi:git:fileDiff', async (_event, repoPath, filePath) =>
   fileDiffVsHead(repoPath, filePath, resolveGitBinary())
 )
-ipcMain.handle('hermes:git:review:stage', async (_event, repoPath, filePath) =>
+ipcMain.handle('kopi:git:review:stage', async (_event, repoPath, filePath) =>
   reviewStage(repoPath, filePath ?? null, resolveGitBinary())
 )
-ipcMain.handle('hermes:git:review:unstage', async (_event, repoPath, filePath) =>
+ipcMain.handle('kopi:git:review:unstage', async (_event, repoPath, filePath) =>
   reviewUnstage(repoPath, filePath ?? null, resolveGitBinary())
 )
-ipcMain.handle('hermes:git:review:revert', async (_event, repoPath, filePath) =>
+ipcMain.handle('kopi:git:review:revert', async (_event, repoPath, filePath) =>
   reviewRevert(repoPath, filePath ?? null, resolveGitBinary())
 )
-ipcMain.handle('hermes:git:review:revParse', async (_event, repoPath, ref) =>
+ipcMain.handle('kopi:git:review:revParse', async (_event, repoPath, ref) =>
   reviewRevParse(repoPath, ref, resolveGitBinary())
 )
-ipcMain.handle('hermes:git:review:commit', async (_event, repoPath, message, push) =>
+ipcMain.handle('kopi:git:review:commit', async (_event, repoPath, message, push) =>
   reviewCommit(repoPath, message, Boolean(push), resolveGitBinary())
 )
-ipcMain.handle('hermes:git:review:commitContext', async (_event, repoPath) =>
+ipcMain.handle('kopi:git:review:commitContext', async (_event, repoPath) =>
   reviewCommitContext(repoPath, resolveGitBinary())
 )
-ipcMain.handle('hermes:git:review:push', async (_event, repoPath) => reviewPush(repoPath, resolveGitBinary()))
-ipcMain.handle('hermes:git:review:shipInfo', async (_event, repoPath) => reviewShipInfo(repoPath, resolveGhBinary()))
-ipcMain.handle('hermes:git:review:createPr', async (_event, repoPath) =>
+ipcMain.handle('kopi:git:review:push', async (_event, repoPath) => reviewPush(repoPath, resolveGitBinary()))
+ipcMain.handle('kopi:git:review:shipInfo', async (_event, repoPath) => reviewShipInfo(repoPath, resolveGhBinary()))
+ipcMain.handle('kopi:git:review:createPr', async (_event, repoPath) =>
   reviewCreatePr(repoPath, resolveGitBinary(), resolveGhBinary())
 )
 
 // Repo-first project discovery: scan bounded roots for git repos (pure fs walk,
 // no native addon). Never throws to the renderer — failures yield an empty list.
-ipcMain.handle('hermes:git:scanRepos', async (_event, roots, options) => {
+ipcMain.handle('kopi:git:scanRepos', async (_event, roots, options) => {
   try {
     return await scanGitRepos(roots || [], options || {})
   } catch {
@@ -8031,7 +8522,7 @@ ipcMain.handle('hermes:git:scanRepos', async (_event, roots, options) => {
   }
 })
 
-ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
+ipcMain.handle('kopi:terminal:start', async (event, payload = {}) => {
   const id = crypto.randomUUID()
   const { args, command, name } = terminalShellCommand()
   const cwd = safeTerminalCwd(payload?.cwd)
@@ -8066,7 +8557,7 @@ ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
   return { cwd, id, shell: name }
 })
 
-ipcMain.handle('hermes:terminal:write', (_event, id, data) => {
+ipcMain.handle('kopi:terminal:write', (_event, id, data) => {
   const sessionInfo = terminalSessions.get(String(id || ''))
 
   if (!sessionInfo) {
@@ -8078,7 +8569,7 @@ ipcMain.handle('hermes:terminal:write', (_event, id, data) => {
   return true
 })
 
-ipcMain.handle('hermes:terminal:resize', (_event, id, size = {}) => {
+ipcMain.handle('kopi:terminal:resize', (_event, id, size = {}) => {
   const sessionInfo = terminalSessions.get(String(id || ''))
 
   if (!sessionInfo) {
@@ -8092,9 +8583,19 @@ ipcMain.handle('hermes:terminal:resize', (_event, id, size = {}) => {
 
   return true
 })
-ipcMain.handle('hermes:terminal:dispose', (_event, id) => disposeTerminalSession(String(id || '')))
+ipcMain.handle('kopi:terminal:cwd', async (_event, id) => {
+  const sessionInfo = terminalSessions.get(String(id || ''))
 
-ipcMain.handle('hermes:updates:check', async () =>
+  if (!sessionInfo) {
+    return null
+  }
+
+  return readProcessCwd(sessionInfo.pty.pid)
+})
+
+ipcMain.handle('kopi:terminal:dispose', (_event, id) => disposeTerminalSession(String(id || '')))
+
+ipcMain.handle('kopi:updates:check', async () =>
   checkUpdates().catch(error => ({
     supported: true,
     branch: readDesktopUpdateConfig().branch,
@@ -8104,7 +8605,7 @@ ipcMain.handle('hermes:updates:check', async () =>
   }))
 )
 
-ipcMain.handle('hermes:updates:apply', async (_event, payload) =>
+ipcMain.handle('kopi:updates:apply', async (_event, payload) =>
   applyUpdates(payload || {}).catch(error => ({
     ok: false,
     error: 'apply-failed',
@@ -8112,21 +8613,21 @@ ipcMain.handle('hermes:updates:apply', async (_event, payload) =>
   }))
 )
 
-ipcMain.handle('hermes:updates:branch:get', async () => readDesktopUpdateConfig())
+ipcMain.handle('kopi:updates:branch:get', async () => readDesktopUpdateConfig())
 
-ipcMain.handle('hermes:updates:branch:set', async (_event, name) => {
+ipcMain.handle('kopi:updates:branch:set', async (_event, name) => {
   const branch = typeof name === 'string' && name.trim() ? name.trim() : DEFAULT_UPDATE_BRANCH
   writeDesktopUpdateConfig({ branch })
 
   return { branch }
 })
 
-// Resolve the canonical Hermes version (the one `release.py` bumps in
+// Resolve the canonical Kopi version (the one `release.py` bumps in
 // kopi_cli/__init__.py + pyproject.toml) so the desktop About panel shows the
-// real Hermes version instead of the Electron app's own package.json version,
+// real Kopi version instead of the Electron app's own package.json version,
 // which historically drifted (stuck at 0.0.2). Falls back to app.getVersion()
 // when the source tree can't be read (e.g. a packaged build without the repo).
-function resolveHermesVersion() {
+function resolveKopiVersion() {
   try {
     const root = resolveUpdateRoot()
     const initPath = path.join(root, 'kopi_cli', '__init__.py')
@@ -8146,25 +8647,25 @@ function resolveHermesVersion() {
   return app.getVersion()
 }
 
-// Re-resolve the live Hermes version and push it into the native About panel
+// Re-resolve the live Kopi version and push it into the native About panel
 // just before showing it, so an in-place `kopi update` is reflected without
 // an app restart. macOS only — `showAboutPanel()` is a no-op elsewhere, and the
 // other platforms don't use this menu item.
 function showAboutPanelFresh() {
   app.setAboutPanelOptions({
     applicationName: APP_NAME,
-    applicationVersion: resolveHermesVersion(),
-    copyright: 'Copyright © 2026 Kopi Ai Agent Pte Ltd'
+    applicationVersion: resolveKopiVersion(),
+    copyright: 'Copyright © 2026 Nous Research'
   })
   app.showAboutPanel()
 }
 
-ipcMain.handle('hermes:version', async () => ({
-  appVersion: resolveHermesVersion(),
+ipcMain.handle('kopi:version', async () => ({
+  appVersion: resolveKopiVersion(),
   electronVersion: process.versions.electron,
   nodeVersion: process.versions.node,
   platform: process.platform,
-  hermesRoot: resolveUpdateRoot()
+  kopiRoot: resolveUpdateRoot()
 }))
 
 // ===========================================================================
@@ -8194,7 +8695,7 @@ async function getUninstallSummary() {
   // probe fails — the renderer still needs *something* to render options from.
   const fallback = () => ({
     kopi_home: KOPI_HOME,
-    agent_installed: isHermesSourceRoot(agentRoot) && fileExists(py),
+    agent_installed: isKopiSourceRoot(agentRoot) && fileExists(py),
     gui_installed: true,
     source_built_artifacts: [],
     packaged_app_paths: [],
@@ -8216,6 +8717,7 @@ async function getUninstallSummary() {
       if (settled) {
         return
       }
+
       settled = true
       resolve(value)
     }
@@ -8274,7 +8776,7 @@ async function runDesktopUninstall(mode) {
     return {
       ok: false,
       error: 'agent-missing',
-      message: `Can't run the uninstaller: no Hermes agent venv at ${VENV_ROOT}.`
+      message: `Can't run the uninstaller: no Kopi agent venv at ${VENV_ROOT}.`
     }
   }
 
@@ -8326,7 +8828,7 @@ async function runDesktopUninstall(mode) {
     agentRoot: ACTIVE_KOPI_ROOT,
     uninstallArgs,
     appPath: removeBundle,
-    hermesHome: KOPI_HOME
+    kopiHome: KOPI_HOME
   }
 
   let scriptPath
@@ -8374,8 +8876,8 @@ async function runDesktopUninstall(mode) {
   return { ok: true, mode, willRemoveAppBundle: Boolean(removeBundle), scriptPath }
 }
 
-ipcMain.handle('hermes:uninstall:summary', async () => getUninstallSummary())
-ipcMain.handle('hermes:uninstall:run', async (_event, payload) => {
+ipcMain.handle('kopi:uninstall:summary', async () => getUninstallSummary())
+ipcMain.handle('kopi:uninstall:run', async (_event, payload) => {
   const mode = payload && typeof payload === 'object' ? payload.mode : payload
 
   return runDesktopUninstall(String(mode || ''))
@@ -8383,13 +8885,13 @@ ipcMain.handle('hermes:uninstall:run', async (_event, payload) => {
 
 // Download a VS Code Marketplace extension and return the raw color-theme JSON
 // it contributes. No theme code is executed — we only read JSON from the .vsix.
-ipcMain.handle('hermes:vscode-theme:fetch', async (_event, id) => fetchMarketplaceThemes(String(id || '')))
+ipcMain.handle('kopi:vscode-theme:fetch', async (_event, id) => fetchMarketplaceThemes(String(id || '')))
 
 // Search the Marketplace for color-theme extensions (empty query = top installs).
-ipcMain.handle('hermes:vscode-theme:search', async (_event, query) => searchMarketplaceThemes(String(query || ''), 20))
+ipcMain.handle('kopi:vscode-theme:search', async (_event, query) => searchMarketplaceThemes(String(query || ''), 20))
 
 // ---------------------------------------------------------------------------
-// hermes:// deep links (e.g. hermes://blueprint/morning-brief?time=08:00).
+// kopi:// deep links (e.g. kopi://blueprint/morning-brief?time=08:00).
 // A docs/dashboard "Send to App" button opens this URL; we route it into the
 // running app's chat composer. Three delivery paths: macOS 'open-url',
 // Win/Linux running-app 'second-instance' (argv), Win/Linux cold-start argv.
@@ -8410,6 +8912,7 @@ function handleDeepLink(url) {
   if (!url || typeof url !== 'string') {
     return
   }
+
   let parsed
 
   try {
@@ -8420,7 +8923,7 @@ function handleDeepLink(url) {
     return
   }
 
-  // hermes://blueprint/<key>?slot=val  -> host="blueprint", path="/<key>"
+  // kopi://blueprint/<key>?slot=val  -> host="blueprint", path="/<key>"
   const kind = parsed.hostname || ''
   const name = decodeURIComponent((parsed.pathname || '').replace(/^\//, ''))
   const params = {}
@@ -8439,8 +8942,9 @@ function handleDeepLink(url) {
     if (mainWindow.isMinimized()) {
       mainWindow.restore()
     }
+
     mainWindow.focus()
-    mainWindow.webContents.send('hermes:deep-link', payload)
+    mainWindow.webContents.send('kopi:deep-link', payload)
     rememberLog(`[deeplink] delivered ${kind}/${name}`)
   } catch (err) {
     rememberLog(`[deeplink] delivery failed: ${err.message}`)
@@ -8449,7 +8953,7 @@ function handleDeepLink(url) {
 
 // Renderer calls this (via IPC) once it has mounted its deep-link listener, so
 // a link that arrived during boot/install is flushed exactly once.
-ipcMain.handle('hermes:deep-link-ready', () => {
+ipcMain.handle('kopi:deep-link-ready', () => {
   _rendererReadyForDeepLink = true
 
   if (_pendingDeepLink) {
@@ -8479,7 +8983,7 @@ function registerDeepLinkProtocol() {
 }
 
 // Single-instance lock: deep links on a running app (Win/Linux) arrive as a
-// second-instance argv. Without the lock a second `hermes://` launch spawns a
+// second-instance argv. Without the lock a second `kopi://` launch spawns a
 // whole new app instead of routing into the running one.
 const _gotSingleInstanceLock = app.requestSingleInstanceLock()
 
@@ -8495,6 +8999,7 @@ if (!_gotSingleInstanceLock) {
       if (mainWindow.isMinimized()) {
         mainWindow.restore()
       }
+
       mainWindow.focus()
     }
   })
@@ -8523,7 +9028,7 @@ app.whenReady().then(() => {
   registerPowerResumeListeners()
   createWindow()
 
-  // Win/Linux cold start: the launching hermes:// URL is in our own argv.
+  // Win/Linux cold start: the launching kopi:// URL is in our own argv.
   const _coldStartLink = _extractDeepLink(process.argv)
 
   if (_coldStartLink) {
@@ -8593,7 +9098,7 @@ app.on('before-quit', () => {
     disposeTerminalSession(id)
   }
 
-  stopBackendChild(hermesProcess)
+  stopBackendChild(kopiProcess)
   stopAllPoolBackends()
 })
 

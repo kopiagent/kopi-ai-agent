@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import cli as cli_module
-from cli import HermesCLI
+from cli import KopiCLI
 
 
 class _FakeBuffer:
@@ -19,7 +19,7 @@ class _FakeBuffer:
 
 
 def _make_cli_stub():
-    cli = HermesCLI.__new__(HermesCLI)
+    cli = KopiCLI.__new__(KopiCLI)
     cli._approval_state = None
     cli._approval_deadline = 0
     cli._approval_lock = threading.Lock()
@@ -67,6 +67,38 @@ def _make_background_cli_stub():
 
 
 class TestCliApprovalUi:
+    def test_smart_denied_callback_offers_only_once_and_deny(self):
+        cli = _make_cli_stub()
+        result = {}
+
+        def _run_callback():
+            result["value"] = cli._approval_callback(
+                "rm -rf /tmp/example",
+                "recursive delete",
+                allow_permanent=False,
+                smart_denied=True,
+            )
+
+        thread = threading.Thread(target=_run_callback, daemon=True)
+        thread.start()
+
+        deadline = time.time() + 2
+        while cli._approval_state is None and time.time() < deadline:
+            time.sleep(0.01)
+
+        assert cli._approval_state is not None
+        assert cli._approval_state["choices"] == ["once", "deny"]
+
+        cli._approval_state["response_queue"].put("deny")
+        thread.join(timeout=2)
+        assert result["value"] == "deny"
+
+    def test_non_smart_non_permanent_callback_preserves_session_choice(self):
+        cli = _make_cli_stub()
+        assert cli._approval_choices(
+            "rm -rf /tmp/example", allow_permanent=False, smart_denied=False
+        ) == ["once", "session", "deny"]
+
     def test_sudo_prompt_restores_existing_draft_after_response(self):
         cli = _make_cli_stub()
         cli._app.current_buffer = _FakeBuffer("draft command", cursor_position=5)
@@ -361,9 +393,9 @@ class TestCliApprovalUi:
                 _thread.join(timeout=10)
 
         assert seen["approval"].__self__ is cli
-        assert seen["approval"].__func__ is HermesCLI._approval_callback
+        assert seen["approval"].__func__ is KopiCLI._approval_callback
         assert seen["sudo"].__self__ is cli
-        assert seen["sudo"].__func__ is HermesCLI._sudo_password_callback
+        assert seen["sudo"].__func__ is KopiCLI._sudo_password_callback
         assert not cli._background_tasks
 
 
@@ -374,7 +406,7 @@ def _make_real_paint_cli_stub():
     _last_invalidate inside the throttle window. A throttled _invalidate() would
     be dropped under these conditions — _paint_now must paint regardless.
     """
-    cli = HermesCLI.__new__(HermesCLI)
+    cli = KopiCLI.__new__(KopiCLI)
     cli._approval_state = None
     cli._approval_deadline = 0
     cli._approval_lock = threading.Lock()
@@ -385,8 +417,8 @@ def _make_real_paint_cli_stub():
     cli._clarify_deadline = 0
     cli._modal_input_snapshot = None
     # Real methods, not mocks.
-    cli._paint_now = HermesCLI._paint_now.__get__(cli, HermesCLI)
-    cli._invalidate = HermesCLI._invalidate.__get__(cli, HermesCLI)
+    cli._paint_now = KopiCLI._paint_now.__get__(cli, KopiCLI)
+    cli._invalidate = KopiCLI._invalidate.__get__(cli, KopiCLI)
     cli._resize_recovery_pending = True       # gate 1: resize in flight
     cli._last_invalidate = time.monotonic()   # gate 2: inside throttle window
     cli._app = SimpleNamespace(invalidate=MagicMock(), current_buffer=_FakeBuffer())
@@ -414,7 +446,7 @@ class TestModalPaintNow:
         assert cli._app.invalidate.called
 
     def test_paint_now_no_app_is_safe(self):
-        cli = HermesCLI.__new__(HermesCLI)
+        cli = KopiCLI.__new__(KopiCLI)
         cli._app = None
         cli._paint_now()  # must not raise
 

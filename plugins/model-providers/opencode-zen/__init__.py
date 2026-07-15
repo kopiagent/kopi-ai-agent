@@ -64,7 +64,7 @@ class OpenCodeGoProfile(ProviderProfile):
         if _is_glm_5_2_model(model):
             # GLM-5.2 on OpenCode Go uses its native OpenAI-compatible
             # reasoning_effort knob, which has exactly two enabled levels:
-            # high and max. Map Hermes' richer scale onto those; leave the
+            # high and max. Map Kopi' richer scale onto those; leave the
             # server default alone when reasoning is disabled or unset.
             if not isinstance(reasoning_config, dict):
                 return extra_body, top_level
@@ -73,7 +73,7 @@ class OpenCodeGoProfile(ProviderProfile):
             effort = (reasoning_config.get("effort") or "").strip().lower()
             if not effort or effort == "none":
                 return extra_body, top_level
-            top_level["reasoning_effort"] = "max" if effort in {"xhigh", "max"} else "high"
+            top_level["reasoning_effort"] = "max" if effort in {"xhigh", "max", "ultra"} else "high"
             return extra_body, top_level
 
         if _is_kimi_k2_model(model):
@@ -90,7 +90,7 @@ class OpenCodeGoProfile(ProviderProfile):
                 return extra_body, top_level
 
             effort = (reasoning_config.get("effort") or "").strip().lower()
-            if effort in {"xhigh", "max"}:
+            if effort in {"xhigh", "max", "ultra"}:
                 top_level["reasoning_effort"] = "high"
             elif effort in {"low", "medium", "high"}:
                 top_level["reasoning_effort"] = effort
@@ -114,7 +114,7 @@ class OpenCodeGoProfile(ProviderProfile):
 
         if isinstance(reasoning_config, dict):
             effort = (reasoning_config.get("effort") or "").strip().lower()
-            if effort in {"xhigh", "max"}:
+            if effort in {"xhigh", "max", "ultra"}:
                 top_level["reasoning_effort"] = "max"
             elif effort in {"low", "medium", "high"}:
                 top_level["reasoning_effort"] = effort

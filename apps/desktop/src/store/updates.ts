@@ -13,7 +13,7 @@ import type {
   DesktopUpdateStatus,
   DesktopVersionInfo
 } from '@/global'
-import { checkHermesUpdate, getActionStatus, updateHermes } from '@/kopi'
+import { checkKopiUpdate, getActionStatus, updateKopi } from '@/kopi'
 import { translateNow } from '@/i18n'
 import { persistString, storedString } from '@/lib/storage'
 import { dismissNotification, notify } from '@/store/notifications'
@@ -74,7 +74,7 @@ const UPDATE_TOAST_ID = 'desktop-update-available'
 // a day, so a "don't show this exact sha again" guard re-popped the toast on
 // every new commit. We instead suppress the toast for a cooldown window that
 // (re)starts whenever the user closes it.
-const UPDATE_TOAST_SNOOZE_KEY = 'hermes:update-toast-snooze-until'
+const UPDATE_TOAST_SNOOZE_KEY = 'kopi:update-toast-snooze-until'
 const UPDATE_TOAST_COOLDOWN_MS = 24 * 60 * 60 * 1000
 
 function snoozeUpdateToast(): void {
@@ -91,14 +91,15 @@ function isUpdateToastSnoozed(): boolean {
 // against. The backend reports its own value in session runtime info; a lower
 // value (or none — a pre-GUI checkout) means GUI<->backend skew.
 // v2: requires the file.attach RPC (remote-gateway non-image file upload).
-const REQUIRED_BACKEND_CONTRACT = 2
+// v3: requires approvals.mode config RPCs and session.info reconciliation.
+const REQUIRED_BACKEND_CONTRACT = 3
 const SKEW_TOAST_ID = 'backend-contract-skew'
 // The contract check runs on every session.resume (applyRuntimeInfo), so
 // without a snooze the warning re-popped on every thread the user opened, even
 // right after they closed it. Mirror the update toast: persist a cooldown when
 // the user dismisses it. It still reminds again after the window if the backend
 // is still behind, and clears immediately once the backend catches up.
-const SKEW_TOAST_SNOOZE_KEY = 'hermes:backend-skew-toast-snooze-until'
+const SKEW_TOAST_SNOOZE_KEY = 'kopi:backend-skew-toast-snooze-until'
 const SKEW_TOAST_COOLDOWN_MS = 24 * 60 * 60 * 1000
 
 function snoozeSkewToast(): void {
@@ -116,7 +117,7 @@ const INSTALL_METHOD_TOAST_ID = 'install-method-not-supported'
 // re-derived from every session.info (session.create/resume/activate all
 // route through applyRuntimeInfo), so without a snooze it would re-pop on
 // every session switch even right after the user dismissed it.
-const INSTALL_METHOD_TOAST_SNOOZE_KEY = 'hermes:install-method-toast-snooze-until'
+const INSTALL_METHOD_TOAST_SNOOZE_KEY = 'kopi:install-method-toast-snooze-until'
 const INSTALL_METHOD_TOAST_COOLDOWN_MS = 24 * 60 * 60 * 1000
 
 function snoozeInstallMethodToast(): void {
@@ -154,7 +155,7 @@ export function reportBackendContract(contract: number | undefined): void {
 
   notify({
     action: {
-      label: translateNow('notifications.updateHermes'),
+      label: translateNow('notifications.updateKopi'),
       onClick: () => {
         snoozeSkewToast()
         void applyBackendUpdate()
@@ -305,7 +306,7 @@ export async function checkBackendUpdates(): Promise<DesktopUpdateStatus | null>
   $backendUpdateChecking.set(true)
 
   try {
-    const status = mapBackendCheck(await checkHermesUpdate(true))
+    const status = mapBackendCheck(await checkKopiUpdate(true))
     $backendUpdateStatus.set(status)
     maybeNotifyUpdateAvailable(status)
 
@@ -472,7 +473,7 @@ async function waitForBackendReturn(): Promise<boolean> {
     await new Promise(resolve => globalThis.setTimeout(resolve, BACKEND_RETURN_POLL_MS))
 
     try {
-      await checkHermesUpdate()
+      await checkKopiUpdate()
 
       return true
     } catch {
@@ -534,7 +535,7 @@ export async function applyBackendUpdate(): Promise<DesktopUpdateApplyResult> {
   })
 
   try {
-    const started = await updateHermes()
+    const started = await updateKopi()
 
     if (!started.ok) {
       const message = (started as { message?: string }).message || translateNow('updates.applyStatus.notAvailable')

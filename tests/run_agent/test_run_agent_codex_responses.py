@@ -210,7 +210,7 @@ class _FakeCreateStream:
 def _codex_request_kwargs():
     return {
         "model": "gpt-5-codex",
-        "instructions": "You are Hermes.",
+        "instructions": "You are Kopi.",
         "input": [{"role": "user", "content": "Ping"}],
         "tools": None,
         "store": False,
@@ -340,13 +340,13 @@ def test_build_api_kwargs_codex(monkeypatch):
     agent = _build_agent(monkeypatch)
     kwargs = agent._build_api_kwargs(
         [
-            {"role": "system", "content": "You are Hermes."},
+            {"role": "system", "content": "You are Kopi."},
             {"role": "user", "content": "Ping"},
         ]
     )
 
     assert kwargs["model"] == "gpt-5-codex"
-    assert kwargs["instructions"] == "You are Hermes."
+    assert kwargs["instructions"] == "You are Kopi."
     assert kwargs["store"] is False
     assert isinstance(kwargs["input"], list)
     assert kwargs["input"][0]["role"] == "user"
@@ -392,7 +392,7 @@ def test_build_api_kwargs_codex_clamps_minimal_effort(monkeypatch):
 
     kwargs = agent._build_api_kwargs(
         [
-            {"role": "system", "content": "You are Hermes."},
+            {"role": "system", "content": "You are Kopi."},
             {"role": "user", "content": "Ping"},
         ]
     )
@@ -766,7 +766,7 @@ def test_run_codex_stream_ignores_completed_response_with_null_output(monkeypatc
 
     The SDK's high-level ``responses.stream(...)`` helper used to reconstruct
     the final Response from that terminal field and raised ``TypeError:
-    'NoneType' object is not iterable``. The Hermes runtime consumes raw
+    'NoneType' object is not iterable``. The Kopi runtime consumes raw
     ``response.output_item.done`` events instead, so a null terminal ``output``
     must not affect the returned assistant/function-call items.
     """
@@ -819,6 +819,81 @@ def test_run_conversation_codex_plain_text(monkeypatch):
     assert result["final_response"] == "OK"
     assert result["messages"][-1]["role"] == "assistant"
     assert result["messages"][-1]["content"] == "OK"
+
+
+def test_copilot_final_preflight_sanitizes_both_middleware_layers(monkeypatch):
+    """The dispatch chokepoint must sanitize after every mutable layer."""
+    agent = _build_copilot_agent(monkeypatch)
+    setattr(agent, "_disable_streaming", True)
+    captured = {}
+
+    def _message_item(item_id, *, text, phase, status):
+        return {
+            "type": "message",
+            "role": "assistant",
+            "status": status,
+            "content": [{"type": "output_text", "text": text}],
+            "id": item_id,
+            "phase": phase,
+        }
+
+    def _request_middleware(request, **_context):
+        replacement = dict(request)
+        replacement["input"] = [
+            _message_item(
+                "request_middleware_id",
+                text="request-layer",
+                phase="commentary",
+                status="completed",
+            )
+        ]
+        return SimpleNamespace(
+            payload=replacement,
+            original_payload=request,
+            changed=True,
+            trace=[],
+        )
+
+    def _execution_middleware(request, next_call, **_context):
+        # Request middleware runs after the initial preflight, so its ID is
+        # still present here. The dispatch chokepoint must remove the ID that
+        # this execution middleware introduces immediately before the API call.
+        assert request["input"][0]["id"] == "request_middleware_id"
+        replacement = dict(request)
+        replacement["input"] = [
+            _message_item(
+                "execution_middleware_id",
+                text="execution-layer",
+                phase="final_answer",
+                status="in_progress",
+            )
+        ]
+        return next_call(replacement)
+
+    def _capture_api_call(api_kwargs):
+        captured.update(api_kwargs)
+        return _codex_message_response("OK")
+
+    monkeypatch.setattr(
+        "kopi_cli.middleware.apply_llm_request_middleware",
+        _request_middleware,
+    )
+    monkeypatch.setattr(
+        "kopi_cli.middleware.run_llm_execution_middleware",
+        _execution_middleware,
+    )
+    monkeypatch.setattr(agent, "_interruptible_api_call", _capture_api_call)
+
+    result = agent.run_conversation("Say OK")
+
+    assert result["completed"] is True
+    message_item = captured["input"][0]
+    assert "id" not in message_item
+    assert message_item["status"] == "in_progress"
+    assert message_item["phase"] == "final_answer"
+    assert message_item["content"] == [
+        {"type": "output_text", "text": "execution-layer"}
+    ]
 
 
 def test_run_conversation_codex_empty_output_with_output_text(monkeypatch):
@@ -937,7 +1012,7 @@ def test_build_api_kwargs_xai_oauth_sends_cache_key_via_extra_body(monkeypatch):
     agent = _build_xai_oauth_agent(monkeypatch)
     kwargs = agent._build_api_kwargs(
         [
-            {"role": "system", "content": "You are Hermes."},
+            {"role": "system", "content": "You are Kopi."},
             {"role": "user", "content": "Ping"},
         ]
     )
@@ -1308,7 +1383,7 @@ def test_preflight_codex_api_kwargs_strips_optional_function_call_id(monkeypatch
     preflight = _preflight_codex_api_kwargs(
         {
             "model": "gpt-5-codex",
-            "instructions": "You are Hermes.",
+            "instructions": "You are Kopi.",
             "input": [
                 {"role": "user", "content": "hi"},
                 {
@@ -1337,7 +1412,7 @@ def test_preflight_codex_api_kwargs_rejects_function_call_output_without_call_id
         _preflight_codex_api_kwargs(
             {
                 "model": "gpt-5-codex",
-                "instructions": "You are Hermes.",
+                "instructions": "You are Kopi.",
                 "input": [{"type": "function_call_output", "output": "{}"}],
                 "tools": [],
                 "store": False,
@@ -1542,7 +1617,7 @@ def test_run_conversation_compresses_mid_turn_before_output_budget_exhaustion(mo
         compress_calls.append(approx_tokens)
         return [
             {"role": "user", "content": "[summary of prior tool-heavy work]"},
-        ], "You are Hermes."
+        ], "You are Kopi."
 
     monkeypatch.setattr(agent, "_execute_tool_calls", _fake_execute_tool_calls)
     monkeypatch.setattr(agent, "_compress_context", _fake_compress_context)
@@ -1607,7 +1682,7 @@ def test_mid_turn_compaction_does_not_double_persist_in_place_rows(monkeypatch, 
         compacted = [{"role": "user", "content": "[summary of prior tool-heavy work]"}]
         agent._session_db.archive_and_compact(agent.session_id, compacted)
         agent._flushed_db_message_ids = set()
-        return compacted, "You are Hermes."
+        return compacted, "You are Kopi."
 
     monkeypatch.setattr(agent, "_execute_tool_calls", _fake_execute_tool_calls)
     monkeypatch.setattr(agent, "_compress_context", _fake_compress_context)

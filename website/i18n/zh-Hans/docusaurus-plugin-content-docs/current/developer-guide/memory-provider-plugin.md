@@ -1,12 +1,12 @@
 ---
 sidebar_position: 8
 title: "Memory Provider 插件"
-description: "如何为 KOPI AI AGENT 构建 memory provider 插件"
+description: "如何为 Kopi Agent 构建 memory provider 插件"
 ---
 
 # 构建 Memory Provider 插件
 
-Memory provider 插件为 KOPI AI AGENT 提供跨会话的持久化知识，超越内置的 MEMORY.md 和 USER.md。本指南介绍如何构建一个 memory provider 插件。
+Memory provider 插件为 Kopi Agent 提供跨会话的持久化知识，超越内置的 MEMORY.md 和 USER.md。本指南介绍如何构建一个 memory provider 插件。
 
 :::tip
 Memory provider 是两种 **provider 插件**类型之一。另一种是 [Context Engine 插件](/developer-guide/context-engine-plugin)，用于替换内置的上下文压缩器。两者遵循相同的模式：单选、配置驱动、通过 `kopi plugins` 管理。
@@ -107,7 +107,7 @@ def get_config_schema(self):
         {
             "key": "project",
             "description": "Project identifier",
-            "default": "hermes",
+            "default": "kopi",
         },
     ]
 ```

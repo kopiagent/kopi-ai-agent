@@ -3,7 +3,7 @@
 DeepSeek's V4 family (and the legacy ``deepseek-reasoner``) defaults to
 thinking-mode ON when ``extra_body.thinking`` is unset.  The API then returns
 ``reasoning_content`` and starts enforcing the contract that subsequent turns
-echo it back; combined with how Hermes replays history this lands on the
+echo it back; combined with how Kopi replays history this lands on the
 notorious HTTP 400 ``reasoning_content must be passed back`` error after the
 first tool call (#15700, #17212, #17825).
 
@@ -69,12 +69,12 @@ class DeepSeekProfile(ProviderProfile):
         if not enabled:
             return extra_body, top_level
 
-        # Effort mapping.  Pass low/medium/high through; xhigh/max → max.
+        # Effort mapping. Pass low/medium/high through; stronger levels → max.
         # When no effort is set we omit reasoning_effort so DeepSeek applies
         # its server default (currently high).
         if isinstance(reasoning_config, dict):
             effort = (reasoning_config.get("effort") or "").strip().lower()
-            if effort in {"xhigh", "max"}:
+            if effort in {"xhigh", "max", "ultra"}:
                 top_level["reasoning_effort"] = "max"
             elif effort in {"low", "medium", "high"}:
                 top_level["reasoning_effort"] = effort

@@ -510,10 +510,10 @@ describe('createGatewayEventHandler', () => {
   it('prefers raw text over Rich-rendered ANSI on message.complete (#16391)', () => {
     const appended: Msg[] = []
     const onEvent = createGatewayEventHandler(buildCtx(appended))
-    const raw = 'Hermes here.\n\nLine two.'
+    const raw = 'Kopi here.\n\nLine two.'
     // Rich-rendered ANSI (`final_response_markdown: render`) used to win,
     // which left visible escape codes in Ink output. Raw text must win.
-    const rendered = '\u001b[33mHermes here.\u001b[0m\n\n\u001b[2mLine two.\u001b[0m'
+    const rendered = '\u001b[33mKopi here.\u001b[0m\n\n\u001b[2mLine two.\u001b[0m'
 
     onEvent({ payload: { rendered, text: raw }, type: 'message.complete' } as any)
 
@@ -949,6 +949,23 @@ describe('createGatewayEventHandler', () => {
     })
   })
 
+  it('preserves Smart DENY and explicit approval choices on the overlay', () => {
+    const onEvent = createGatewayEventHandler(buildCtx([]))
+
+    onEvent({
+      payload: {
+        allow_permanent: true,
+        choices: ['once', 'deny'],
+        command: 'rm -rf /tmp/x',
+        description: 'smart deny override',
+        smart_denied: true
+      },
+      type: 'approval.request'
+    } as any)
+
+    expect(getOverlayState().approval).toMatchObject({ choices: ['once', 'deny'], smartDenied: true })
+  })
+
   it('still surfaces terminal turn failures as errors', () => {
     const appended: Msg[] = []
     const onEvent = createGatewayEventHandler(buildCtx(appended))
@@ -1305,6 +1322,24 @@ describe('createGatewayEventHandler', () => {
     onEvent({ payload: { duration_s: 4.2, name: 'clarify', tool_id: 'clar-1' }, type: 'tool.complete' } as any)
 
     expect(appended.some(msg => msg.role === 'system' && msg.text.startsWith('ask '))).toBe(false)
+  })
+
+  it('clears only the matching sensitive prompt when the gateway expires it', () => {
+    const onEvent = createGatewayEventHandler(buildCtx([]))
+
+    patchOverlayState({
+      secret: { envVar: 'NEW_KEY', prompt: 'Enter new key', requestId: 'secret-new' },
+      sudo: { requestId: 'sudo-1' }
+    })
+
+    onEvent({ payload: { request_id: 'secret-old' }, type: 'secret.expire' } as any)
+    expect(getOverlayState().secret?.requestId).toBe('secret-new')
+
+    onEvent({ payload: { request_id: 'secret-new' }, type: 'secret.expire' } as any)
+    expect(getOverlayState().secret).toBeNull()
+
+    onEvent({ payload: { request_id: 'sudo-1' }, type: 'sudo.expire' } as any)
+    expect(getOverlayState().sudo).toBeNull()
   })
 
   // ── Credits notice (Strategy B) ──────────────────────────────────────

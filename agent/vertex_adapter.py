@@ -1,7 +1,7 @@
-"""Vertex AI (Google Cloud) adapter for KOPI AI AGENT.
+"""Vertex AI (Google Cloud) adapter for Kopi Agent.
 
 Provides authentication and configuration for Vertex AI's OpenAI-compatible
-endpoint. This allows Hermes to use Gemini models via Google Cloud with
+endpoint. This allows Kopi to use Gemini models via Google Cloud with
 enterprise-grade rate limits and quotas.
 
 Requires: pip install google-auth

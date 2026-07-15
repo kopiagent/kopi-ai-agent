@@ -59,7 +59,7 @@ class TestParseFrontmatterQuick:
         assert fm == {}
 
     def test_nested_yaml(self):
-        content = "---\nname: test\nmetadata:\n  hermes:\n    tags: [a, b]\n---\n\nBody.\n"
+        content = "---\nname: test\nmetadata:\n  kopi:\n    tags: [a, b]\n---\n\nBody.\n"
         fm = GitHubSource._parse_frontmatter_quick(content)
         assert fm["metadata"]["kopi"]["tags"] == ["a", "b"]
 
@@ -963,7 +963,7 @@ class TestUrlSource:
                 "name: sharethis-chat\n"
                 "description: Share agent conversations.\n"
                 "metadata:\n"
-                "  hermes:\n"
+                "  kopi:\n"
                 "    tags: [sharing, chat]\n"
                 "---\n\n# Body\n"
             ),
@@ -1649,15 +1649,15 @@ class TestGithubProviderLabeling:
 
 
 def _make_index_source(skills):
-    """Build a HermesIndexSource pre-loaded with a fixed skill list."""
-    from tools.skills_hub import HermesIndexSource
-    src = HermesIndexSource(auth=GitHubAuth())
+    """Build a KopiIndexSource pre-loaded with a fixed skill list."""
+    from tools.skills_hub import KopiIndexSource
+    src = KopiIndexSource(auth=GitHubAuth())
     src._index = {"skills": skills}
     src._loaded = True
     return src
 
 
-class TestHermesIndexSearch:
+class TestKopiIndexSearch:
     def test_search_matches_identifier_and_provider(self):
         # NVIDIA skill whose name/description does NOT contain "nvidia" — only
         # the identifier and the provider label do. The old substring-only
@@ -1832,7 +1832,7 @@ class TestOptionalSkillSourceMetadata:
         meta = src.inspect("official/finance/3-statement-model")
 
         assert meta is not None
-        assert meta.repo == "Kopi Ai Agent Pte Ltd/kopi-ai-agent"
+        assert meta.repo == "NousResearch/kopi-ai-agent"
         assert meta.path == "optional-skills/finance/3-statement-model"
 
 
@@ -2478,7 +2478,7 @@ class TestParallelSearchSourcesTimeout:
 # ---------------------------------------------------------------------------
 
 
-class TestLoadHermesIndex:
+class TestLoadKopiIndex:
     """Regression coverage for the Skills-Hub index fetch.
 
     The centralized index is a large body served with Content-Encoding: br.

@@ -428,6 +428,69 @@ class TestSearchHandler:
 
 
 # ---------------------------------------------------------------------------
+# Windows MSYS path resolution (salvage of #50488 / #46995)
+# ---------------------------------------------------------------------------
+
+class TestWindowsMsysPathResolution:
+    """File tools must translate Git Bash drive paths before Path resolution."""
+
+    def test_absolute_msys_path_normalized_before_windows_resolve(self, monkeypatch):
+        import tools.environments.local as local_mod
+        import tools.file_tools as file_tools
+
+        monkeypatch.setattr(file_tools.sys, "platform", "win32")
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        monkeypatch.setattr(file_tools, "_uses_container_paths", lambda task_id="default": False)
+
+        resolved = file_tools._resolve_path_for_task("/c/Users/Mark/project/app.py")
+        assert str(resolved) == r"C:\Users\Mark\project\app.py"
+
+    def test_cygdrive_path_normalized(self, monkeypatch):
+        import tools.environments.local as local_mod
+        import tools.file_tools as file_tools
+
+        monkeypatch.setattr(file_tools.sys, "platform", "win32")
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        monkeypatch.setattr(file_tools, "_uses_container_paths", lambda task_id="default": False)
+
+        resolved = file_tools._resolve_path_for_task("/cygdrive/d/code/main.py")
+        assert str(resolved) == r"D:\code\main.py"
+
+    def test_relative_path_uses_normalized_msys_cwd(self, monkeypatch):
+        import tools.environments.local as local_mod
+        import tools.file_tools as file_tools
+
+        monkeypatch.setattr(file_tools.sys, "platform", "win32")
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        monkeypatch.setattr(file_tools, "_uses_container_paths", lambda task_id="default": False)
+        monkeypatch.setattr(
+            file_tools,
+            "_authoritative_workspace_root",
+            lambda task_id="default": "/c/Users/Mark/project",
+        )
+
+        resolved = file_tools._resolve_path_for_task("src/app.py", task_id="msys")
+        assert str(resolved) == r"C:\Users\Mark\project\src\app.py"
+
+    def test_container_paths_skip_msys_translation(self, monkeypatch):
+        """WSL/docker Linux paths must not be rewritten as Windows drives."""
+        import tools.environments.local as local_mod
+        import tools.file_tools as file_tools
+
+        monkeypatch.setattr(file_tools.sys, "platform", "win32")
+        monkeypatch.setattr(local_mod, "_IS_WINDOWS", True)
+        monkeypatch.setattr(file_tools, "_uses_container_paths", lambda task_id="default": True)
+        monkeypatch.setattr(
+            file_tools,
+            "_authoritative_workspace_root",
+            lambda task_id="default": "/home/don/project",
+        )
+
+        resolved = file_tools._resolve_path_for_task("/home/don/.env")
+        assert str(resolved) == "/home/don/.env"
+
+
+# ---------------------------------------------------------------------------
 # Tool result hint tests (#722)
 # ---------------------------------------------------------------------------
 
@@ -538,7 +601,7 @@ class TestSensitivePathCheck:
         from tools.file_tools import write_file_tool
         result = json.loads(write_file_tool(str(fake_config), "approvals:\n  mode: off\n"))
         assert "error" in result
-        assert "Hermes config" in result["error"]
+        assert "Kopi config" in result["error"]
 
     def test_kopi_config_blocked_via_tilde_path(self, tmp_path, monkeypatch):
         fake_config = tmp_path / "config.yaml"
@@ -548,7 +611,7 @@ class TestSensitivePathCheck:
         from tools.file_tools import write_file_tool
         result = json.loads(write_file_tool(str(fake_config), "approvals:\n  mode: off\n"))
         assert "error" in result
-        assert "Hermes config" in result["error"]
+        assert "Kopi config" in result["error"]
 
     def test_kopi_config_blocked_for_patch(self, tmp_path, monkeypatch):
         fake_config = tmp_path / "config.yaml"
@@ -564,7 +627,7 @@ class TestSensitivePathCheck:
             new_string="mode: off",
         ))
         assert "error" in result
-        assert "Hermes config" in result["error"]
+        assert "Kopi config" in result["error"]
 
     def test_system_path_still_blocked(self, monkeypatch):
         monkeypatch.setattr("tools.file_tools._kopi_config_resolved", "/some/other/path")

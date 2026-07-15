@@ -1,7 +1,7 @@
-"""Coding-context awareness — base Hermes, every interactive surface.
+"""Coding-context awareness — base Kopi, every interactive surface.
 
-When the user runs Hermes inside a code workspace (CLI, TUI, desktop app, or an
-editor over ACP), Hermes shifts into a **coding posture**. This module is the
+When the user runs Kopi inside a code workspace (CLI, TUI, desktop app, or an
+editor over ACP), Kopi shifts into a **coding posture**. This module is the
 single place that decides whether we're in that posture and what it implies,
 so the rest of the codebase never re-derives "are we coding?" on its own.
 
@@ -56,6 +56,7 @@ import logging
 import os
 import re
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -412,10 +413,18 @@ def _marker_root(cwd: Path) -> Optional[Path]:
     """
     current = cwd.resolve()
     home = _home()
+    # Shared world-writable temp roots are never project roots: a stray
+    # manifest in /tmp (left by any process) must not flip every session
+    # whose cwd lives under the temp dir into the coding posture. Same
+    # reasoning as the $HOME skip below.
+    try:
+        temp_root = Path(tempfile.gettempdir()).resolve()
+    except Exception:
+        temp_root = None
     for depth, parent in enumerate([current, *current.parents]):
         if depth > 6:
             break
-        if parent == home:
+        if parent == home or (temp_root is not None and parent == temp_root):
             continue
         for marker in _PROJECT_MARKERS:
             if (parent / marker).exists():
@@ -600,7 +609,7 @@ def is_coding_context(
     cwd: Optional[str | Path] = None,
     config: Optional[dict[str, Any]] = None,
 ) -> bool:
-    """Whether Hermes should operate in its coding posture right now."""
+    """Whether Kopi should operate in its coding posture right now."""
     return resolve_runtime_mode(platform=platform, cwd=cwd, config=config).is_coding
 
 

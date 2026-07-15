@@ -1,6 +1,6 @@
 # 会话存储
 
-KOPI AI AGENT 使用 SQLite 数据库（`~/.kopi/state.db`）跨 CLI 和 gateway 会话持久化会话元数据、完整消息历史及模型配置。这替代了早期的逐会话 JSONL 文件方案。
+Kopi Agent 使用 SQLite 数据库（`~/.kopi/state.db`）跨 CLI 和 gateway 会话持久化会话元数据、完整消息历史及模型配置。这替代了早期的逐会话 JSONL 文件方案。
 
 源文件：`kopi_state.py`
 

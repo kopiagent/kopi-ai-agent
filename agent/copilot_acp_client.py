@@ -1,9 +1,9 @@
-"""OpenAI-compatible shim that forwards Hermes requests to `copilot --acp`.
+"""OpenAI-compatible shim that forwards Kopi requests to `copilot --acp`.
 
-This adapter lets Hermes treat the GitHub Copilot ACP server as a chat-style
+This adapter lets Kopi treat the GitHub Copilot ACP server as a chat-style
 backend. Each request starts a short-lived ACP session, sends the formatted
 conversation as a single prompt, collects text chunks, and converts the result
-back into the minimal shape Hermes expects from an OpenAI client.
+back into the minimal shape Kopi expects from an OpenAI client.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from openai.types.chat.chat_completion_message_tool_call import (
     Function,
 )
 
-from agent.file_safety import get_read_block_error, is_write_denied
+from agent.file_safety import get_read_block_error, get_write_denied_error
 from agent.redact import redact_sensitive_text
 from tools.environments.local import kopi_subprocess_env
 
@@ -141,13 +141,13 @@ def _format_messages_as_prompt(
     tool_choice: Any = None,
 ) -> str:
     sections: list[str] = [
-        "You are being used as the active ACP agent backend for Hermes.",
+        "You are being used as the active ACP agent backend for Kopi.",
         "Use ACP capabilities to complete tasks.",
         "IMPORTANT: If you take an action with a tool, you MUST output tool calls using <tool_call>{...}</tool_call> blocks with JSON exactly in OpenAI function-call shape.",
         "If no tool is needed, answer normally.",
     ]
     if model:
-        sections.append(f"Hermes requested model hint: {model}")
+        sections.append(f"Kopi requested model hint: {model}")
 
     if isinstance(tools, list) and tools:
         tool_specs: list[dict[str, Any]] = []
@@ -596,14 +596,14 @@ class CopilotACPClient:
             if proc.poll() is not None and stderr_text:
                 if _is_gh_copilot_deprecation_message(stderr_text):
                     raise RuntimeError(
-                        "Hermes ACP mode requires the NEW GitHub Copilot CLI "
+                        "Kopi ACP mode requires the NEW GitHub Copilot CLI "
                         "(github.com/github/copilot-cli), but the binary it just "
                         "spawned is the deprecated `gh copilot` extension.\n\n"
                         "Install the new CLI:\n"
                         "  npm install -g @github/copilot\n"
                         "  # then verify with: copilot --help\n\n"
                         "If `copilot` already resolves to the new CLI but you still see this,\n"
-                        "point Hermes at it explicitly:\n"
+                        "point Kopi at it explicitly:\n"
                         "  export KOPI_COPILOT_ACP_COMMAND=/path/to/new/copilot\n\n"
                         "Alternative: use the `copilot` provider (no ACP, hits the Copilot API\n"
                         "directly with a Copilot subscription token) via `kopi setup`.\n\n"
@@ -625,7 +625,7 @@ class CopilotACPClient:
                     },
                     "clientInfo": {
                         "name": "kopi-ai-agent",
-                        "title": "KOPI AI AGENT",
+                        "title": "Kopi Agent",
                         "version": "0.0.0",
                     },
                 },
@@ -727,10 +727,9 @@ class CopilotACPClient:
         elif method == "fs/write_text_file":
             try:
                 path = _ensure_path_within_cwd(str(params.get("path") or ""), cwd)
-                if is_write_denied(str(path)):
-                    raise PermissionError(
-                        f"Write denied: '{path}' is a protected system/credential file."
-                    )
+                denied = get_write_denied_error(str(path))
+                if denied:
+                    raise PermissionError(denied)
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(str(params.get("content") or ""))
                 response = {
@@ -744,7 +743,7 @@ class CopilotACPClient:
             response = _jsonrpc_error(
                 message_id,
                 -32601,
-                f"ACP client method '{method}' is not supported by Hermes yet.",
+                f"ACP client method '{method}' is not supported by Kopi yet.",
             )
 
         process.stdin.write(json.dumps(response) + "\n")

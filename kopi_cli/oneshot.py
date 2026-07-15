@@ -150,6 +150,12 @@ def _write_usage_file(path: Optional[str], result: dict, failure: Optional[str] 
             "session_id": result.get("session_id"),
             "completed": result.get("completed"),
             "failed": bool(result.get("failed")) or failure is not None,
+            # Billing-audit field: the service tier this run REQUESTED via
+            # request_overrides.extra_body (e.g. OpenAI "flex"). None when
+            # unset. Lets batch pipelines verify the tier they think they're
+            # paying for actually went out on the wire (July 2026 incident:
+            # a config-matching bug silently dropped flex -> 2.3x billing).
+            "service_tier": result.get("service_tier"),
         }
         if failure is not None:
             report["failure"] = failure
@@ -281,7 +287,7 @@ def run_oneshot(
 def _create_session_db_for_oneshot():
     """Best-effort SessionDB for ``kopi -z`` / oneshot mode.
 
-    Oneshot bypasses ``HermesCLI._init_agent()``, so it must wire the SQLite
+    Oneshot bypasses ``KopiCLI._init_agent()``, so it must wire the SQLite
     session store itself. Without this, the ``session_search``/recall tool is
     advertised but every call returns "Session database not available.".
     """

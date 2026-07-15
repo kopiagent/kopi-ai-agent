@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Build the Hermes Model Catalog — a centralized JSON manifest of curated models.
+"""Build the Kopi Model Catalog — a centralized JSON manifest of curated models.
 
 This script reads the in-repo hardcoded curated lists (``OPENROUTER_MODELS``,
 ``_PROVIDER_MODELS["nous"]``) and writes them to a JSON manifest that the
-Hermes CLI fetches at runtime. Publishing the catalog through the docs site
-lets maintainers update model lists without shipping a Hermes release.
+Kopi CLI fetches at runtime. Publishing the catalog through the docs site
+lets maintainers update model lists without shipping a Kopi release.
 
 The runtime fetcher falls back to the same in-repo hardcoded lists if the
 manifest is unreachable, so this script is a convenience for keeping the
@@ -17,7 +17,7 @@ Usage::
 Output: ``website/static/api/model-catalog.json``
 
 Live URL (after ``deploy-site.yml`` runs on merge to main):
-``https://kopiaiagent.com/docs/api/model-catalog.json``
+``https://kopi-ai-agent.nousresearch.com/docs/api/model-catalog.json``
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ def build_catalog() -> dict:
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "metadata": {
             "source": "kopi-ai-agent repo",
-            "docs": "https://kopiaiagent.com/docs/reference/model-catalog",
+            "docs": "https://kopi-ai-agent.nousresearch.com/docs/reference/model-catalog",
         },
         "providers": {
             "openrouter": {

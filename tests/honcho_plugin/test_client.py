@@ -435,7 +435,7 @@ class TestResolveActiveHost:
         assert profile_host_key("coder") == "kopi_coder"
         assert profile_host_key("default") == "kopi"
 
-    def test_default_returns_hermes(self):
+    def test_default_returns_kopi(self):
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("KOPI_HONCHO_HOST", None)
             os.environ.pop("KOPI_HOME", None)
@@ -451,13 +451,13 @@ class TestResolveActiveHost:
             with patch("kopi_cli.profiles.get_active_profile_name", return_value="coder"):
                 assert resolve_active_host() == "kopi_coder"
 
-    def test_default_profile_returns_hermes(self):
+    def test_default_profile_returns_kopi(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("KOPI_HONCHO_HOST", None)
             with patch("kopi_cli.profiles.get_active_profile_name", return_value="default"):
                 assert resolve_active_host() == "kopi"
 
-    def test_custom_profile_returns_hermes(self):
+    def test_custom_profile_returns_kopi(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("KOPI_HONCHO_HOST", None)
             with patch("kopi_cli.profiles.get_active_profile_name", return_value="custom"):

@@ -203,7 +203,7 @@ class TestBuildAnthropicClient:
 
     def test_disables_sdk_retries_for_api_key(self):
         """#26293: the SDK's default max_retries=2 ignores Retry-After and
-        double-retries inside hermes's outer loop. We delegate retry entirely
+        double-retries inside kopi's outer loop. We delegate retry entirely
         to the outer loop, so the client must be built with max_retries=0."""
         with patch("agent.anthropic_adapter._anthropic_sdk") as mock_sdk:
             build_anthropic_client("sk-ant-api03-something")
@@ -360,7 +360,7 @@ class TestResolveAnthropicToken:
         monkeypatch.setattr("agent.anthropic_adapter.Path.home", lambda: tmp_path)
         # Isolate source #4 (credential_pool): ensure source #3 (Claude Code
         # creds, incl. the macOS keychain read which Path.home does not cover)
-        # returns nothing, mirroring a Hermes-PKCE-only setup.
+        # returns nothing, mirroring a Kopi-PKCE-only setup.
         monkeypatch.setattr("agent.anthropic_adapter.read_claude_code_credentials", lambda: None)
 
         pool_entry = SimpleNamespace(
@@ -1448,6 +1448,16 @@ class TestBuildAnthropicKwargs:
         assert kwargs["thinking"] == {"type": "adaptive", "display": "summarized"}
         assert kwargs["output_config"] == {"effort": "xhigh"}
 
+    def test_reasoning_config_clamps_generic_ultra_to_anthropic_max(self):
+        kwargs = build_anthropic_kwargs(
+            model="claude-opus-4.8",
+            messages=[{"role": "user", "content": "think harder"}],
+            tools=None,
+            max_tokens=4096,
+            reasoning_config={"enabled": True, "effort": "ultra"},
+        )
+        assert kwargs["output_config"] == {"effort": "max"}
+
     def test_reasoning_config_maps_max_effort_for_4_7_models(self):
         kwargs = build_anthropic_kwargs(
             model="claude-opus-4-7",
@@ -2403,7 +2413,7 @@ class TestConvertToolsToAnthropicDedup:
 
     Anthropic rejects requests with duplicate tool names.  This guard converts
     a hard failure into a warning log.  See:
-    https://github.com/LINYIQ66/kopi-ai-agent/issues/18478
+    https://github.com/NousResearch/kopi-ai-agent/issues/18478
     """
 
     def _make_openai_tool(self, name: str) -> dict:

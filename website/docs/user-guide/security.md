@@ -6,23 +6,24 @@ description: "Security model, dangerous command approval, user authorization, co
 
 # Security
 
-KOPI AI AGENT is designed with a defense-in-depth security model. This page covers every security boundary — from command approval to container isolation to user authorization on messaging platforms.
+Kopi Agent is designed with a defense-in-depth security model. This page covers every security boundary — from command approval to container isolation to user authorization on messaging platforms.
 
 ## Overview
 
-The security model has seven layers:
+The security model has eight layers:
 
 1. **User authorization** — who can talk to the agent (allowlists, DM pairing)
 2. **Dangerous command approval** — human-in-the-loop for destructive operations
-3. **Container isolation** — Docker/Singularity/Modal sandboxing with hardened settings
-4. **MCP credential filtering** — environment variable isolation for MCP subprocesses
-5. **Context file scanning** — prompt injection detection in project files
-6. **Cross-session isolation** — sessions cannot access each other's data or state; cron job storage paths are hardened against path traversal attacks
-7. **Input sanitization** — working directory parameters in terminal tool backends are validated against an allowlist to prevent shell injection
+3. **File write safety** — denylist and optional write sandbox for `write_file`/`patch`
+4. **Container isolation** — Docker/Singularity/Modal sandboxing with hardened settings
+5. **MCP credential filtering** — environment variable isolation for MCP subprocesses
+6. **Context file scanning** — prompt injection detection in project files
+7. **Cross-session isolation** — sessions cannot access each other's data or state; cron job storage paths are hardened against path traversal attacks
+8. **Input sanitization** — working directory parameters in terminal tool backends are validated against an allowlist to prevent shell injection
 
 ## Dangerous Command Approval
 
-Before executing any command, Hermes checks it against a curated list of dangerous patterns. If a match is found, the user must explicitly approve it.
+Before executing any command, Kopi checks it against a curated list of dangerous patterns. If a match is found, the user must explicitly approve it.
 
 ### Approval Modes
 
@@ -30,7 +31,7 @@ The approval system supports three modes, configured via `approvals.mode` in `~/
 
 ```yaml
 approvals:
-  mode: manual                    # manual | smart | off
+  mode: smart                     # smart | manual | off
   timeout: 60                     # seconds to wait for user response (default: 60)
   cron_mode: deny                 # deny | approve — what cron jobs do when they hit a dangerous command
   mcp_reload_confirm: true        # /reload-mcp asks before invalidating the MCP tool cache
@@ -41,16 +42,16 @@ The full set of keys:
 
 | Key | Default | What it controls |
 |---|---|---|
-| `mode` | `manual` | Approval policy for dangerous shell commands — see the table below. |
-| `timeout` | `60` | Seconds Hermes waits for an approval reply before timing out. |
+| `mode` | `smart` | Approval policy for dangerous shell commands — see the table below. |
+| `timeout` | `60` | Seconds Kopi waits for an approval reply before timing out. |
 | `cron_mode` | `deny` | How [cron jobs](./features/cron.md) behave headlessly when they trigger a dangerous-command prompt. `deny` blocks the command (the agent must find another path); `approve` auto-approves everything in cron context. |
 | `mcp_reload_confirm` | `true` | When true, `/reload-mcp` asks before rebuilding the MCP tool set. Rebuilding invalidates the provider prompt cache (tool schemas live in the system prompt), so the next message re-sends full input tokens. Users who click **Always Approve** flip this key to `false`. |
 | `destructive_slash_confirm` | `true` | When true, destructive session slash commands (`/clear`, `/new`, `/reset`, `/undo`) prompt before discarding conversation state. Three-option dialog (Approve Once / Always Approve / Cancel) routed through native yes/no buttons on Telegram, Discord, and Slack; text fallback elsewhere. Users who click **Always Approve** flip this key to `false`. TUI uses its own modal overlay (set `KOPI_TUI_NO_CONFIRM=1` to opt out there). |
 
 | Mode | Behavior |
 |------|----------|
-| **manual** (default) | Always prompt the user for approval on dangerous commands |
-| **smart** | Use an auxiliary LLM to assess risk. Low-risk commands (e.g., `python -c "print('hello')"`) are auto-approved. Genuinely dangerous commands are auto-denied. Uncertain cases escalate to a manual prompt. |
+| **smart** (default) | Use an auxiliary LLM to assess risk. Low-risk commands (e.g., `python -c "print('hello')"`) are auto-approved for that command only. Genuinely dangerous commands are auto-denied. Uncertain cases escalate to a manual prompt. |
+| **manual** | Always prompt the user for approval on dangerous commands. |
 | **off** | Disable all approval checks — equivalent to running with `--yolo`. All commands execute without prompts. |
 
 :::warning
@@ -77,7 +78,7 @@ The `/yolo` command is a **toggle** — each use flips the mode on or off:
 
 YOLO mode is available in both CLI and gateway sessions. Internally, it sets the `KOPI_YOLO_MODE` environment variable which is checked before every command execution.
 
-When YOLO is active, Hermes shows two persistent visual reminders so it's hard to forget that approval prompts are bypassed:
+When YOLO is active, Kopi shows two persistent visual reminders so it's hard to forget that approval prompts are bypassed:
 
 - A red banner line at session start when YOLO is already active: `⚠ YOLO mode — all approval prompts bypassed`. Hidden when YOLO is off so the default banner stays uncluttered.
 - A `⚠ YOLO` fragment in the status bar across all width tiers, updated live as you toggle YOLO on or off (rich-text renderer and plain-text fallback).
@@ -90,7 +91,7 @@ For destructive session slash commands (`/clear`, `/new` / `/reset`, `/undo`, `/
 
 ### Hardline Blocklist (Always-On Floor)
 
-Some commands are so catastrophic — irreversible filesystem wipes, fork bombs, direct block-device writes — that Hermes refuses to run them **regardless** of:
+Some commands are so catastrophic — irreversible filesystem wipes, fork bombs, direct block-device writes — that Kopi refuses to run them **regardless** of:
 
 - `--yolo` / `/yolo` toggled on
 - `approvals.mode: off`
@@ -232,9 +233,51 @@ These patterns are loaded at startup and silently approved in all future session
 Use `kopi config edit` to review or remove patterns from your permanent allowlist.
 :::
 
+## File Write Safety {#file-write-safety}
+
+Before `write_file` or `patch` touches disk, Kopi checks the target path against a denylist and an optional sandbox. Blocked writes return an error to the agent immediately — **there is no approval prompt** and no way to override from the chat UI. The model may still claim the edit succeeded; when `display.file_mutation_verifier` is on (default), trust the [file-mutation verifier footer](./configuration.md#file-mutation-verifier) over the assistant's closing summary.
+
+### Protected paths (always blocked)
+
+These categories are always denied, even when `KOPI_WRITE_SAFE_ROOT` is unset:
+
+| Category | Examples |
+|----------|----------|
+| OS credential stores | `~/.ssh/`, `~/.aws/`, `~/.kube/`, `/etc/sudoers`, `~/.netrc` |
+| Kopi credential stores | `auth.json`, `.env`, `.anthropic_oauth.json`, `mcp-tokens/`, `pairing/` under KOPI_HOME (active profile and global root) |
+| Project secret files | `.env`, `.env.local`, `.env.production`, `.envrc` anywhere on disk |
+
+Sensitive paths inside the safe root are still blocked — pointing `KOPI_WRITE_SAFE_ROOT` at `$HOME` does not allow writing `~/.ssh/id_rsa`.
+
+Safe-root violations return `Write denied: '…' is outside KOPI_WRITE_SAFE_ROOT (…)`. Credential-path blocks use `Write denied: '…' is a protected system/credential file.`
+
+### KOPI_WRITE_SAFE_ROOT (optional sandbox)
+
+When set, `write_file` and `patch` may only target paths inside the listed directory prefix(es). Anything outside is **hard-blocked** — not routed through dangerous-command approval.
+
+- Set automatically in the [official Docker image](https://github.com/NousResearch/kopi-agent) (`KOPI_WRITE_SAFE_ROOT=/opt/data`)
+- Supports multiple roots separated by `:` on Unix or `;` on Windows
+- **Do not add to `~/.kopi/.env` casually.** If you set it to a project directory, the agent cannot write to `~/.kopi/cron/jobs.json`, profile skills, or other Kopi state outside that prefix
+
+To allow both a workspace and Kopi home:
+
+```bash
+export KOPI_WRITE_SAFE_ROOT=/path/to/project:/home/you/.kopi
+```
+
+Unset the variable to restore unrestricted writes (subject to the protected-path denylist). Full reference: [KOPI_WRITE_SAFE_ROOT](../reference/environment-variables.md#kopi_write_safe_root).
+
+### Cron and other Kopi state
+
+Do not ask the agent to `patch` `~/.kopi/cron/jobs.json` directly. Use the `cronjob` tool, [`kopi cron`](./features/cron.md), or `/cron` — they update the job store through the supported API. The same applies to other Kopi control files when write safety blocks direct edits.
+
+:::note Defense-in-depth, not a hard boundary
+Write guards apply to `write_file` and `patch` only. The `terminal` tool runs as the same OS user and can still `cat` or overwrite denied paths via shell commands. The denylist reduces accidental damage and gives models a clear stop signal; it does not sandbox a hostile or compromised agent.
+:::
+
 ## User Authorization (Gateway)
 
-When running the messaging gateway, Hermes controls who can interact with the bot through a layered authorization system.
+When running the messaging gateway, Kopi controls who can interact with the bot through a layered authorization system.
 
 ### Authorization Check Order
 
@@ -280,7 +323,7 @@ or configure platform allowlists (e.g., TELEGRAM_ALLOWED_USERS=your_id).
 
 ### DM Pairing System
 
-For more flexible authorization, Hermes includes a code-based pairing system. Instead of requiring user IDs upfront, unknown users receive a one-time pairing code that the bot owner approves via the CLI.
+For more flexible authorization, Kopi includes a code-based pairing system. Instead of requiring user IDs upfront, unknown users receive a one-time pairing code that the bot owner approves via the CLI.
 
 **How it works:**
 
@@ -338,16 +381,16 @@ The official Docker image runs the gateway as the unprivileged `kopi` user
 created by root are written with mode `0600 root:root` and the gateway
 cannot read them — the approval is silently ignored ([#10270][i10270]).
 
-Always pass `-u hermes`:
+Always pass `-u kopi`:
 
 ```bash
-docker exec -u kopi kopi-ai-agent kopi pairing approve telegram ABC12DEF
+docker exec -u kopi kopi-agent kopi pairing approve telegram ABC12DEF
 ```
 
 If you already ran the command as root and the user is still unauthorized,
 restart the container — the entrypoint will fix ownership on the next start.
 
-[i10270]: https://github.com/LINYIQ66/kopi-ai-agent/issues/10270
+[i10270]: https://github.com/NousResearch/kopi-agent/issues/10270
 :::
 
 **Storage:** Pairing data is stored in `~/.kopi/pairing/` with per-platform JSON files:
@@ -357,7 +400,7 @@ restart the container — the entrypoint will fix ownership on the next start.
 
 ## Container Isolation
 
-When using the `docker` terminal backend, Hermes applies strict security hardening to every container.
+When using the `docker` terminal backend, Kopi applies strict security hardening to every container.
 
 ### Docker Security Flags
 
@@ -466,7 +509,7 @@ required_credential_files:
     description: Google OAuth2 client credentials
 ```
 
-When loaded, Hermes checks if these files exist in the active profile's `KOPI_HOME` and registers them for mounting:
+When loaded, Kopi checks if these files exist in the active profile's `KOPI_HOME` and registers them for mounting:
 
 - **Docker**: Read-only bind mounts (`-v host:container:ro`)
 - **Modal**: Mounted at sandbox creation + synced before each command (handles mid-session OAuth setup)
@@ -488,7 +531,7 @@ Paths are relative to `~/.kopi/`. Files are mounted to `/root/.kopi/` inside the
 | Sandbox | Default Filter | Passthrough Override |
 |---------|---------------|---------------------|
 | **execute_code** | Blocks vars containing `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL`, `PASSWD`, `AUTH` in name; only allows safe-prefix vars through | ✅ Passthrough vars bypass both checks |
-| **terminal** (local) | Blocks explicit Hermes infrastructure vars (provider keys, gateway tokens, tool API keys) | ✅ Passthrough vars bypass the blocklist |
+| **terminal** (local) | Blocks explicit Kopi infrastructure vars (provider keys, gateway tokens, tool API keys) | ✅ Passthrough vars bypass the blocklist |
 | **terminal** (Docker) | No host env vars by default | ✅ Passthrough vars + `docker_forward_env` forwarded via `-e` |
 | **terminal** (Modal) | No host env/files by default | ✅ Credential files mounted; env passthrough via sync |
 | **MCP** | Blocks everything except safe system vars + explicitly configured `env` | ❌ Not affected by passthrough (use MCP `env` config instead) |
@@ -499,7 +542,7 @@ Paths are relative to `~/.kopi/`. Files are mounted to `/root/.kopi/` inside the
 - Credential files are mounted **read-only** into Docker containers
 - Skills Guard scans skill content for suspicious env access patterns before installation
 - Missing/unset vars are never registered (you can't leak what doesn't exist)
-- Hermes infrastructure secrets (provider API keys, gateway tokens) should never be added to `env_passthrough` — they have dedicated mechanisms
+- Kopi infrastructure secrets (provider API keys, gateway tokens) should never be added to `env_passthrough` — they have dedicated mechanisms
 
 ## MCP Credential Handling
 
@@ -583,7 +626,7 @@ The host-substring guard (which blocks lookalike Unicode domain tricks even when
 
 ### Tirith Pre-Exec Security Scanning
 
-Hermes integrates [tirith](https://github.com/sheeki03/tirith) for content-level command scanning before execution. Tirith detects threats that pattern matching alone misses:
+Kopi integrates [tirith](https://github.com/sheeki03/tirith) for content-level command scanning before execution. Tirith detects threats that pattern matching alone misses:
 
 - Homograph URL spoofing (internationalized domain attacks)
 - Pipe-to-interpreter patterns (`curl | bash`, `wget | sh`)
@@ -602,7 +645,7 @@ security:
 
 When `tirith_fail_open` is `true` (default), commands proceed if tirith is not installed or times out. Set to `false` in high-security environments to block commands when tirith is unavailable.
 
-Tirith ships prebuilt binaries for Linux (x86_64 / aarch64) and macOS (x86_64 / arm64). On platforms with no prebuilt binary (Windows, etc.), tirith is silently skipped — pattern-matching guards still run, and the CLI does not surface an "unavailable" banner. To use tirith on Windows, run Hermes under WSL.
+Tirith ships prebuilt binaries for Linux (x86_64 / aarch64) and macOS (x86_64 / arm64). On platforms with no prebuilt binary (Windows, etc.), tirith is silently skipped — pattern-matching guards still run, and the CLI does not surface an "unavailable" banner. To use tirith on Windows, run Kopi under WSL.
 
 Tirith's verdict integrates with the approval flow: safe commands pass through, while both suspicious and blocked commands trigger user approval with the full tirith findings (severity, title, description, safer alternatives). Users can approve or deny — the default choice is deny to keep unattended scenarios secure.
 
@@ -660,7 +703,7 @@ terminal:
 ```bash
 # ~/.kopi/.env
 TERMINAL_SSH_HOST=agent-worker.local
-TERMINAL_SSH_USER=hermes
+TERMINAL_SSH_USER=kopi
 TERMINAL_SSH_KEY=~/.ssh/kopi_agent_key
 ```
 
@@ -668,7 +711,7 @@ The SSH connection details live in `.env` (not `config.yaml`) so they aren't che
 
 ## Supply-chain advisory checking
 
-Hermes ships with a built-in advisory scanner that flags Python packages in the active venv that match a curated catalog of known-compromised versions (supply-chain worms like the May 2026 `mistralai 2.4.6` poisoning). Implementation lives in `kopi_cli/security_advisories.py`.
+Kopi ships with a built-in advisory scanner that flags Python packages in the active venv that match a curated catalog of known-compromised versions (supply-chain worms like the May 2026 `mistralai 2.4.6` poisoning). Implementation lives in `kopi_cli/security_advisories.py`.
 
 How it runs:
 
@@ -688,7 +731,7 @@ The check itself is stdlib-only and runs from one `importlib.metadata.version()`
 
 ### Lazy install of optional dependencies
 
-Many features (Mistral TTS, ElevenLabs, Honcho memory, Bedrock, Slack, Matrix, …) depend on Python packages that not every user needs. Hermes installs these **lazily** on first use rather than eagerly under `kopi-ai-agent[all]`. The implementation lives in `tools/lazy_deps.py`.
+Many features (Mistral TTS, ElevenLabs, Honcho memory, Bedrock, Slack, Matrix, …) depend on Python packages that not every user needs. Kopi installs these **lazily** on first use rather than eagerly under `kopi-agent[all]`. The implementation lives in `tools/lazy_deps.py`.
 
 The trade-off this fixes:
 

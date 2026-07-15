@@ -24,7 +24,7 @@ The contract:
 
 If a future PR re-adds Camofox (or any other binary-postinstall package)
 to root ``dependencies``, this test fails — read the lazy-install
-guidance in the ``kopi-ai-agent-dev`` skill before changing the
+guidance in the ``kopi-agent-dev`` skill before changing the
 expectations.
 """
 

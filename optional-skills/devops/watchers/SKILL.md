@@ -2,11 +2,11 @@
 name: watchers
 description: Poll RSS, JSON APIs, and GitHub with watermark dedup.
 version: 1.0.0
-author: KOPI AI AGENT
+author: Kopi Agent
 license: MIT
 platforms: [linux, macos]
 metadata:
-  hermes:
+  kopi:
     tags: [cron, polling, rss, github, http, automation, monitoring]
     category: devops
     requires_toolsets: [terminal]
@@ -66,7 +66,7 @@ Watch a GitHub repo (set `GITHUB_TOKEN` in `${KOPI_HOME:-~/.kopi}/.env` to avoid
 
 ```bash
 python $KOPI_HOME/skills/devops/watchers/scripts/watch_github.py \
-  --name kopi-issues --repo Kopi Ai Agent Pte Ltd/kopi-ai-agent --scope issues
+  --name kopi-issues --repo NousResearch/kopi-agent --scope issues
 ```
 
 Poll an arbitrary JSON API:

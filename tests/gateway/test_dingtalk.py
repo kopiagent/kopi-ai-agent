@@ -249,7 +249,7 @@ class TestSend:
         assert call_args[0][0] == "https://dingtalk.example/webhook"
         payload = call_args[1]["json"]
         assert payload["msgtype"] == "markdown"
-        assert payload["markdown"]["title"] == "Hermes"
+        assert payload["markdown"]["title"] == "Kopi"
         assert payload["markdown"]["text"] == "Hello!"
 
     @pytest.mark.asyncio
@@ -692,16 +692,16 @@ class TestMentionPatterns:
 
     def test_pattern_matches_text(self, monkeypatch):
         adapter = _make_gating_adapter(
-            monkeypatch, extra={"mention_patterns": ["^hermes"]}
+            monkeypatch, extra={"mention_patterns": ["^kopi"]}
         )
         assert adapter._message_matches_mention_patterns("kopi please help") is True
         assert adapter._message_matches_mention_patterns("please kopi help") is False
 
     def test_pattern_is_case_insensitive(self, monkeypatch):
         adapter = _make_gating_adapter(
-            monkeypatch, extra={"mention_patterns": ["^hermes"]}
+            monkeypatch, extra={"mention_patterns": ["^kopi"]}
         )
-        assert adapter._message_matches_mention_patterns("HERMES help") is True
+        assert adapter._message_matches_mention_patterns("KOPI help") is True
 
     def test_invalid_regex_is_skipped_not_raised(self, monkeypatch):
         adapter = _make_gating_adapter(
@@ -761,7 +761,7 @@ class TestShouldProcessMessage:
     def test_group_accepted_when_text_matches_wake_word(self, monkeypatch):
         adapter = _make_gating_adapter(
             monkeypatch,
-            extra={"require_mention": True, "mention_patterns": ["^hermes"]},
+            extra={"require_mention": True, "mention_patterns": ["^kopi"]},
         )
         msg = MagicMock(is_in_at_list=False)
         assert adapter._should_process_message(msg, "kopi help", is_group=True, chat_id="grp1") is True

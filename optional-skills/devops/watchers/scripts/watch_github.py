@@ -6,9 +6,9 @@ Usage (via cron with --no-agent):
     kopi cron create kopi-issues \\
       --schedule "*/5 * * * *" --no-agent \\
       --script "$KOPI_HOME/skills/devops/watchers/scripts/watch_github.py" \\
-      --script-args "--name kopi-issues --repo Kopi Ai Agent Pte Ltd/kopi-ai-agent --scope issues"
+      --script-args "--name kopi-issues --repo NousResearch/kopi-ai-agent --scope issues"
 
-Set GITHUB_TOKEN (or GH_TOKEN) in the Hermes .env file
+Set GITHUB_TOKEN (or GH_TOKEN) in the Kopi .env file
 (``${KOPI_HOME:-~/.kopi}/.env``) to avoid the 60 req/hr
 anonymous rate limit.
 
@@ -113,7 +113,7 @@ def main() -> int:
 
     headers = {
         "Accept": "application/vnd.github+json",
-        "User-Agent": "Hermes-Watcher/1.0",
+        "User-Agent": "Kopi-Watcher/1.0",
     }
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if token:

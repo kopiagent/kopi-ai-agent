@@ -1,11 +1,11 @@
-"""Agent-construction and session-resume display methods for ``HermesCLI``.
+"""Agent-construction and session-resume display methods for ``KopiCLI``.
 
 Extracted from ``cli.py`` as part of the god-file decomposition campaign
 (``~/.kopi/plans/god-file-decomposition.md``, Phase 4 step 2). This mixin holds
 the agent lifecycle/setup cluster: runtime-credential resolution, per-turn agent
 config, first-use agent construction, and resumed-session preload + history recap.
 
-Behavior-neutral: every method is lifted verbatim from ``HermesCLI``. ``self.*``
+Behavior-neutral: every method is lifted verbatim from ``KopiCLI``. ``self.*``
 calls resolve unchanged via the MRO. Neutral dependencies are imported at module
 top level; ``cli.py``-internal helpers/constants are imported lazily inside each
 method (``from cli import ...`` resolves at call time, when ``cli`` is fully
@@ -20,7 +20,7 @@ from rich.markup import escape as _escape
 
 
 class CLIAgentSetupMixin:
-    """Agent construction + session-resume display methods for ``HermesCLI``."""
+    """Agent construction + session-resume display methods for ``KopiCLI``."""
 
     def _ensure_runtime_credentials(self) -> bool:
         """
@@ -390,6 +390,7 @@ class CLIAgentSetupMixin:
                 tool_gen_callback=self._on_tool_gen_start if self.streaming_enabled else None,
                 notice_callback=self._on_notice,
                 notice_clear_callback=self._on_notice_clear,
+                reaction_callback=self._on_reaction,
             )
             # Store reference for atexit memory provider shutdown.
             # NOTE: this MUST write to the ``cli`` module's global, not a
@@ -663,13 +664,13 @@ class CLIAgentSetupMixin:
                     lines.append(f"         {ml}\n", style="dim")
             elif role == "assistant_last":
                 # Last assistant response shown in full, non-dim
-                lines.append("  ◆ Hermes: ", style=f"bold {_assistant_label_c}")
+                lines.append("  ◆ Kopi: ", style=f"bold {_assistant_label_c}")
                 msg_lines = text.splitlines()
                 lines.append(msg_lines[0] + "\n", style="")
                 for ml in msg_lines[1:]:
                     lines.append(f"            {ml}\n", style="")
             else:
-                lines.append("  ◆ Hermes: ", style=f"dim bold {_assistant_label_c}")
+                lines.append("  ◆ Kopi: ", style=f"dim bold {_assistant_label_c}")
                 msg_lines = text.splitlines()
                 lines.append(msg_lines[0] + "\n", style="dim")
                 for ml in msg_lines[1:]:

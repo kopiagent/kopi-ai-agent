@@ -407,7 +407,7 @@ def test_termux_ultrafast_version_runs_before_heavy_startup(
     assert main_mod._try_termux_ultrafast_version() is True
 
     out = capsys.readouterr().out
-    assert "KOPI AI AGENT v" in out
+    assert "Kopi Agent v" in out
     assert "Install directory:" in out
     assert "Python:" in out
     assert "OpenAI SDK:" in out
@@ -819,7 +819,7 @@ def test_oneshot_distinguishes_disabled_mcp_from_unknown(monkeypatch, capsys):
 
 
 def test_oneshot_wires_session_db_for_recall(monkeypatch):
-    """kopi -z bypasses HermesCLI, but recall still needs SessionDB."""
+    """kopi -z bypasses KopiCLI, but recall still needs SessionDB."""
     from kopi_cli.oneshot import _run_agent
 
     captured = {}

@@ -173,7 +173,7 @@ class TestEnsureUvWindowsSafe:
         import subprocess
         from kopi_cli.managed_uv import _UvResult
         with pytest.raises(TypeError):
-            subprocess.list2cmdline([_UvResult("C:\\hermes\\uv.exe"), "pip"])
+            subprocess.list2cmdline([_UvResult("C:\\kopi\\uv.exe"), "pip"])
 
     def test_windows_returns_plain_str_safe_for_subprocess(self, tmp_path):
         import subprocess

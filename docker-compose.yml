@@ -1,5 +1,5 @@
 #
-# docker-compose.yml for KOPI AI AGENT
+# docker-compose.yml for Kopi Agent
 #
 # Usage:
 #   KOPI_UID=$(id -u) KOPI_GID=$(id -g) docker compose up -d
@@ -29,8 +29,8 @@
 services:
   gateway:
     build: .
-    image: kopi-ai-agent
-    container_name: hermes
+    image: kopi-agent
+    container_name: kopi
     restart: unless-stopped
     network_mode: host
     volumes:
@@ -61,7 +61,7 @@ services:
     command: ["gateway", "run"]
 
   dashboard:
-    image: kopi-ai-agent
+    image: kopi-agent
     container_name: kopi-dashboard
     restart: unless-stopped
     network_mode: host

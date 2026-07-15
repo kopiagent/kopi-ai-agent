@@ -1,11 +1,11 @@
-class HermesAgent < Formula
+class KopiAgent < Formula
   include Language::Python::Virtualenv
 
   desc "Self-improving AI agent that creates skills from experience"
-  homepage "https://kopi-ai-agent.nousresearch.com"
+  homepage "https://kopi-agent.nousresearch.com"
   # Stable source should point at the semver-named sdist asset attached by
   # scripts/release.py, not the CalVer tag tarball.
-  url "https://github.com/LINYIQ66/kopi-ai-agent/releases/download/v2026.3.30/kopi_agent-0.6.0.tar.gz"
+  url "https://github.com/NousResearch/kopi-agent/releases/download/v2026.3.30/kopi_agent-0.6.0.tar.gz"
   sha256 "<replace-with-release-asset-sha256>"
   license "MIT"
 
@@ -17,7 +17,7 @@ class HermesAgent < Formula
   pypi_packages ignore_packages: %w[certifi cryptography pydantic]
 
   # Refresh resource stanzas after bumping the source url/version:
-  #   brew update-python-resources --print-only kopi-ai-agent
+  #   brew update-python-resources --print-only kopi-agent
 
   def install
     venv = virtualenv_create(libexec, "python3.14")
@@ -26,7 +26,7 @@ class HermesAgent < Formula
 
     pkgshare.install "skills", "optional-skills"
 
-    %w[kopi kopi-ai-agent hermes-acp].each do |exe|
+    %w[kopi kopi-agent kopi-acp].each do |exe|
       next unless (libexec/"bin"/exe).exist?
 
       (bin/exe).write_env_script(
@@ -39,10 +39,10 @@ class HermesAgent < Formula
   end
 
   test do
-    assert_match "KOPI AI AGENT v#{version}", shell_output("#{bin}/kopi version")
+    assert_match "Kopi Agent v#{version}", shell_output("#{bin}/kopi version")
 
     managed = shell_output("#{bin}/kopi update 2>&1")
     assert_match "managed by Homebrew", managed
-    assert_match "brew upgrade kopi-ai-agent", managed
+    assert_match "brew upgrade kopi-agent", managed
   end
 end

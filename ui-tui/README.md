@@ -1,6 +1,6 @@
-# Hermes TUI
+# Kopi TUI
 
-React + Ink terminal UI for Hermes. TypeScript owns the screen. Python owns sessions, tools, model calls, and most command logic.
+React + Ink terminal UI for Kopi. TypeScript owns the screen. Python owns sessions, tools, model calls, and most command logic.
 
 ```bash
 kopi --tui
@@ -287,7 +287,9 @@ Primary event types the client handles today:
 | `clarify.request`          | `{ question, choices?, request_id }`                                        |
 | `approval.request`         | `{ command, description, allow_permanent? }`                                |
 | `sudo.request`             | `{ request_id }`                                                            |
+| `sudo.expire`              | `{ request_id }` clears a timed-out sudo prompt                             |
 | `secret.request`           | `{ prompt, env_var, request_id }`                                           |
+| `secret.expire`            | `{ request_id }` clears a timed-out secret prompt                           |
 | `background.complete`      | `{ task_id, text }`                                                         |
 | `billing.step_up.verification` | `{ verification_url, user_code }`                                       |
 | `review.summary`           | `{ text }`                                                                  |
@@ -486,5 +488,5 @@ tui_gateway/
   entry.py               stdio entrypoint
   server.py              RPC handlers and session logic
   render.py              optional rich/ANSI bridge
-  slash_worker.py        persistent HermesCLI subprocess for slash commands
+  slash_worker.py        persistent KopiCLI subprocess for slash commands
 ```

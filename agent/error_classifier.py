@@ -222,7 +222,7 @@ _IMAGE_TOO_LARGE_PATTERNS = [
 # messages in-place, record the (provider, model) for the rest of the
 # session so we don't waste another call learning the same lesson, retry.
 #
-# See: https://github.com/LINYIQ66/kopi-ai-agent/issues/27344
+# See: https://github.com/NousResearch/kopi-ai-agent/issues/27344
 _MULTIMODAL_TOOL_CONTENT_PATTERNS = [
     # Xiaomi MiMo: {"error":{"code":"400","message":"Param Incorrect","param":"text is not set"}}
     "text is not set",
@@ -1147,6 +1147,7 @@ def _classify_400(
             "encrypted content for item" in error_msg
             and "could not be verified" in error_msg
         )
+        or "could not decrypt the provided encrypted_content" in error_msg
     ):
         return result_fn(
             FailoverReason.invalid_encrypted_content,

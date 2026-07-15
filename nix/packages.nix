@@ -1,4 +1,4 @@
-# nix/packages.nix — KOPI AI AGENT package built with uv2nix
+# nix/packages.nix — Kopi Agent package built with uv2nix
 { inputs, ... }:
 {
   perSystem =

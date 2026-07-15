@@ -67,9 +67,9 @@ class ResponsesApiTransport(ProviderTransport):
         """Classify the current Responses endpoint from transport params."""
         from agent.codex_responses_adapter import _classify_responses_issuer
         return _classify_responses_issuer(
-            is_xai_responses=bool(params.get("is_xai_responses")),
-            is_github_responses=bool(params.get("is_github_responses")),
-            is_codex_backend=bool(params.get("is_codex_backend")),
+            is_xai_responses=params.get("is_xai_responses") is True,
+            is_github_responses=params.get("is_github_responses") is True,
+            is_codex_backend=params.get("is_codex_backend") is True,
             base_url=params.get("base_url"),
         )
 
@@ -80,7 +80,8 @@ class ResponsesApiTransport(ProviderTransport):
         self._last_issuer_kind = issuer
         return _chat_messages_to_responses_input(
             messages,
-            is_xai_responses=bool(kwargs.get("is_xai_responses")),
+            is_xai_responses=kwargs.get("is_xai_responses") is True,
+            is_github_responses=kwargs.get("is_github_responses") is True,
             replay_encrypted_reasoning=bool(
                 kwargs.get("replay_encrypted_reasoning", True)
             ),
@@ -137,9 +138,9 @@ class ResponsesApiTransport(ProviderTransport):
         if not instructions:
             instructions = DEFAULT_AGENT_IDENTITY
 
-        is_github_responses = params.get("is_github_responses", False)
-        is_codex_backend = params.get("is_codex_backend", False)
-        is_xai_responses = params.get("is_xai_responses", False)
+        is_github_responses = params.get("is_github_responses") is True
+        is_codex_backend = params.get("is_codex_backend") is True
+        is_xai_responses = params.get("is_xai_responses") is True
         replay_encrypted_reasoning = bool(
             params.get("replay_encrypted_reasoning", True)
         )
@@ -163,6 +164,12 @@ class ResponsesApiTransport(ProviderTransport):
                 reasoning_effort = reasoning_config["effort"]
 
         _effort_clamp = {"minimal": "low"}
+        if "gpt-5.6" in (model or "").lower():
+            # Ultra is the Codex product tier; the Responses API wire value is max.
+            _effort_clamp["ultra"] = "max"
+        if params.get("is_xai_responses", False):
+            # xAI Responses tops out at high; keep generic stronger values usable.
+            _effort_clamp.update({"xhigh": "high", "max": "high", "ultra": "high"})
         reasoning_effort = _effort_clamp.get(reasoning_effort, reasoning_effort)
 
         response_tools = _responses_tools(tools)
@@ -194,20 +201,20 @@ class ResponsesApiTransport(ProviderTransport):
         # ``web_search`` function for the xAI path and let the native tool
         # satisfy it.  All other client-side tools (read_file, terminal,
         # web_extract, MCP tools, …) are untouched and continue to dispatch
-        # through Hermes's agent loop.
+        # through Kopi's agent loop.
         #
         # Scope: we ONLY swap in the native built-in when the client
         # ``web_search`` was actually present.  We do NOT force-enable Grok
         # server-side search on turns where the user never had web enabled —
-        # that would silently route around Hermes's web-provider config and
+        # that would silently route around Kopi's web-provider config and
         # tool-trace/citation plumbing for every xai-oauth turn.  The swap is
         # a 1:1 replacement of an already-requested capability, not an
         # additive grant.
         #
         # NOTE: for the swapped case this routes ``web_search`` to Grok's
-        # native search engine for xAI sessions instead of Hermes's
+        # native search engine for xAI sessions instead of Kopi's
         # configured web provider (Tavily/etc.), and those results bypass
-        # Hermes's tool-trace / citation plumbing (they arrive baked into the
+        # Kopi's tool-trace / citation plumbing (they arrive baked into the
         # model's answer rather than as a tool result the loop observes).
         # Scoped to ``is_xai_responses`` deliberately; narrow to specific
         # models if a future grok variant should keep the client-side
@@ -239,6 +246,7 @@ class ResponsesApiTransport(ProviderTransport):
             "input": _chat_messages_to_responses_input(
                 payload_messages,
                 is_xai_responses=is_xai_responses,
+                is_github_responses=is_github_responses,
                 replay_encrypted_reasoning=replay_encrypted_reasoning,
                 current_issuer_kind=issuer_kind,
             ),
@@ -438,13 +446,23 @@ class ResponsesApiTransport(ProviderTransport):
             return False
         return True
 
-    def preflight_kwargs(self, api_kwargs: Any, *, allow_stream: bool = False) -> dict:
+    def preflight_kwargs(
+        self,
+        api_kwargs: Any,
+        *,
+        allow_stream: bool = False,
+        is_github_responses: bool = False,
+    ) -> dict:
         """Validate and sanitize Codex API kwargs before the call.
 
         Normalizes input items, strips unsupported fields, validates structure.
         """
         from agent.codex_responses_adapter import _preflight_codex_api_kwargs
-        return _preflight_codex_api_kwargs(api_kwargs, allow_stream=allow_stream)
+        return _preflight_codex_api_kwargs(
+            api_kwargs,
+            allow_stream=allow_stream,
+            is_github_responses=is_github_responses,
+        )
 
     def map_finish_reason(self, raw_reason: str) -> str:
         """Map Codex response.status to OpenAI finish_reason.

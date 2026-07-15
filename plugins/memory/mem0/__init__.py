@@ -23,7 +23,7 @@ setup`):
                        Discord, …) so the same human gets one merged memory
                        store. When unset, the gateway-native id (e.g. Telegram
                        numeric id, Discord snowflake) is used instead.
-  agent_id           — Agent identifier (default: hermes)
+  agent_id           — Agent identifier (default: kopi)
 
 The matching MEM0_MODE / MEM0_USER_ID / MEM0_AGENT_ID environment variables are
 still read as a backward-compatible fallback, but mem0.json is the canonical

@@ -8,17 +8,18 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { getElevenLabsVoices, getHermesConfigSchema, saveHermesConfig } from '@/kopi'
+import { getElevenLabsVoices, getKopiConfigSchema, saveKopiConfig } from '@/kopi'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
-import type { ConfigFieldSchema, HermesConfigRecord } from '@/types/kopi'
+import type { ConfigFieldSchema, KopiConfigRecord } from '@/types/kopi'
 
-import { setHermesConfigCache, useHermesConfigRecord } from '../hooks/use-config-record'
+import { setKopiConfigCache, useKopiConfigRecord } from '../hooks/use-config-record'
 import { useOnProfileSwitch } from '../hooks/use-on-profile-switch'
 import { PanelEmpty } from '../overlays/panel'
 
 import { CONTROL_TEXT, EMPTY_SELECT_VALUE, FIELD_DESCRIPTIONS, FIELD_LABELS, SECTIONS } from './constants'
+import { FallbackModelsField } from './fallback-models-field'
 import { fieldCopyForSchemaKey } from './field-copy'
 import { enumOptionsFor, getNested, prettyName, setNested } from './helpers'
 import { MemoryConnect } from './memory/connect'
@@ -30,7 +31,7 @@ import { ProviderConfigPanel } from './provider-config-panel'
 // provider — otherwise every provider's options render at once (the "totally
 // crazy" wall of ~30 fields). Top-level keys (tts.provider, stt.enabled,
 // voice.*) always show; STT provider fields hide entirely when STT is off.
-export function voiceFieldVisible(key: string, config: HermesConfigRecord): boolean {
+export function voiceFieldVisible(key: string, config: KopiConfigRecord): boolean {
   const match = /^(tts|stt)\.([^.]+)\./.exec(key)
 
   if (!match) {
@@ -99,6 +100,13 @@ function ConfigField({
   const row = (action: ReactNode, wide = false) => (
     <ListRow action={action} description={descriptionNode} title={label} wide={wide} />
   )
+
+  // `fallback_providers` is a list of {provider, model} objects; the generic
+  // `list` branch below would stringify them to "[object Object]". Render the
+  // dedicated structured editor instead.
+  if (schemaKey === 'fallback_providers') {
+    return row(<FallbackModelsField onChange={onChange} value={value} />, true)
+  }
 
   if (schema.type === 'boolean') {
     return row(
@@ -228,8 +236,8 @@ export function ConfigSettings({
   // The editable draft is local (debounced autosave watches it), but it's seeded
   // from — and saved back through — the shared config cache, so edits are visible
   // in the MCP/model surfaces and reopening the page doesn't reload-flash.
-  const [config, setConfig] = useState<HermesConfigRecord | null>(null)
-  const { data: loadedConfig, isError: configLoadFailed, refetch: refetchConfig } = useHermesConfigRecord()
+  const [config, setConfig] = useState<KopiConfigRecord | null>(null)
+  const { data: loadedConfig, isError: configLoadFailed, refetch: refetchConfig } = useKopiConfigRecord()
 
   const {
     data: schemaResponse,
@@ -237,7 +245,7 @@ export function ConfigSettings({
     refetch: refetchSchema
   } = useQuery({
     queryKey: ['kopi-config-schema'],
-    queryFn: getHermesConfigSchema,
+    queryFn: getKopiConfigSchema,
     staleTime: 5 * 60 * 1000
   })
 
@@ -301,10 +309,10 @@ export function ConfigSettings({
     const t = window.setTimeout(() => {
       void (async () => {
         try {
-          await saveHermesConfig(config)
+          await saveKopiConfig(config)
           // Mirror the saved record into the shared cache so MCP/model surfaces
           // reflect the edit without their own refetch.
-          setHermesConfigCache(config)
+          setKopiConfigCache(config)
 
           if (saveVersionRef.current === v) {
             onConfigSaved?.()
@@ -321,7 +329,7 @@ export function ConfigSettings({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- copy is stable; avoid re-scheduling autosave on locale change
   }, [config, onConfigSaved, saveVersion])
 
-  const updateConfig = (next: HermesConfigRecord) => {
+  const updateConfig = (next: KopiConfigRecord) => {
     saveVersionRef.current += 1
     setConfig(next)
     setSaveVersion(saveVersionRef.current)

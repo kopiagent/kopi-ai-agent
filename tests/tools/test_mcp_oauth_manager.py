@@ -83,7 +83,7 @@ def test_manager_remove_evicts_cache(tmp_path, monkeypatch):
 
 
 def test_kopi_provider_subclass_exists():
-    """HermesMCPOAuthProvider is defined and subclasses OAuthClientProvider."""
+    """KopiMCPOAuthProvider is defined and subclasses OAuthClientProvider."""
     from tools.mcp_oauth_manager import _KOPI_PROVIDER_CLS
     from mcp.client.auth.oauth2 import OAuthClientProvider
 
@@ -238,7 +238,7 @@ async def test_handle_401_dedup_survives_even_if_task_reference_dropped(tmp_path
 
 
 def test_manager_builds_kopi_provider_subclass(tmp_path, monkeypatch):
-    """get_or_build_provider returns HermesMCPOAuthProvider, not plain OAuthClientProvider."""
+    """get_or_build_provider returns KopiMCPOAuthProvider, not plain OAuthClientProvider."""
     from tools.mcp_oauth_manager import (
         MCPOAuthManager, _KOPI_PROVIDER_CLS, reset_manager_for_tests,
     )

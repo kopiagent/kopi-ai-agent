@@ -549,7 +549,7 @@ def test_s6_register_creates_service_dir_and_triggers_scan(
     run_text = run_path.read_text()
     assert "export HOME=/opt/data" in run_text
     assert "kopi -p coder gateway run" in run_text
-    assert "s6-setuidgid hermes" in run_text
+    assert "s6-setuidgid kopi" in run_text
     # Sentinel marking this as the supervised-child invocation. Without
     # it, the supervised `gateway run` would re-enter the s6 redirect
     # in `_gateway_command_inner` and recurse. See the matching guard

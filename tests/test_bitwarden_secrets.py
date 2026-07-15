@@ -40,7 +40,7 @@ def _reset_caches():
 
 @pytest.fixture
 def kopi_home(tmp_path, monkeypatch):
-    """Point Hermes at an isolated home directory."""
+    """Point Kopi at an isolated home directory."""
     home = tmp_path / ".kopi"
     home.mkdir()
     monkeypatch.setenv("KOPI_HOME", str(home))

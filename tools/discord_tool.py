@@ -100,7 +100,7 @@ def _discord_request(
         headers={
             "Authorization": f"Bot {token}",
             "Content-Type": "application/json",
-            "User-Agent": "Hermes-Agent (https://github.com/LINYIQ66/kopi-ai-agent)",
+            "User-Agent": "Kopi-Agent (https://github.com/NousResearch/kopi-ai-agent)",
         },
     )
 

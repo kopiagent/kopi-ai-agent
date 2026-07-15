@@ -8,7 +8,7 @@ import { HUD_HEADING, HUD_ITEM, HUD_POSITION, HUD_SURFACE, HUD_TEXT } from '@/ap
 import { setTerminalTakeover } from '@/app/right-sidebar/store'
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { KbdCombo } from '@/components/ui/kbd'
-import { getHermesConfigRecord, listAllProfileSessions } from '@/kopi'
+import { getKopiConfigRecord, listAllProfileSessions } from '@/kopi'
 import { useI18n } from '@/i18n'
 import { sessionTitle } from '@/lib/chat-runtime'
 import {
@@ -204,7 +204,7 @@ const rankGroups = (groups: PaletteGroup[], search: string): PaletteGroup[] => {
 // theme lists under both Light and Dark). The id suffix disambiguates.
 const paletteValue = (item: PaletteItem): string => `${item.label}\u0001${item.id}`
 
-// Hermes session ids: <YYYYMMDD>_<HHMMSS>_<6 hex>. Used to offer a direct
+// Kopi session ids: <YYYYMMDD>_<HHMMSS>_<6 hex>. Used to offer a direct
 // "Go to session ‹id›" jump for ids that aren't in the recent-200 list.
 const SESSION_ID_RE = /^\d{8}_\d{6}_[a-f0-9]{6}$/
 
@@ -303,7 +303,7 @@ export function CommandPalette() {
   // the palette is open. react-query handles caching/dedup/staleness.
   const configQuery = useQuery({
     queryKey: ['command-palette', 'config'],
-    queryFn: getHermesConfigRecord,
+    queryFn: getKopiConfigRecord,
     enabled: open
   })
 
@@ -498,9 +498,9 @@ export function CommandPalette() {
           },
           {
             icon: Download,
-            id: 'cc-update-hermes',
-            keywords: ['update', 'upgrade', 'hermes', 'version', 'system', 'restart'],
-            label: cc.updateHermes,
+            id: 'cc-update-kopi',
+            keywords: ['update', 'upgrade', 'kopi', 'version', 'system', 'restart'],
+            label: cc.updateKopi,
             run: () => void applyBackendUpdate()
           }
         ]

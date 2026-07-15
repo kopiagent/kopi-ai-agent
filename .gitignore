@@ -32,7 +32,7 @@ test_durations.json
 .pytest-cache/
 tmp/
 temp_vision_images/
-hermes-*/*
+kopi-*/*
 examples/
 tests/quick_test_dataset.jsonl
 tests/sample_dataset.jsonl
@@ -69,7 +69,7 @@ kopi_cli/web_dist/
 apps/desktop/build/
 apps/desktop/dist/
 apps/desktop/release/
-apps/desktop/*.tsbuildinfo
+*.tsbuildinfo
 
 # Web UI assets — synced from @nous-research/ui at build time via
 # `npm run sync-assets` (see web/package.json).
@@ -108,16 +108,19 @@ config/mcporter.json
 kopi_cli/tui_dist/*
 kopi_cli/scripts/
 docs/superpowers/*
-# Working directory for the KOPI AI AGENT's session state (~/.kopi/ at runtime;
+# Working directory for the Kopi Agent's session state (~/.kopi/ at runtime;
 # also created in-repo when an agent operates in this checkout). Plans, audit
 # logs, and per-session caches are never artifacts of the codebase.
 .kopi/
 
 # Desktop/bootstrap install marker written into the managed checkout root by the
-# bootstrap installer. It is Hermes-managed runtime state, never a code change —
+# bootstrap installer. It is Kopi-managed runtime state, never a code change —
 # ignore it so `kopi update`'s `git stash push --include-untracked` does not
 # treat it as a local edit and autostash it on every run (#38529).
 .kopi-bootstrap-complete
+
+# Persistent dev sandbox dir (scripts/dev-sandbox.sh --persistent)
+.kopi-sandbox/
 
 # Interrupted-update breadcrumb + recovery lock written next to the shared venv
 # by `kopi update` / launch-time self-heal. Runtime state, never a code change
@@ -132,7 +135,7 @@ scripts/out/
 # Per-release changelog drafts. These exist only transiently during a release
 # cut (passed to `gh release create --notes-file`); the GitHub Release itself
 # stores the published notes. They are not a build artifact and must never be
-# committed to the repo root. See the hermes-release skill.
+# committed to the repo root. See the kopi-release skill.
 RELEASE_v*.md
 
 # Desktop demo-run scratch output (kopi writes demo/*.txt during recorded
@@ -141,6 +144,6 @@ apps/desktop/demo/
 
 # PR infographics are rendered locally and embedded in PR descriptions via the
 # image-provider (fal.media) URL — they are NEVER committed to the repo. The
-# PR body is the archive. See the kopi-ai-agent-dev skill's
+# PR body is the archive. See the kopi-agent-dev skill's
 # pr-infographic-workflow reference (storage rule + lapse #8 / #COMMIT-1).
 infographic/

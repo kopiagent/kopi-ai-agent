@@ -16,8 +16,8 @@ def build_uninstall_parser(subparsers, *, cmd_uninstall: Callable) -> None:
     # =========================================================================
     uninstall_parser = subparsers.add_parser(
         "uninstall",
-        help="Uninstall KOPI AI AGENT",
-        description="Remove KOPI AI AGENT from your system. Can keep configs/data for reinstall.",
+        help="Uninstall Kopi Agent",
+        description="Remove Kopi Agent from your system. Can keep configs/data for reinstall.",
     )
     uninstall_parser.add_argument(
         "--full",

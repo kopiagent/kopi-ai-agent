@@ -1,17 +1,17 @@
 /**
  * bootstrap-runner.ts
  *
- * Drives apps/desktop's first-launch install of KOPI AI AGENT by spawning
+ * Drives apps/desktop's first-launch install of Kopi Agent by spawning
  * scripts/install.ps1 stage-by-stage and streaming progress events back to
  * the renderer.
  *
  * Wired from electron/main.ts:
- *   import { runBootstrap }from './bootstrap-runner.ts'
+ *   import { runBootstrap }from './bootstrap-runner'
  *   const result = await runBootstrap({
  *     installStamp,        // INSTALL_STAMP from main.ts (may be null in dev)
  *     activeRoot,          // ACTIVE_KOPI_ROOT
  *     sourceRepoRoot,      // SOURCE_REPO_ROOT (for dev install.ps1 lookup)
- *     hermesHome,          // KOPI_HOME
+ *     kopiHome,          // KOPI_HOME
  *     logRoot,             // KOPI_HOME/logs
  *     emit: ev => {...}    // event sink (sender.send or similar)
  *   })
@@ -38,15 +38,9 @@ import fsp from 'node:fs/promises'
 import https from 'node:https'
 import path from 'node:path'
 
+import { hiddenWindowsChildOptions } from './windows-child-options'
+
 const IS_WINDOWS = process.platform === 'win32'
-
-function hiddenWindowsChildOptions(options = {}) {
-  if (!IS_WINDOWS || Object.prototype.hasOwnProperty.call(options, 'windowsHide')) {
-    return options
-  }
-
-  return { ...options, windowsHide: true }
-}
 
 const STAMP_COMMIT_RE = /^[0-9a-f]{7,40}$/i
 
@@ -73,6 +67,7 @@ function resolveLocalInstallScript(sourceRepoRoot) {
   if (!sourceRepoRoot) {
     return null
   }
+
   const candidate = path.join(sourceRepoRoot, 'scripts', installScriptName())
 
   try {
@@ -84,19 +79,20 @@ function resolveLocalInstallScript(sourceRepoRoot) {
   }
 }
 
-function bootstrapCacheDir(hermesHome) {
-  return path.join(hermesHome, 'bootstrap-cache')
+function bootstrapCacheDir(kopiHome) {
+  return path.join(kopiHome, 'bootstrap-cache')
 }
 
 // The install.sh / install.ps1 that ships inside the already-installed agent
 // checkout under ~/.kopi/kopi-ai-agent. Used as a last-resort fallback when
 // the pinned commit can't be fetched from GitHub (e.g. a locally-built desktop
 // app stamped to an unpushed HEAD).
-function installedAgentInstallScript(hermesHome) {
-  if (!hermesHome) {
+function installedAgentInstallScript(kopiHome) {
+  if (!kopiHome) {
     return null
   }
-  const candidate = path.join(hermesHome, 'kopi-ai-agent', 'scripts', installScriptName())
+
+  const candidate = path.join(kopiHome, 'kopi-ai-agent', 'scripts', installScriptName())
 
   try {
     fs.accessSync(candidate, fs.constants.R_OK)
@@ -107,8 +103,20 @@ function installedAgentInstallScript(hermesHome) {
   }
 }
 
-function cachedScriptPath(hermesHome, commit) {
-  return path.join(bootstrapCacheDir(hermesHome), `install-${commit}.${process.platform === 'win32' ? 'ps1' : 'sh'}`)
+function hasExistingGitCheckout(activeRoot) {
+  if (!activeRoot) {
+    return false
+  }
+
+  try {
+    return fs.existsSync(path.join(activeRoot, '.git'))
+  } catch {
+    return false
+  }
+}
+
+function cachedScriptPath(kopiHome, commit) {
+  return path.join(bootstrapCacheDir(kopiHome), `install-${commit}.${process.platform === 'win32' ? 'ps1' : 'sh'}`)
 }
 
 function downloadInstallScript(commit, destPath) {
@@ -116,7 +124,7 @@ function downloadInstallScript(commit, destPath) {
   // is immutable (unlike a branch ref), so we don't need integrity
   // verification beyond "did the file we wrote pass a syntax probe."
   const scriptName = installScriptName()
-  const url = `https://raw.githubusercontent.com/Kopi Ai Agent Pte Ltd/kopi-ai-agent/${commit}/scripts/${scriptName}`
+  const url = `https://raw.githubusercontent.com/NousResearch/kopi-ai-agent/${commit}/scripts/${scriptName}`
 
   return new Promise((resolve, reject) => {
     fs.mkdirSync(path.dirname(destPath), { recursive: true })
@@ -200,7 +208,7 @@ function downloadInstallScript(commit, destPath) {
 async function resolveInstallScript({
   installStamp,
   sourceRepoRoot,
-  hermesHome,
+  kopiHome,
   emit,
   _download = downloadInstallScript
 }) {
@@ -223,7 +231,7 @@ async function resolveInstallScript({
     )
   }
 
-  const cached = cachedScriptPath(hermesHome, installStamp.commit)
+  const cached = cachedScriptPath(kopiHome, installStamp.commit)
 
   try {
     await fsp.access(cached, fs.constants.R_OK)
@@ -253,7 +261,7 @@ async function resolveInstallScript({
     // write-build-stamp.mjs fromLocalGit). Fall back to the installer that
     // ships inside the already-installed agent checkout so dev/self-builds can
     // still bootstrap instead of dying with a fatal 404.
-    const installed = installedAgentInstallScript(hermesHome)
+    const installed = installedAgentInstallScript(kopiHome)
 
     if (installed) {
       emit({
@@ -332,7 +340,7 @@ function resolveWindowsPowerShell() {
   return 'powershell.exe'
 }
 
-function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, hermesHome }: any = {}) {
+function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, kopiHome }: any = {}) {
   return new Promise<any>((resolve, reject) => {
     const ps = process.platform === 'win32' ? resolveWindowsPowerShell() : 'pwsh'
     const fullArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, ...args]
@@ -346,7 +354,7 @@ function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, herme
           ...process.env,
           // Pass KOPI_HOME through so install.ps1 respects the caller's
           // choice rather than re-computing the default.
-          KOPI_HOME: hermesHome || process.env.KOPI_HOME || ''
+          KOPI_HOME: kopiHome || process.env.KOPI_HOME || ''
         }
       })
     )
@@ -413,6 +421,7 @@ function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, herme
       if (abortSignal) {
         abortSignal.removeEventListener('abort', onAbort)
       }
+
       reject(err)
     })
 
@@ -429,18 +438,19 @@ function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, herme
       if (stderrBuf) {
         emit && emit({ type: 'log', stage: stageName, line: stderrBuf, stream: 'stderr' } as any)
       }
+
       resolve({ stdout, stderr, code, signal, killed } as any)
     })
   })
 }
 
-function spawnBash(scriptPath, args, { emit, stageName, abortSignal, hermesHome }: any = {}) {
+function spawnBash(scriptPath, args, { emit, stageName, abortSignal, kopiHome }: any = {}) {
   return new Promise<any>((resolve, reject) => {
     const child = spawn('bash', [scriptPath, ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        KOPI_HOME: hermesHome || process.env.KOPI_HOME || ''
+        KOPI_HOME: kopiHome || process.env.KOPI_HOME || ''
       }
     })
 
@@ -505,6 +515,7 @@ function spawnBash(scriptPath, args, { emit, stageName, abortSignal, hermesHome 
       if (abortSignal) {
         abortSignal.removeEventListener('abort', onAbort)
       }
+
       reject(err)
     })
 
@@ -520,6 +531,7 @@ function spawnBash(scriptPath, args, { emit, stageName, abortSignal, hermesHome 
       if (stderrBuf) {
         emit && emit({ type: 'log', stage: stageName, line: stderrBuf, stream: 'stderr' })
       }
+
       resolve({ stdout, stderr, code, signal, killed })
     })
   })
@@ -529,13 +541,14 @@ function spawnBash(scriptPath, args, { emit, stageName, abortSignal, hermesHome 
 // Manifest + stage dispatch
 // ---------------------------------------------------------------------------
 
-// Build the install.ps1 pin args (-Commit / -Branch) from the install-stamp
-// so the repository stage clones the exact SHA the .exe was tested with
-// instead of falling back to install.ps1's default ($Branch = "main").
-function buildPinArgs(installStamp) {
+// Build the installer branch/pin args from the install stamp. The commit pin
+// is fresh-install only: once a managed checkout already exists, bootstrap is
+// a repair/update path and must not let an old packaged app detach the checkout
+// back to the commit baked into that app.
+function buildPinArgs(installStamp, { pinCommit = true } = {}) {
   const args = []
 
-  if (installStamp && installStamp.commit) {
+  if (pinCommit && installStamp && installStamp.commit) {
     args.push('-Commit', installStamp.commit)
   }
 
@@ -546,31 +559,39 @@ function buildPinArgs(installStamp) {
   return args
 }
 
-function buildPosixPinArgs({ installStamp, activeRoot, hermesHome }) {
-  const args = ['--dir', activeRoot, '--kopi-home', hermesHome]
+function buildPosixPinArgs({ installStamp, activeRoot, kopiHome, pinCommit = true }) {
+  const args = ['--dir', activeRoot, '--kopi-home', kopiHome]
 
   if (installStamp && installStamp.branch) {
     args.push('--branch', installStamp.branch)
   }
 
-  if (installStamp && installStamp.commit) {
+  if (pinCommit && installStamp && installStamp.commit) {
     args.push('--commit', installStamp.commit)
   }
 
   return args
 }
 
-async function fetchManifest({ scriptPath, installerKind, emit, hermesHome, activeRoot, installStamp }) {
+async function fetchManifest({
+  scriptPath,
+  installerKind,
+  emit,
+  kopiHome,
+  activeRoot,
+  installStamp,
+  pinCommit
+}) {
   const isPosix = installerKind === 'posix'
 
   const args = isPosix
-    ? ['--manifest', ...buildPosixPinArgs({ installStamp, activeRoot, hermesHome })]
-    : ['-Manifest', ...buildPinArgs(installStamp)]
+    ? ['--manifest', ...buildPosixPinArgs({ installStamp, activeRoot, kopiHome, pinCommit })]
+    : ['-Manifest', ...buildPinArgs(installStamp, { pinCommit })]
 
   const result = await (isPosix ? spawnBash : spawnPowerShell)(scriptPath, args, {
     emit,
     stageName: '__manifest__',
-    hermesHome
+    kopiHome
   })
 
   if (result.code !== 0) {
@@ -622,7 +643,17 @@ function parseStageResult(stdout) {
   return null
 }
 
-async function runStage({ scriptPath, installerKind, stage, emit, hermesHome, activeRoot, abortSignal, installStamp }) {
+async function runStage({
+  scriptPath,
+  installerKind,
+  stage,
+  emit,
+  kopiHome,
+  activeRoot,
+  abortSignal,
+  installStamp,
+  pinCommit
+}) {
   const startedAt = Date.now()
   emit({ type: 'stage', name: stage.name, state: 'running' })
 
@@ -634,15 +665,15 @@ async function runStage({ scriptPath, installerKind, stage, emit, hermesHome, ac
         stage.name,
         '--non-interactive',
         '--json',
-        ...buildPosixPinArgs({ installStamp, activeRoot, hermesHome })
+        ...buildPosixPinArgs({ installStamp, activeRoot, kopiHome, pinCommit })
       ]
-    : ['-Stage', stage.name, '-NonInteractive', '-Json', ...buildPinArgs(installStamp)]
+    : ['-Stage', stage.name, '-NonInteractive', '-Json', ...buildPinArgs(installStamp, { pinCommit })]
 
   const result = await (isPosix ? spawnBash : spawnPowerShell)(scriptPath, args, {
     emit,
     stageName: stage.name,
     abortSignal,
-    hermesHome
+    kopiHome
   })
 
   const durationMs = Date.now() - startedAt
@@ -721,7 +752,7 @@ async function runBootstrap(opts) {
     installStamp,
     activeRoot,
     sourceRepoRoot,
-    hermesHome,
+    kopiHome,
     logRoot,
     onEvent,
     abortSignal,
@@ -743,7 +774,7 @@ async function runBootstrap(opts) {
     return { ok: false, cancelled: true }
   }
 
-  const runLog = openRunLog(logRoot || path.join(hermesHome, 'logs'))
+  const runLog = openRunLog(logRoot || path.join(kopiHome, 'logs'))
 
   // Tee every event to the runLog AND the caller's onEvent. This gives us a
   // forensic trail per bootstrap run AND lets the renderer subscribe live.
@@ -774,8 +805,20 @@ async function runBootstrap(opts) {
   })
 
   try {
+    const existingCheckout = hasExistingGitCheckout(activeRoot)
+    const pinCommit = !existingCheckout
+
+    if (existingCheckout && installStamp && installStamp.commit) {
+      emit({
+        type: 'log',
+        line:
+          `[bootstrap] existing checkout detected at ${activeRoot}; ` +
+          `not pinning to packaged install stamp ${installStamp.commit.slice(0, 12)}`
+      })
+    }
+
     // 1. Resolve the platform installer.
-    const scriptInfo = await resolveInstallScript({ installStamp, sourceRepoRoot, hermesHome, emit })
+    const scriptInfo = await resolveInstallScript({ installStamp, sourceRepoRoot, kopiHome, emit })
     const installerKind = scriptInfo.kind || 'powershell'
 
     // 2. Fetch manifest
@@ -783,9 +826,10 @@ async function runBootstrap(opts) {
       scriptPath: scriptInfo.path,
       installerKind,
       emit,
-      hermesHome,
+      kopiHome,
       activeRoot,
-      installStamp
+      installStamp,
+      pinCommit
     })
 
     emit({
@@ -810,10 +854,11 @@ async function runBootstrap(opts) {
         installerKind,
         stage,
         emit,
-        hermesHome,
+        kopiHome,
         activeRoot,
         abortSignal,
-        installStamp
+        installStamp,
+        pinCommit
       })
 
       if (ev.state === 'failed') {
@@ -847,7 +892,10 @@ async function runBootstrap(opts) {
 }
 
 export {
+  buildPinArgs,
+  buildPosixPinArgs,
   cachedScriptPath,
+  hasExistingGitCheckout,
   installedAgentInstallScript,
   // Exposed for testability
   parseStageResult,

@@ -1,4 +1,4 @@
-"""Tests for the Hermes plugin system (kopi_cli.plugins)."""
+"""Tests for the Kopi plugin system (kopi_cli.plugins)."""
 
 import logging
 import sys

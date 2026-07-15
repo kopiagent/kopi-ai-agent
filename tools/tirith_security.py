@@ -163,7 +163,7 @@ _MARKER_TTL = 86400  # 24 hours
 
 
 def _get_kopi_home() -> str:
-    """Return the Hermes home directory, respecting KOPI_HOME env var."""
+    """Return the Kopi home directory, respecting KOPI_HOME env var."""
     return str(get_kopi_home())
 
 

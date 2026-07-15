@@ -17,7 +17,7 @@ Poll RSS, JSON APIs, and GitHub with watermark dedup.
 | Source | Optional — install with `kopi skills install official/devops/watchers` |
 | Path | `optional-skills/devops/watchers` |
 | Version | `1.0.0` |
-| Author | KOPI AI AGENT |
+| Author | Kopi Agent |
 | License | MIT |
 | Platforms | linux, macos |
 | Tags | `cron`, `polling`, `rss`, `github`, `http`, `automation`, `monitoring` |
@@ -25,7 +25,7 @@ Poll RSS, JSON APIs, and GitHub with watermark dedup.
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Kopi loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # Watchers
@@ -81,7 +81,7 @@ Watch a GitHub repo (set `GITHUB_TOKEN` in `${KOPI_HOME:-~/.kopi}/.env` to avoid
 
 ```bash
 python $KOPI_HOME/skills/devops/watchers/scripts/watch_github.py \
-  --name kopi-issues --repo Kopi Ai Agent Pte Ltd/kopi-ai-agent --scope issues
+  --name kopi-issues --repo NousResearch/kopi-agent --scope issues
 ```
 
 Poll an arbitrary JSON API:

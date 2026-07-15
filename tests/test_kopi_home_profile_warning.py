@@ -1,6 +1,6 @@
 """Tests for get_kopi_home() profile-mode fallback warning.
 
-Regression test for https://github.com/LINYIQ66/kopi-ai-agent/issues/18594.
+Regression test for https://github.com/NousResearch/kopi-ai-agent/issues/18594.
 
 When KOPI_HOME is unset but an active_profile file indicates a non-default
 profile is active, get_kopi_home() should:
@@ -29,7 +29,7 @@ def fresh_constants(monkeypatch, tmp_path):
     return kopi_constants
 
 
-class TestGetHermesHomeProfileWarning:
+class TestGetKopiHomeProfileWarning:
     def test_classic_mode_no_active_profile_no_warning(
         self, fresh_constants, tmp_path, capsys
     ):

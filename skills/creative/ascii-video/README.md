@@ -2,7 +2,7 @@
 
 Renders any content as colored ASCII character video. Audio, video, images, text, or pure math in, MP4/GIF/PNG sequence out. Full RGB color per character cell, 1080p 24fps default. No GPU.
 
-Built for [KOPI AI AGENT](https://github.com/LINYIQ66/kopi-ai-agent). Usable in any coding agent. Canonical source lives here; synced to [`Kopi Ai Agent Pte Ltd/kopi-ai-agent/skills/creative/ascii-video`](https://github.com/LINYIQ66/kopi-ai-agent/tree/main/skills/creative/ascii-video) via PR.
+Built for [Kopi Agent](https://github.com/NousResearch/kopi-agent). Usable in any coding agent. Canonical source lives here; synced to [`NousResearch/kopi-agent/skills/creative/ascii-video`](https://github.com/NousResearch/kopi-agent/tree/main/skills/creative/ascii-video) via PR.
 
 ## What this is
 

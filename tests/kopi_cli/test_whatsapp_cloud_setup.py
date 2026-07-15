@@ -167,11 +167,11 @@ def isolated_home(tmp_path, monkeypatch):
     kopi = home / ".kopi"
     kopi.mkdir(parents=True)
     monkeypatch.setattr(Path, "home", lambda: home)
-    monkeypatch.setenv("KOPI_HOME", str(hermes))
+    monkeypatch.setenv("KOPI_HOME", str(kopi))
     for key in list(os.environ):
         if key.startswith("WHATSAPP_CLOUD_"):
             monkeypatch.delenv(key, raising=False)
-    return hermes
+    return kopi
 
 
 def _env_value(kopi_home: Path, key: str) -> str | None:

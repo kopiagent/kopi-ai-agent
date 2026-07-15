@@ -78,5 +78,5 @@ if command -v "$1" >/dev/null 2>&1; then
     drop "$@"
 fi
 
-# KOPI subcommand pass-through.
+# Kopi subcommand pass-through.
 drop kopi "$@"

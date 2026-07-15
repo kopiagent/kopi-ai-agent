@@ -1,6 +1,6 @@
 # Webhook Subscriptions
 
-Create dynamic webhook subscriptions so external services (GitHub, GitLab, Stripe, CI/CD, IoT sensors, monitoring tools) can trigger Hermes agent runs by POSTing events to a URL.
+Create dynamic webhook subscriptions so external services (GitHub, GitLab, Stripe, CI/CD, IoT sensors, monitoring tools) can trigger Kopi agent runs by POSTing events to a URL.
 
 ## Setup (Required First)
 
@@ -81,7 +81,7 @@ kopi webhook subscribe todoist-kopi \
   --deliver telegram --deliver-chat-id "12345"
 ```
 
-Full filter syntax: https://kopiaiagent.com/docs/user-guide/messaging/webhooks#payload-filters
+Full filter syntax: https://kopi-agent.nousresearch.com/docs/user-guide/messaging/webhooks#payload-filters
 
 ### List subscriptions
 ```bash

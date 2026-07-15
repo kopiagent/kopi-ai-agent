@@ -1,7 +1,7 @@
 """
 Status command for kopi CLI.
 
-Shows the status of all KOPI AI AGENT components.
+Shows the status of all Kopi Agent components.
 """
 
 import os
@@ -103,12 +103,12 @@ from kopi_constants import is_termux as _is_termux
 
 
 def show_status(args):
-    """Show status of all KOPI AI AGENT components."""
+    """Show status of all Kopi Agent components."""
     deep = getattr(args, 'deep', False)
 
     print()
     print(color("┌─────────────────────────────────────────────────────────┐", Colors.CYAN))
-    print(color("│                 ⚕ KOPI AI AGENT Status                  │", Colors.CYAN))
+    print(color("│                 ⚕ Kopi Agent Status                  │", Colors.CYAN))
     print(color("└─────────────────────────────────────────────────────────┘", Colors.CYAN))
 
     # =========================================================================
@@ -150,6 +150,7 @@ def show_status(args):
         "StepFun Step Plan": "STEPFUN_API_KEY",
         "MiniMax": "MINIMAX_API_KEY",
         "MiniMax-CN": "MINIMAX_CN_API_KEY",
+        "DeepInfra": "DEEPINFRA_API_KEY",
         "Firecrawl": "FIRECRAWL_API_KEY",
         "Tavily": "TAVILY_API_KEY",
         "Browser Use": "BROWSER_USE_API_KEY",  # Optional — local browser works without this
@@ -374,6 +375,7 @@ def show_status(args):
         "StepFun Step Plan": ("STEPFUN_API_KEY",),
         "MiniMax":          ("MINIMAX_API_KEY",),
         "MiniMax (China)":  ("MINIMAX_CN_API_KEY",),
+        "DeepInfra":        ("DEEPINFRA_API_KEY",),
     }
     for pname, env_vars in apikey_providers.items():
         key_val = ""

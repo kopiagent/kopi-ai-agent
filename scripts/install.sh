@@ -216,12 +216,12 @@ provision_api_key() {
     fi
 
     # Check if key already exists
-    # Linux: /etc/kopi-agent/credentials, macOS: ~/.kopi/kopi-credentials
+    # Linux: /etc/kopi-ai-agent/credentials, macOS: ~/.kopi/kopi-credentials
     local cred_file
     if [[ "$IS_MACOS" == true ]]; then
         cred_file="$KOPI_HOME/kopi-credentials"
     else
-        cred_file="/etc/kopi-agent/credentials"
+        cred_file="/etc/kopi-ai-agent/credentials"
     fi
 
     if [[ -f "$cred_file" ]]; then

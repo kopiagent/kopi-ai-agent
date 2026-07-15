@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -18,8 +19,8 @@ const setModelAssignment = vi.fn()
 const getRecommendedDefaultModel = vi.fn()
 const saveMoaModels = vi.fn()
 const setEnvVar = vi.fn()
-const getHermesConfigRecord = vi.fn()
-const saveHermesConfig = vi.fn()
+const getKopiConfigRecord = vi.fn()
+const saveKopiConfig = vi.fn()
 const startManualProviderOAuth = vi.fn()
 
 vi.mock('@/kopi', () => ({
@@ -31,8 +32,9 @@ vi.mock('@/kopi', () => ({
   getRecommendedDefaultModel: (slug: string) => getRecommendedDefaultModel(slug),
   saveMoaModels: (body: unknown) => saveMoaModels(body),
   setEnvVar: (key: string, value: string) => setEnvVar(key, value),
-  getHermesConfigRecord: () => getHermesConfigRecord(),
-  saveHermesConfig: (config: unknown) => saveHermesConfig(config)
+  getKopiConfigRecord: () => getKopiConfigRecord(),
+  saveKopiConfig: (config: unknown) => saveKopiConfig(config),
+  setApiRequestProfile: () => {}
 }))
 
 vi.mock('@/store/onboarding', () => ({
@@ -60,8 +62,8 @@ beforeEach(() => {
   setModelAssignment.mockResolvedValue({ provider: 'nous', model: 'kopi-4', gateway_tools: [] })
   getRecommendedDefaultModel.mockResolvedValue({ provider: 'nous', model: 'kopi-4', free_tier: null })
   setEnvVar.mockResolvedValue({ ok: true })
-  getHermesConfigRecord.mockResolvedValue({ agent: { reasoning_effort: 'medium', service_tier: 'normal' } })
-  saveHermesConfig.mockResolvedValue({ ok: true })
+  getKopiConfigRecord.mockResolvedValue({ agent: { reasoning_effort: 'medium', service_tier: 'normal' } })
+  saveKopiConfig.mockResolvedValue({ ok: true })
 })
 
 afterEach(() => {
@@ -71,8 +73,13 @@ afterEach(() => {
 
 async function renderModelSettings() {
   const { ModelSettings } = await import('./model-settings')
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-  return render(<ModelSettings />)
+  return render(
+    <QueryClientProvider client={client}>
+      <ModelSettings />
+    </QueryClientProvider>
+  )
 }
 
 describe('ModelSettings', () => {
@@ -93,13 +100,13 @@ describe('ModelSettings', () => {
 
   it('writes the profile default speed (service_tier) when the fast switch is toggled', async () => {
     await renderModelSettings()
-    await waitFor(() => expect(getHermesConfigRecord).toHaveBeenCalled())
+    await waitFor(() => expect(getKopiConfigRecord).toHaveBeenCalled())
 
     const fastSwitch = await screen.findByRole('switch')
     fireEvent.click(fastSwitch)
 
     await waitFor(() =>
-      expect(saveHermesConfig).toHaveBeenCalledWith(
+      expect(saveKopiConfig).toHaveBeenCalledWith(
         expect.objectContaining({ agent: expect.objectContaining({ service_tier: 'fast' }) })
       )
     )
@@ -119,7 +126,7 @@ describe('ModelSettings', () => {
     })
 
     await renderModelSettings()
-    await waitFor(() => expect(getHermesConfigRecord).toHaveBeenCalled())
+    await waitFor(() => expect(getKopiConfigRecord).toHaveBeenCalled())
 
     expect(screen.queryByRole('switch')).toBeNull()
   })

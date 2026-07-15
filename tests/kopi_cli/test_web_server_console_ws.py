@@ -1,4 +1,4 @@
-"""Dashboard Hermes Console websocket tests."""
+"""Dashboard Kopi Console websocket tests."""
 
 from __future__ import annotations
 
@@ -75,14 +75,14 @@ def test_console_ws_runs_read_only_command(console_client):
         ready = conn.receive_json()
         assert ready["type"] == "ready"
         assert ready["context"] == "local"
-        assert ready["prompt"] == "hermes> "
+        assert ready["prompt"] == "kopi> "
 
         conn.send_json({"type": "input", "line": "help"})
 
         output = _recv_until(conn, "output")
-        assert "Hermes Console" in output["data"]
+        assert "Kopi Console" in output["data"]
         complete = _recv_until(conn, "complete", status="ok")
-        assert complete["prompt"] == "hermes> "
+        assert complete["prompt"] == "kopi> "
 
 
 def test_console_ws_confirmed_command_executes_after_confirmation(console_client):
@@ -113,17 +113,17 @@ def test_console_ws_uses_hosted_context_for_opt_data_policy(console_client, monk
         conn.send_json({"type": "input", "line": "profile create nope"})
 
         error = _recv_until(conn, "error")
-        assert "hosted Hermes Console" in error["message"]
+        assert "hosted Kopi Console" in error["message"]
 
 
 def test_console_ws_cancel_returns_to_prompt(console_client, monkeypatch):
-    from kopi_cli.console_engine import ConsoleResult, HermesConsoleEngine
+    from kopi_cli.console_engine import ConsoleResult, KopiConsoleEngine
 
     def slow_execute(self, line: str, *, confirmed: bool = False):
         time.sleep(0.5)
         return ConsoleResult("ok", output="late", command=line)
 
-    monkeypatch.setattr(HermesConsoleEngine, "execute", slow_execute)
+    monkeypatch.setattr(KopiConsoleEngine, "execute", slow_execute)
 
     with console_client.websocket_connect(_url()) as conn:
         assert conn.receive_json()["type"] == "ready"
@@ -131,4 +131,4 @@ def test_console_ws_cancel_returns_to_prompt(console_client, monkeypatch):
         conn.send_json({"type": "cancel"})
 
         complete = _recv_until(conn, "complete", status="cancelled")
-        assert complete["prompt"] == "hermes> "
+        assert complete["prompt"] == "kopi> "

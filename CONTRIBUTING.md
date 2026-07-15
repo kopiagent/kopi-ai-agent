@@ -1,6 +1,6 @@
-# Contributing to KOPI AI AGENT
+# Contributing to Kopi Agent
 
-Thank you for contributing to KOPI AI AGENT! This guide covers everything you need: setting up your dev environment, understanding the architecture, deciding what to build, and getting your PR merged.
+Thank you for contributing to Kopi Agent! This guide covers everything you need: setting up your dev environment, understanding the architecture, deciding what to build, and getting your PR merged.
 
 ---
 
@@ -9,7 +9,7 @@ Thank you for contributing to KOPI AI AGENT! This guide covers everything you ne
 We value contributions in this order:
 
 1. **Bug fixes** — crashes, incorrect behavior, data loss. Always top priority.
-2. **Cross-platform compatibility** — macOS, different Linux distros, and WSL2 on Windows. We want Hermes to work everywhere.
+2. **Cross-platform compatibility** — macOS, different Linux distros, and WSL2 on Windows. We want Kopi to work everywhere.
 3. **Security hardening** — shell injection, prompt injection, path traversal, privilege escalation. See [Security](#security-considerations).
 4. **Performance and robustness** — retry logic, error handling, graceful degradation.
 5. **New skills** — but only broadly useful ones. See [Should it be a Skill or a Tool?](#should-it-be-a-skill-or-a-tool)
@@ -24,15 +24,15 @@ A quick search before you build saves your time and keeps the PR queue clean —
 
 - **Search both open *and* merged PRs and issues** for your topic or error symptom — the duplicate-check in the PR template fires at review time, after you've already done the work:
   ```bash
-  gh search issues --repo Kopi Ai Agent Pte Ltd/kopi-ai-agent "<your terms>"
-  gh search prs --repo Kopi Ai Agent Pte Ltd/kopi-ai-agent --state all "<your terms>"
+  gh search issues --repo NousResearch/kopi-agent "<your terms>"
+  gh search prs --repo NousResearch/kopi-agent --state all "<your terms>"
   ```
-  Or use the web UI: [issues](https://github.com/LINYIQ66/kopi-ai-agent/issues?q=) · [PRs (all states)](https://github.com/LINYIQ66/kopi-ai-agent/pulls?q=is%3Apr).
+  Or use the web UI: [issues](https://github.com/NousResearch/kopi-agent/issues?q=) · [PRs (all states)](https://github.com/NousResearch/kopi-agent/pulls?q=is%3Apr).
 - **The issue tracker can lag the code.** Many requested features are already implemented in-tree, so also search the source (`search_files`, or your editor's grep) for the capability before proposing it.
 - **If an open PR already addresses it**, consider reviewing or improving that one instead of opening a competing duplicate.
 - **For larger work**, comment on the issue to signal you're working on it, so others don't start the same thing.
 
-Related: #38284 covers the agent-side analog — Hermes itself checking existing issues and PRs before deep self-troubleshooting. This section is the human-contributor complement.
+Related: #38284 covers the agent-side analog — Kopi itself checking existing issues and PRs before deep self-troubleshooting. This section is the human-contributor complement.
 
 ---
 
@@ -56,14 +56,14 @@ This is the most common question for new contributors. The answer is almost alwa
 
 ### Should the Skill be bundled?
 
-Bundled skills (in `skills/`) ship with every Hermes install. They should be **broadly useful to most users**:
+Bundled skills (in `skills/`) ship with every Kopi install. They should be **broadly useful to most users**:
 
 - Document handling, web research, common dev workflows, system administration
 - Used regularly by a wide range of people
 
 If your skill is official and useful but not universally needed (e.g., a paid service integration, a heavyweight dependency), put it in **`optional-skills/`** — it ships with the repo but isn't activated by default. Users can discover it via `kopi skills browse` (labeled "official") and install it with `kopi skills install` (no third-party warning, built-in trust).
 
-If your skill is specialized, community-contributed, or niche, it's better suited for a **Skills Hub** — upload it to a skills registry and share it in the [Kopi Ai Agent Pte Ltd Discord](https://discord.gg/Kopi Ai Agent Pte Ltd). Users can install it with `kopi skills install`.
+If your skill is specialized, community-contributed, or niche, it's better suited for a **Skills Hub** — upload it to a skills registry and share it in the [Nous Research Discord](https://discord.gg/NousResearch). Users can install it with `kopi skills install`.
 
 ---
 
@@ -89,14 +89,14 @@ This isn't a quality bar — it's a coupling-and-maintenance decision. Memory pr
 
 The same rule extends to **any plugin that integrates someone else's product or project** — observability/metrics backends, vendor SaaS connectors, analytics dashboards, paid-service tie-ins, and similar third-party integrations. **These do not land in this repo.**
 
-The reason is maintenance load, not quality. Every external product absorbed into the core tree becomes ours to keep working against a fast-moving codebase, for a backend we don't own and can't control. Hermes ships a lot and the core moves quickly; coupling third-party products into it creates an open-ended burden on the maintainers.
+The reason is maintenance load, not quality. Every external product absorbed into the core tree becomes ours to keep working against a fast-moving codebase, for a backend we don't own and can't control. Kopi ships a lot and the core moves quickly; coupling third-party products into it creates an open-ended burden on the maintainers.
 
 Publish these as a **standalone plugin repo** instead:
 
-- Implement the relevant ABC and use the existing plugin discovery path (`~/.kopi/plugins/`, project `.kopi/plugins/`, or a pip entry point) — see [Build a Hermes Plugin](https://kopiaiagent.com/docs/guides/build-a-kopi-plugin)
+- Implement the relevant ABC and use the existing plugin discovery path (`~/.kopi/plugins/`, project `.kopi/plugins/`, or a pip entry point) — see [Build a Kopi Plugin](https://kopi-agent.nousresearch.com/docs/guides/build-a-kopi-plugin)
 - Register lifecycle hooks (`pre_tool_call`, `post_tool_call`, `pre_llm_call`, `post_llm_call`, `on_session_start`, `on_session_end`), tools (`ctx.register_tool`), and CLI subcommands (`ctx.register_cli_command`) through the surface we already expose — no core changes needed
 - If your plugin needs a capability the framework doesn't expose, that's a feature request to **widen the generic plugin surface** (a new hook or `ctx` method) — never special-case your plugin in core
-- Promote it in the [Kopi Ai Agent Pte Ltd Discord](https://discord.gg/Kopi Ai Agent Pte Ltd) `#plugins-skills-and-skins` channel so users can find and install it
+- Promote it in the [Nous Research Discord](https://discord.gg/NousResearch) `#plugins-skills-and-skins` channel so users can find and install it
 
 A well-built third-party-product plugin can clear automated review and still be closed for this reason — it's a placement decision, not a verdict on the code. PRs that add such a directory under `plugins/` will be closed with a pointer to publish it as its own repo.
 
@@ -117,15 +117,15 @@ A well-built third-party-product plugin can clear automated review and still be 
 
 For most contributors, the best development bootstrap is the same path users
 take: run the standard installer, then work inside the repository it cloned.
-The installer creates the Hermes venv, wires the `kopi` command, stamps the
+The installer creates the Kopi venv, wires the `kopi` command, stamps the
 install method for `kopi update`, and clones the full git project into
-`$KOPI_HOME/kopi-ai-agent` (usually `~/.kopi/kopi-ai-agent`). That keeps your
+`$KOPI_HOME/kopi-agent` (usually `~/.kopi/kopi-agent`). That keeps your
 development environment on the same layout the CLI, updater, lazy dependency
 installer, gateway, and docs assume.
 
 ```bash
-curl -fsSL https://kopiaiagent.com/install.sh | bash
-cd "${KOPI_HOME:-$HOME/.kopi}/kopi-ai-agent"
+curl -fsSL https://kopi-agent.nousresearch.com/install.sh | bash
+cd "${KOPI_HOME:-$HOME/.kopi}/kopi-agent"
 
 # Add dev/test extras on top of the standard install.
 uv pip install -e ".[all,dev]"
@@ -143,7 +143,7 @@ scripts/run_tests.sh
 
 ### Manual clone fallback
 
-Use this only if you intentionally do not want Hermes' managed install layout
+Use this only if you intentionally do not want Kopi' managed install layout
 (for example, a throwaway clone inside a container or CI job). If you install
 this way, make sure you run the `kopi` entrypoint from this venv; running the
 system `python3 -m kopi_cli.main` can pick up unrelated system Python
@@ -156,8 +156,8 @@ which silently destroys the running runtime mid-session. Keeping it outside the
 tree means no relative path from the workspace resolves to it.
 
 ```bash
-git clone https://github.com/LINYIQ66/kopi-ai-agent.git
-cd kopi-ai-agent
+git clone https://github.com/NousResearch/kopi-agent.git
+cd kopi-agent
 
 # Create venv with Python 3.11, OUTSIDE the source tree
 uv venv ~/.kopi/venvs/kopi-dev --python 3.11
@@ -214,9 +214,9 @@ pytest tests/ -v
 ## Project Structure
 
 ```
-kopi-ai-agent/
+kopi-agent/
 ├── run_agent.py              # AIAgent class — core conversation loop, tool dispatch, session persistence
-├── cli.py                    # HermesCLI class — interactive TUI, prompt_toolkit integration
+├── cli.py                    # KopiCLI class — interactive TUI, prompt_toolkit integration
 ├── model_tools.py            # Tool orchestration (thin layer over tools/registry.py)
 ├── toolsets.py               # Tool groupings and presets (kopi-cli, kopi-telegram, etc.)
 ├── kopi_state.py           # SQLite session database with FTS5 full-text search, session titles
@@ -274,7 +274,7 @@ kopi-ai-agent/
 ├── skills/                   # Bundled skills (copied to ~/.kopi/skills/ on install)
 ├── optional-skills/          # Official optional skills (discoverable via hub, not activated by default)
 ├── tests/                    # Test suite
-├── website/                  # Documentation site (kopi-ai-agent.nousresearch.com)
+├── website/                  # Documentation site (kopi-agent.nousresearch.com)
 │
 ├── cli-config.yaml.example   # Example configuration (copied to ~/.kopi/config.yaml)
 └── AGENTS.md                 # Development guide for AI coding assistants
@@ -440,7 +440,7 @@ prerequisites:                     # Optional legacy runtime requirements
   env_vars: [MY_API_KEY]           #   Backward-compatible alias for required env vars
   commands: [curl, jq]             #   Advisory only; does not hide the skill
 metadata:
-  hermes:
+  kopi:
     tags: [Category, Subcategory, Keywords]
     related_skills: [other-skill-name]
     fallback_for_toolsets: [web]       # Optional — show only when toolset is unavailable
@@ -493,7 +493,7 @@ Four fields are supported under `metadata.kopi`:
 
 ```yaml
 metadata:
-  hermes:
+  kopi:
     fallback_for_toolsets: [web]      # Show ONLY when these toolsets are unavailable
     requires_toolsets: [terminal]     # Show ONLY when these toolsets are available
     fallback_for_tools: [web_search]  # Show ONLY when these specific tools are unavailable
@@ -511,17 +511,17 @@ metadata:
 ```yaml
 # DuckDuckGo search — shown when Firecrawl (web toolset) is unavailable
 metadata:
-  hermes:
+  kopi:
     fallback_for_toolsets: [web]
 
 # Smart home skill — only useful when terminal is available
 metadata:
-  hermes:
+  kopi:
     requires_toolsets: [terminal]
 
 # Local browser fallback — shown when Browserbase is unavailable
 metadata:
-  hermes:
+  kopi:
     fallback_for_toolsets: [browser]
 ```
 
@@ -539,7 +539,7 @@ required_environment_variables:
     required_for: full functionality
 ```
 
-The user may skip setup and keep loading the skill. Hermes only exposes metadata (`stored_as`, `skipped`, `validated`) to the model — never the secret value.
+The user may skip setup and keep loading the skill. Kopi only exposes metadata (`stored_as`, `skipped`, `validated`) to the model — never the secret value.
 
 Legacy `prerequisites.env_vars` remains supported and is normalized into the new representation.
 
@@ -577,7 +577,7 @@ Every new or modernized skill — bundled, optional, or contributed — must mee
    Good: `Search arXiv papers by keyword, author, category, or ID.`
    Bad: `A powerful and comprehensive skill that allows the agent to search arXiv for relevant academic papers using various criteria including keywords, authors, and categories.`
 
-2. **Tools referenced in SKILL.md prose must be native Hermes tools or MCP servers the skill explicitly expects.** When the skill needs a capability, point at the proper tool by name in backticks: `` `terminal` ``, `` `web_extract` ``, `` `web_search` ``, `` `read_file` ``, `` `write_file` ``, `` `patch` ``, `` `search_files` ``, `` `vision_analyze` ``, `` `browser_navigate` ``, `` `delegate_task` ``, `` `image_generate` ``, `` `text_to_speech` ``, `` `cronjob` ``, `` `memory` ``, `` `skill_view` ``, `` `todo` ``, `` `execute_code` ``.
+2. **Tools referenced in SKILL.md prose must be native Kopi tools or MCP servers the skill explicitly expects.** When the skill needs a capability, point at the proper tool by name in backticks: `` `terminal` ``, `` `web_extract` ``, `` `web_search` ``, `` `read_file` ``, `` `write_file` ``, `` `patch` ``, `` `search_files` ``, `` `vision_analyze` ``, `` `browser_navigate` ``, `` `delegate_task` ``, `` `image_generate` ``, `` `text_to_speech` ``, `` `cronjob` ``, `` `memory` ``, `` `skill_view` ``, `` `todo` ``, `` `execute_code` ``.
 
    Do NOT name shell utilities the agent already has wrapped:
 
@@ -594,7 +594,7 @@ Every new or modernized skill — bundled, optional, or contributed — must mee
 
 3. **`platforms:` gating audited against actual script imports.** Skills that use POSIX-only primitives (`fcntl`, `termios`, `os.setsid`, `os.kill(pid, 0)` for liveness, `/proc`, hardcoded `/tmp` paths, `signal.SIGKILL`, bash heredocs, `osascript`, `apt`, `systemctl`) must declare their supported platforms via the `platforms:` frontmatter. Default posture is to fix it cross-platform first — `tempfile.gettempdir()`, `pathlib.Path`, `psutil.pid_exists()`, Python-level filtering instead of `grep`. Gate to a narrower set only when the dependency is genuinely platform-bound (e.g. `osascript` is macOS-only, `/proc` is Linux-only).
 
-4. **`author` credits the human contributor first.** For external contributions, the contributor's real name + GitHub handle goes first (`Jane Doe (jane-doe)`); "KOPI AI AGENT" is the secondary collaborator. If the contributor's commit shows "KOPI AI AGENT" as author because they used Hermes to draft the skill, replace it with their actual name — credit the human, not the tool.
+4. **`author` credits the human contributor first.** For external contributions, the contributor's real name + GitHub handle goes first (`Jane Doe (jane-doe)`); "Kopi Agent" is the secondary collaborator. If the contributor's commit shows "Kopi Agent" as author because they used Kopi to draft the skill, replace it with their actual name — credit the human, not the tool.
 
 5. **SKILL.md body uses the modern section order.** `# <Skill> Skill` title, 2-3 sentence intro stating what it does and what it doesn't do, then:
    - `## When to Use` — trigger conditions
@@ -615,7 +615,7 @@ Every new or modernized skill — bundled, optional, or contributed — must mee
 
 ### Skill guidelines
 
-- **No external dependencies unless absolutely necessary.** Prefer stdlib Python, curl, and existing Hermes tools (`web_extract`, `terminal`, `read_file`).
+- **No external dependencies unless absolutely necessary.** Prefer stdlib Python, curl, and existing Kopi tools (`web_extract`, `terminal`, `read_file`).
 - **Progressive disclosure.** Put the most common workflow first. Edge cases and advanced usage go at the bottom.
 - **Include helper scripts** for XML/JSON parsing or complex logic — don't expect the LLM to write parsers inline every time.
 - **Test it.** Run `kopi --toolsets skills -q "Use the X skill to do Y"` and verify the agent follows the instructions correctly.
@@ -624,7 +624,7 @@ Every new or modernized skill — bundled, optional, or contributed — must mee
 
 ## Adding a Skin / Theme
 
-Hermes uses a data-driven skin system — no code changes needed to add a new skin.
+Kopi uses a data-driven skin system — no code changes needed to add a new skin.
 
 **Option A: User skin (YAML file)**
 
@@ -674,7 +674,7 @@ See `kopi_cli/skin_engine.py` for the full schema and existing skins as examples
 
 ## Cross-Platform Compatibility
 
-Hermes runs on Linux, macOS, and native Windows (plus WSL2). When writing code
+Kopi runs on Linux, macOS, and native Windows (plus WSL2). When writing code
 that touches the OS, assume *any* platform can hit your code path.
 
 > **Before you PR:** run `scripts/check-windows-footguns.py` to catch the
@@ -862,7 +862,7 @@ through the wrong branch on a Windows runner.
 
 ## Security Considerations
 
-Hermes has terminal access. Security matters.
+Kopi has terminal access. Security matters.
 
 ### Existing protections
 
@@ -987,8 +987,8 @@ test(tools): add unit tests for file_operations
 
 ## Reporting Issues
 
-- Use [GitHub Issues](https://github.com/LINYIQ66/kopi-ai-agent/issues)
-- Include: OS, Python version, Hermes version (`kopi version`), full error traceback
+- Use [GitHub Issues](https://github.com/NousResearch/kopi-agent/issues)
+- Include: OS, Python version, Kopi version (`kopi version`), full error traceback
 - Include steps to reproduce
 - Check existing issues before creating duplicates
 - For security vulnerabilities, please report privately
@@ -997,7 +997,7 @@ test(tools): add unit tests for file_operations
 
 ## Community
 
-- **Discord**: [discord.gg/Kopi Ai Agent Pte Ltd](https://discord.gg/Kopi Ai Agent Pte Ltd) — for questions, showcasing projects, and sharing skills
+- **Discord**: [discord.gg/NousResearch](https://discord.gg/NousResearch) — for questions, showcasing projects, and sharing skills
 - **GitHub Discussions**: For design proposals and architecture discussions
 - **Skills Hub**: Upload specialized skills to a registry and share them with the community
 

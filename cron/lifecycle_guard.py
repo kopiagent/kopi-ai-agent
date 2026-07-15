@@ -51,18 +51,18 @@ _GATEWAY_LIFECYCLE_PATTERN = re.compile(
     # `start` is intentionally excluded: starting a gateway from inside a
     # gateway is benign (a no-op or "already running" error), and a
     # legitimate cron job might start a sibling profile's gateway.
-    r"(?:hermes\s+gateway\s+(?:restart|stop))"
+    r"(?:kopi\s+gateway\s+(?:restart|stop))"
     # Branch B: launchctl ops on a kopi-gateway label. macOS launchd
     # labels look like `ai.kopi.gateway` / `kopi-gateway`. Requiring the
     # gateway identifier prevents blocking unrelated kopi services (e.g.
     # `launchctl unload ai.kopi.update-checker.plist`).
-    r"|(?:launchctl\s+(?:kickstart|unload|load|stop|restart)\b[^\n]*\bhermes[.\-]?gateway)"
+    r"|(?:launchctl\s+(?:kickstart|unload|load|stop|restart)\b[^\n]*\bkopi[.\-]?gateway)"
     # Branch C: systemctl ops on a kopi-gateway unit.
-    r"|(?:systemctl\s+(?:-\S+\s+)*(?:restart|stop|start)\b[^\n]*\bhermes[.\-]?gateway)"
+    r"|(?:systemctl\s+(?:-\S+\s+)*(?:restart|stop|start)\b[^\n]*\bkopi[.\-]?gateway)"
     # Branch D: pkill / kill targeting the kopi gateway process. Both
     # token orders because real reproductions show both.
-    r"|(?:p?kill\b[^\n]*\bhermes\b[^\n]*\bgateway)"
-    r"|(?:p?kill\b[^\n]*\bgateway\b[^\n]*\bhermes)"
+    r"|(?:p?kill\b[^\n]*\bkopi\b[^\n]*\bgateway)"
+    r"|(?:p?kill\b[^\n]*\bgateway\b[^\n]*\bkopi)"
 )
 
 

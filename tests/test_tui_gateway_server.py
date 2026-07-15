@@ -42,7 +42,7 @@ def test_session_create_rejects_at_active_session_limit(monkeypatch, tmp_path):
 
         second = server._methods["session.create"]("r2", {"cols": 80})
         assert second["error"]["message"] == (
-            "Hermes is at the active session limit (1/1). "
+            "Kopi is at the active session limit (1/1). "
             "Try again when another session finishes."
         )
         assert list(server._sessions) == [sid]
@@ -422,6 +422,43 @@ def test_tui_verbose_tool_events_omit_details_when_redaction_fails(monkeypatch):
     assert events[1][0] == "tool.complete"
     assert "args_text" not in events[0][2]
     assert "result_text" not in events[1][2]
+
+
+def test_tui_tool_output_risk_event_exposes_metadata_without_raw_output(monkeypatch):
+    events: list[tuple[str, str, dict]] = []
+    monkeypatch.setattr(
+        server, "_emit", lambda event_type, sid, payload: events.append((event_type, sid, payload))
+    )
+    monkeypatch.setitem(
+        server._sessions,
+        "risk-test",
+        {"tool_progress_mode": "all"},
+    )
+
+    server._on_tool_progress(
+        "risk-test",
+        "tool.output_risk",
+        "web_extract",
+        tool_call_id="tool-1",
+        risk_metadata={
+            "risk": "high",
+            "findings": ["prompt_injection"],
+            "redacted": False,
+        },
+    )
+
+    assert events == [(
+        "tool.output_risk",
+        "risk-test",
+        {
+            "tool_id": "tool-1",
+            "name": "web_extract",
+            "risk": "high",
+            "findings": ["prompt_injection"],
+            "redacted": False,
+        },
+    )]
+    assert "result" not in events[0][2]
 
 
 def test_dispatch_rejects_non_object_request():
@@ -1655,7 +1692,7 @@ def test_startup_runtime_detects_provider_for_model_env(monkeypatch):
 
 
 def test_load_fallback_model_merges_chain_providers_first(monkeypatch):
-    # Parity with HermesCLI / gateway: fallback_providers stays first and keeps
+    # Parity with KopiCLI / gateway: fallback_providers stays first and keeps
     # its order, with any distinct legacy fallback_model entry merged in after
     # (deduped on provider/model/base_url).
     fallback_chain = [
@@ -2738,6 +2775,95 @@ def test_config_set_yolo_global_scope_writes_approvals_mode(tmp_path, monkeypatc
     )
     assert resp_off["result"]["value"] == "0"
     assert yaml.safe_load(cfg_path.read_text())["approvals"]["mode"] == "manual"
+
+
+def test_config_get_approval_mode_uses_smart_default_when_key_is_missing(
+    tmp_path, monkeypatch
+):
+    import yaml
+
+    monkeypatch.setattr(server, "_kopi_home", tmp_path)
+    (tmp_path / "config.yaml").write_text(
+        yaml.safe_dump({"approvals": {"timeout": 15}})
+    )
+
+    response = server.handle_request(
+        {"id": "1", "method": "config.get", "params": {"key": "approvals.mode"}}
+    )
+    assert response["result"]["value"] == "smart"
+
+
+def test_config_get_approval_mode_fails_safe_to_manual_for_invalid_explicit_value(
+    tmp_path, monkeypatch
+):
+    import yaml
+
+    monkeypatch.setattr(server, "_kopi_home", tmp_path)
+    (tmp_path / "config.yaml").write_text(
+        yaml.safe_dump({"approvals": {"mode": "sometimes"}})
+    )
+
+    response = server.handle_request(
+        {"id": "1", "method": "config.get", "params": {"key": "approvals.mode"}}
+    )
+    assert response["result"]["value"] == "manual"
+
+
+def test_config_get_approval_mode_normalizes_yaml_off(tmp_path, monkeypatch):
+    import yaml
+
+    monkeypatch.setattr(server, "_kopi_home", tmp_path)
+    (tmp_path / "config.yaml").write_text(
+        yaml.safe_dump({"approvals": {"mode": False}})
+    )
+
+    response = server.handle_request(
+        {"id": "1", "method": "config.get", "params": {"key": "approvals.mode"}}
+    )
+    assert response["result"]["value"] == "off"
+
+
+def test_config_set_approval_mode_persists_three_way_value_and_emits_live_status(
+    tmp_path, monkeypatch
+):
+    import yaml
+
+    monkeypatch.setattr(server, "_kopi_home", tmp_path)
+    emitted = []
+    monkeypatch.setattr(server, "_emit", lambda *args: emitted.append(args))
+    server._sessions["sid"] = {"agent": object(), "session_key": "profile-session"}
+
+    try:
+        resp = server.handle_request(
+            {
+                "id": "1",
+                "method": "config.set",
+                "params": {"key": "approvals.mode", "value": "manual"},
+            }
+        )
+    finally:
+        server._sessions.clear()
+
+    assert resp["result"] == {"key": "approvals.mode", "value": "manual"}
+    assert yaml.safe_load((tmp_path / "config.yaml").read_text())["approvals"]["mode"] == "manual"
+    assert emitted and emitted[0][0:2] == ("session.info", "sid")
+    assert emitted[0][2]["approval_mode"] == "manual"
+
+
+def test_desktop_contract_includes_approval_mode_rpc():
+    assert server.DESKTOP_BACKEND_CONTRACT >= 3
+
+
+def test_config_set_approval_mode_rejects_unknown_value():
+    resp = server.handle_request(
+        {
+            "id": "1",
+            "method": "config.set",
+            "params": {"key": "approvals.mode", "value": "sometimes"},
+        }
+    )
+
+    assert resp["error"]["code"] == 4002
 
 
 def test_config_set_yolo_global_scope_honors_explicit_value(tmp_path, monkeypatch):
@@ -4033,7 +4159,7 @@ def test_session_compress_syncs_session_key_after_rotation(monkeypatch):
     """When AIAgent._compress_context rotates session_id (compression split),
     the gateway session_key must follow so subsequent approval routing,
     DB title/history lookups, and slash worker resume target the new
-    continuation session — mirrors HermesCLI._manual_compress's
+    continuation session — mirrors KopiCLI._manual_compress's
     session_id sync (cli.py).
     """
     agent = types.SimpleNamespace(session_id="rotated-id")
@@ -4482,7 +4608,7 @@ def test_session_status_reads_live_gateway_agent(monkeypatch):
         server._sessions.pop("sid", None)
 
     out = resp["result"]["output"]
-    assert "Hermes TUI Status" in out
+    assert "Kopi TUI Status" in out
     assert "Session ID: session-key" in out
     assert "Title: Live TUI" in out
     assert "Model: live-model (live-provider)" in out
@@ -7470,7 +7596,7 @@ def _setup_make_agent_mocks(monkeypatch, cfg):
         },
     )
     monkeypatch.setattr(server, "_load_tool_progress_mode", lambda: "off")
-    monkeypatch.setattr(server, "_load_reasoning_config", lambda: None)
+    monkeypatch.setattr(server, "_load_reasoning_config", lambda model="": None)
     monkeypatch.setattr(server, "_load_service_tier", lambda: None)
     monkeypatch.setattr(server, "_load_enabled_toolsets", lambda: None)
     monkeypatch.setattr(server, "_get_db", lambda: None)
@@ -7821,7 +7947,7 @@ def test_notification_poller_requeues_when_busy(monkeypatch):
 
 
 def test_session_save_writes_under_kopi_home_with_system_prompt(monkeypatch, tmp_path):
-    """TUI /save (session.save RPC) must snapshot under the Hermes profile
+    """TUI /save (session.save RPC) must snapshot under the Kopi profile
     home — not the project/workspace CWD — and include the system prompt,
     mirroring the classic CLI /save and the dashboard save export.
 
@@ -7843,7 +7969,7 @@ def test_session_save_writes_under_kopi_home_with_system_prompt(monkeypatch, tmp
         model="kopi-test",
         session_id="20260101_120000_abc123",
         session_start=datetime(2026, 1, 1, 12, 0, 0),
-        _cached_system_prompt="You are Hermes.",
+        _cached_system_prompt="You are Kopi.",
     )
     history = [
         {"role": "user", "content": "hi"},
@@ -7875,7 +8001,7 @@ def test_session_save_writes_under_kopi_home_with_system_prompt(monkeypatch, tmp
     assert payload["model"] == "kopi-test"
     assert payload["session_id"] == "20260101_120000_abc123"
     assert payload["session_start"] == "2026-01-01T12:00:00"
-    assert payload["system_prompt"] == "You are Hermes."
+    assert payload["system_prompt"] == "You are Kopi."
     assert payload["messages"] == history
 
 

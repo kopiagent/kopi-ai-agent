@@ -10,7 +10,8 @@
  */
 
 import assert from 'node:assert/strict'
-import test from 'node:test'
+
+import { test } from 'vitest'
 
 import {
   buildPosixCleanupScript,
@@ -56,12 +57,12 @@ test('mode predicates classify what each mode removes', () => {
 
 test('resolveRemovableAppPath finds the .app bundle on macOS', () => {
   assert.equal(
-    resolveRemovableAppPath('/Applications/Hermes.app/Contents/MacOS/Hermes', 'darwin'),
-    '/Applications/Hermes.app'
+    resolveRemovableAppPath('/Applications/Kopi.app/Contents/MacOS/Kopi', 'darwin'),
+    '/Applications/Kopi.app'
   )
   assert.equal(
-    resolveRemovableAppPath('/Users/x/Applications/Hermes.app/Contents/MacOS/Hermes', 'darwin'),
-    '/Users/x/Applications/Hermes.app'
+    resolveRemovableAppPath('/Users/x/Applications/Kopi.app/Contents/MacOS/Kopi', 'darwin'),
+    '/Users/x/Applications/Kopi.app'
   )
 })
 
@@ -80,23 +81,23 @@ test('resolveRemovableAppPath: dev-run .app resolves (safety is shouldRemoveAppB
 
 test('resolveRemovableAppPath finds the install dir on Windows', () => {
   assert.equal(
-    resolveRemovableAppPath('C:\\Users\\x\\AppData\\Local\\Programs\\Hermes\\Hermes.exe', 'win32'),
-    'C:\\Users\\x\\AppData\\Local\\Programs\\Hermes'
+    resolveRemovableAppPath('C:\\Users\\x\\AppData\\Local\\Programs\\Kopi\\Kopi.exe', 'win32'),
+    'C:\\Users\\x\\AppData\\Local\\Programs\\Kopi'
   )
   assert.equal(
-    resolveRemovableAppPath('C:\\Users\\x\\AppData\\Local\\kopi-desktop\\Hermes.exe', 'win32'),
+    resolveRemovableAppPath('C:\\Users\\x\\AppData\\Local\\kopi-desktop\\Kopi.exe', 'win32'),
     'C:\\Users\\x\\AppData\\Local\\kopi-desktop'
   )
 })
 
 test('resolveRemovableAppPath returns null for an unrecognized Windows dir', () => {
-  assert.equal(resolveRemovableAppPath('C:\\Temp\\foo\\Hermes.exe', 'win32'), null)
+  assert.equal(resolveRemovableAppPath('C:\\Temp\\foo\\Kopi.exe', 'win32'), null)
 })
 
 test('resolveRemovableAppPath uses APPIMAGE on Linux when set', () => {
   assert.equal(
-    resolveRemovableAppPath('/tmp/.mount_HermesXXXX/kopi', 'linux', { APPIMAGE: '/home/x/Apps/Hermes.AppImage' }),
-    '/home/x/Apps/Hermes.AppImage'
+    resolveRemovableAppPath('/tmp/.mount_KopiXXXX/kopi', 'linux', { APPIMAGE: '/home/x/Apps/Kopi.AppImage' }),
+    '/home/x/Apps/Kopi.AppImage'
   )
 })
 
@@ -114,8 +115,8 @@ test('resolveRemovableAppPath returns null for an empty exe path', () => {
 // --- shouldRemoveAppBundle ---
 
 test('shouldRemoveAppBundle requires packaged AND a resolved path', () => {
-  assert.equal(shouldRemoveAppBundle(true, '/Applications/Hermes.app'), true)
-  assert.equal(shouldRemoveAppBundle(false, '/Applications/Hermes.app'), false)
+  assert.equal(shouldRemoveAppBundle(true, '/Applications/Kopi.app'), true)
+  assert.equal(shouldRemoveAppBundle(false, '/Applications/Kopi.app'), false)
   assert.equal(shouldRemoveAppBundle(true, null), false)
   assert.equal(shouldRemoveAppBundle(false, null), false)
 })
@@ -130,7 +131,7 @@ test('buildPosixCleanupScript waits for the PID, runs the uninstall module, remo
     agentRoot: '/home/x/.kopi/kopi-ai-agent',
     uninstallArgs: ['-m', 'kopi_cli.uninstall', '--mode', 'gui'],
     appPath: '/opt/kopi/linux-unpacked',
-    hermesHome: '/home/x/.kopi'
+    kopiHome: '/home/x/.kopi'
   })
 
   assert.match(script, /^#!\/bin\/bash/)
@@ -151,7 +152,7 @@ test('buildPosixCleanupScript exports PYTHONPATH when pythonPath is set (lite/fu
     agentRoot: '/home/x/.kopi/kopi-ai-agent',
     uninstallArgs: ['-m', 'kopi_cli.uninstall', '--mode', 'full'],
     appPath: null,
-    hermesHome: '/home/x/.kopi'
+    kopiHome: '/home/x/.kopi'
   })
 
   // System python + source on PYTHONPATH so import kopi_cli works while the
@@ -168,7 +169,7 @@ test('buildPosixCleanupScript omits PYTHONPATH when pythonPath is null (gui)', (
     agentRoot: '/a',
     uninstallArgs: ['-m', 'kopi_cli.uninstall', '--mode', 'gui'],
     appPath: null,
-    hermesHome: '/h'
+    kopiHome: '/h'
   })
 
   assert.doesNotMatch(script, /export PYTHONPATH/)
@@ -182,7 +183,7 @@ test('buildPosixCleanupScript omits the bundle rm when appPath is null', () => {
     agentRoot: '/a',
     uninstallArgs: ['-m', 'kopi_cli.uninstall', '--mode', 'lite'],
     appPath: null,
-    hermesHome: '/h'
+    kopiHome: '/h'
   })
 
   assert.doesNotMatch(script, /rm -rf '\//)
@@ -198,7 +199,7 @@ test('buildPosixCleanupScript single-quote-escapes paths with apostrophes', () =
     agentRoot: '/a',
     uninstallArgs: ['-m', 'kopi_cli.uninstall', '--mode', 'gui'],
     appPath: null,
-    hermesHome: '/h'
+    kopiHome: '/h'
   })
 
   // The apostrophe is closed-escaped-reopened so the shell sees the literal.
@@ -211,17 +212,17 @@ test('buildWindowsCleanupScript waits (bounded) for PID, runs uninstall, rmdir b
   const script = buildWindowsCleanupScript({
     desktopPid: 9988,
     pythonExe: 'C:\\Python313\\python.exe',
-    pythonPath: 'C:\\hermes',
-    agentRoot: 'C:\\hermes',
+    pythonPath: 'C:\\kopi',
+    agentRoot: 'C:\\kopi',
     uninstallArgs: ['-m', 'kopi_cli.uninstall', '--mode', 'full'],
-    appPath: 'C:\\Users\\x\\AppData\\Local\\Programs\\Hermes',
-    hermesHome: 'C:\\Users\\x\\AppData\\Local\\hermes'
+    appPath: 'C:\\Users\\x\\AppData\\Local\\Programs\\Kopi',
+    kopiHome: 'C:\\Users\\x\\AppData\\Local\\kopi'
   })
 
   assert.match(script, /@echo off/)
   assert.match(script, /set "PID=9988"/)
   // PYTHONPATH set so a system python can import kopi_cli from source.
-  assert.match(script, /set "PYTHONPATH=C:\\hermes;%PYTHONPATH%"/)
+  assert.match(script, /set "PYTHONPATH=C:\\kopi;%PYTHONPATH%"/)
   assert.match(script, /"C:\\Python313\\python.exe" "-m" "kopi_cli\.uninstall" "--mode" "full"/)
   // Bounded wait-loop (no infinite loop), whole-token PID match (no substring).
   assert.match(script, /if %waited% geq 60 goto waited_done/)
@@ -229,7 +230,7 @@ test('buildWindowsCleanupScript waits (bounded) for PID, runs uninstall, rmdir b
   assert.doesNotMatch(script, /find "%PID%"/) // the old substring-prone form is gone
   // Removal is a retry loop (Windows releases dir handles lazily).
   assert.match(script, /:rmloop/)
-  assert.match(script, /rmdir \/s \/q "C:\\Users\\x\\AppData\\Local\\Programs\\Hermes" >nul 2>&1/)
+  assert.match(script, /rmdir \/s \/q "C:\\Users\\x\\AppData\\Local\\Programs\\Kopi" >nul 2>&1/)
   assert.match(script, /if %tries% geq 10 goto rmdone/)
   assert.match(script, /del "%~f0"/)
 })
@@ -242,7 +243,7 @@ test('buildWindowsCleanupScript omits PYTHONPATH + rmdir when not needed (gui, n
     agentRoot: 'C:\\h',
     uninstallArgs: ['-m', 'kopi_cli.uninstall', '--mode', 'gui'],
     appPath: null,
-    hermesHome: 'C:\\h'
+    kopiHome: 'C:\\h'
   })
 
   assert.doesNotMatch(script, /rmdir/)

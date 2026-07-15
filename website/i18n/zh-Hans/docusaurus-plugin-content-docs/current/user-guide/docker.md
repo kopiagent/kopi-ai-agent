@@ -1,27 +1,27 @@
 ---
 sidebar_position: 7
 title: "Docker"
-description: "在 Docker 中运行 KOPI AI AGENT 以及将 Docker 用作终端后端"
+description: "在 Docker 中运行 Kopi Agent 以及将 Docker 用作终端后端"
 ---
 
-# KOPI AI AGENT — Docker
+# Kopi Agent — Docker
 
-Docker 与 KOPI AI AGENT 的交集有两种截然不同的方式：
+Docker 与 Kopi Agent 的交集有两种截然不同的方式：
 
-1. **在 Docker 中运行 Hermes** — agent 本身在容器内运行（本页的主要内容）
-2. **Docker 作为终端后端** — agent 在宿主机上运行，但将每条命令在单个持久化 Docker 沙箱容器中执行，该容器在工具调用、`/new` 和子 agent 之间保持存活，直至 Hermes 进程结束（参见 [配置 → Docker 后端](./configuration.md#docker-backend)）
+1. **在 Docker 中运行 Kopi** — agent 本身在容器内运行（本页的主要内容）
+2. **Docker 作为终端后端** — agent 在宿主机上运行，但将每条命令在单个持久化 Docker 沙箱容器中执行，该容器在工具调用、`/new` 和子 agent 之间保持存活，直至 Kopi 进程结束（参见 [配置 → Docker 后端](./configuration.md#docker-backend)）
 
 本页介绍选项 1。容器将所有用户数据（配置、API 密钥、会话、技能、记忆）存储在从宿主机挂载于 `/opt/data` 的单个目录中。镜像本身是无状态的，可通过拉取新版本进行升级而不会丢失任何配置。
 
 ## 快速开始
 
-如果这是你第一次运行 KOPI AI AGENT，请在宿主机上创建一个数据目录，并以交互方式启动容器以运行设置向导：
+如果这是你第一次运行 Kopi Agent，请在宿主机上创建一个数据目录，并以交互方式启动容器以运行设置向导：
 
 ```sh
 mkdir -p ~/.kopi
 docker run -it --rm \
   -v ~/.kopi:/opt/data \
-  nousresearch/kopi-ai-agent setup
+  nousresearch/kopi-agent setup
 ```
 
 这将进入设置向导，向导会提示你输入 API 密钥并将其写入 `~/.kopi/.env`。你只需执行一次。强烈建议此时为 gateway 配置一个聊天系统。
@@ -36,7 +36,7 @@ docker run -d \
   --restart unless-stopped \
   -v ~/.kopi:/opt/data \
   -p 8642:8642 \
-  nousresearch/kopi-ai-agent gateway run
+  nousresearch/kopi-agent gateway run
 ```
 
 端口 8642 暴露 gateway 的 [OpenAI 兼容 API 服务器](./features/api-server.md)和健康检查端点。如果你只使用聊天平台（Telegram、Discord 等），该端口是可选的；但如果你希望 dashboard 或外部工具访问 gateway，则必须开放。
@@ -53,7 +53,7 @@ docker run -d \
   -e API_SERVER_HOST=0.0.0.0 \
   -e API_SERVER_KEY="$(openssl rand -hex 32)" \
   -e API_SERVER_CORS_ORIGINS='*' \
-  nousresearch/kopi-ai-agent gateway run
+  nousresearch/kopi-agent gateway run
 ```
 
 在面向互联网的机器上开放任何端口都存在安全风险。除非你了解相关风险，否则不应这样做。
@@ -70,7 +70,7 @@ docker run -d \
   -p 8642:8642 \
   -p 9119:9119 \
   -e KOPI_DASHBOARD=1 \
-  nousresearch/kopi-ai-agent gateway run
+  nousresearch/kopi-agent gateway run
 ```
 
 Dashboard 由 s6 监管：若进程崩溃，`s6-supervise` 会在短暂退避后自动重启。Dashboard 的 stdout/stderr 会直接转发到 `docker logs <container>`；gateway 的主输出现在写入每个 profile 的 s6 日志文件，见下方的 per-profile 日志说明。
@@ -117,7 +117,7 @@ Dashboard 由 s6 监管：若进程崩溃，`s6-supervise` 会在短暂退避后
 ```sh
 docker run -it --rm \
   -v ~/.kopi:/opt/data \
-  nousresearch/kopi-ai-agent
+  nousresearch/kopi-agent
 ```
 
 或者，如果你已通过 Docker Desktop 等方式在运行中的容器内打开了终端，直接运行：
@@ -128,17 +128,17 @@ docker run -it --rm \
 
 ## 持久化卷
 
-`/opt/data` 卷是所有 Hermes 状态的唯一数据来源。它映射到宿主机的 `~/.kopi/` 目录，包含：
+`/opt/data` 卷是所有 Kopi 状态的唯一数据来源。它映射到宿主机的 `~/.kopi/` 目录，包含：
 
 | 路径 | 内容 |
 |------|----------|
 | `.env` | API 密钥和机密 |
-| `config.yaml` | 所有 Hermes 配置 |
+| `config.yaml` | 所有 Kopi 配置 |
 | `SOUL.md` | Agent 个性/身份 |
 | `sessions/` | 对话历史 |
 | `memories/` | 持久化记忆存储 |
 | `skills/` | 已安装的技能 |
-| `home/` | Hermes 工具子进程（`git`、`ssh`、`gh`、`npm` 及 skill CLI）的 per-profile HOME |
+| `home/` | Kopi 工具子进程（`git`、`ssh`、`gh`、`npm` 及 skill CLI）的 per-profile HOME |
 | `cron/` | 定时任务定义 |
 | `hooks/` | 事件 hook |
 | `logs/` | 运行时日志 |
@@ -148,19 +148,19 @@ docker run -it --rm \
 
 在托管/发布的 Docker 镜像中，`/opt/kopi` 是安装好的应用树。它由 root 拥有，并且对运行时的 `kopi` 用户只读，因此 agent 回合、gateway 会话、dashboard 操作以及普通的 `docker exec kopi kopi ...` 命令都不能原地修改核心源码、打包的 `.venv`、`node_modules` 或 TUI bundle。
 
-所有可变的 Hermes 状态都应位于 `/opt/data` 下：配置、`.env`、profiles、skills、memories、sessions、logs、dashboard 上传、plugins 以及其他用户管理的文件。官方镜像还会阻止在运行时向不可变的 `/opt/kopi` 树写入 `.pyc` 或执行 Hermes 的懒安装依赖流程。
+所有可变的 Kopi 状态都应位于 `/opt/data` 下：配置、`.env`、profiles、skills、memories、sessions、logs、dashboard 上传、plugins 以及其他用户管理的文件。官方镜像还会阻止在运行时向不可变的 `/opt/kopi` 树写入 `.pyc` 或执行 Kopi 的懒安装依赖流程。
 
 如果运维人员确实需要修复或检查 `/opt/data` 之外的文件，请有意识地使用 root shell。`kopi` shim 默认会把 `docker exec kopi kopi ...` 降回运行时用户；只有在你明确需要 root 语义时，才临时设置 `KOPI_DOCKER_EXEC_AS_ROOT=1`。
 
 某些 skill CLI 会把凭据写到 `~` 下，因此在官方 Docker 布局里要针对子进程 HOME 初始化，而不是只针对数据卷根目录。例如 [xurl skill](./skills/bundled/social-media/social-media-xurl.md) 会把 OAuth 状态存到 `~/.xurl`；在容器里这对应 `/opt/data/home/.xurl`，因此手动认证时应使用 `HOME=/opt/data/home xurl auth status` 之类的调用。
 
 :::warning
-切勿同时对同一数据目录运行两个 Hermes **gateway** 容器——会话文件和记忆存储不支持并发写入。
+切勿同时对同一数据目录运行两个 Kopi **gateway** 容器——会话文件和记忆存储不支持并发写入。
 :::
 
 ## 多 profile 支持
 
-Hermes 支持[多个 profile](../reference/profile-commands.md)——独立的 `~/.kopi/` 子目录，让你可以从单个安装运行独立的 agent（不同的 SOUL、skills、memory、sessions、credentials）。**在官方 Docker 镜像内，s6 监管树把每个 profile 当作一等受监管服务**，因此推荐部署方式是：**一个容器承载多个 profile**。
+Kopi 支持[多个 profile](../reference/profile-commands.md)——独立的 `~/.kopi/` 子目录，让你可以从单个安装运行独立的 agent（不同的 SOUL、skills、memory、sessions、credentials）。**在官方 Docker 镜像内，s6 监管树把每个 profile 当作一等受监管服务**，因此推荐部署方式是：**一个容器承载多个 profile**。
 
 每个通过 `kopi profile create <name>` 创建的 profile 都会获得：
 
@@ -195,13 +195,13 @@ docker run -it --rm \
   -v ~/.kopi:/opt/data \
   -e ANTHROPIC_API_KEY="sk-ant-..." \
   -e OPENAI_API_KEY="sk-..." \
-  nousresearch/kopi-ai-agent
+  nousresearch/kopi-agent
 ```
 
 直接传入的 `-e` 标志会覆盖 `.env` 中的值。这对于不希望将密钥写入磁盘的 CI/CD 或密钥管理器集成非常有用。
 
 :::note 寻找 Docker 作为**终端后端**的说明？
-本页介绍在 Docker 内运行 Hermes 本身。如果你希望 Hermes 在 Docker 沙箱容器内执行 agent 的 `terminal` / `execute_code` 调用（每个 Hermes 进程对应一个持久容器），那是另一个配置块——`terminal.backend: docker` 加上 `terminal.docker_image`、`terminal.docker_volumes`、`terminal.docker_forward_env`、`terminal.docker_run_as_host_user` 和 `terminal.docker_extra_args`。完整配置请参见 [配置 → Docker 后端](configuration.md#docker-backend)。
+本页介绍在 Docker 内运行 Kopi 本身。如果你希望 Kopi 在 Docker 沙箱容器内执行 agent 的 `terminal` / `execute_code` 调用（每个 Kopi 进程对应一个持久容器），那是另一个配置块——`terminal.backend: docker` 加上 `terminal.docker_image`、`terminal.docker_volumes`、`terminal.docker_forward_env`、`terminal.docker_run_as_host_user` 和 `terminal.docker_extra_args`。完整配置请参见 [配置 → Docker 后端](configuration.md#docker-backend)。
 :::
 
 ## Docker Compose 示例
@@ -210,9 +210,9 @@ docker run -it --rm \
 
 ```yaml
 services:
-  hermes:
-    image: nousresearch/kopi-ai-agent:latest
-    container_name: hermes
+  kopi:
+    image: nousresearch/kopi-agent:latest
+    container_name: kopi
     restart: unless-stopped
     command: gateway run
     ports:
@@ -237,7 +237,7 @@ services:
 
 ## 资源限制
 
-Hermes 容器需要适量资源。推荐最低配置：
+Kopi 容器需要适量资源。推荐最低配置：
 
 | 资源 | 最低 | 推荐 |
 |----------|---------|-------------|
@@ -255,14 +255,14 @@ docker run -d \
   --restart unless-stopped \
   --memory=4g --cpus=2 \
   -v ~/.kopi:/opt/data \
-  nousresearch/kopi-ai-agent gateway run
+  nousresearch/kopi-agent gateway run
 ```
 
 ## Dockerfile 说明
 
 官方镜像基于 `debian:13.4`，包含：
 
-- Python 3 及所有 Hermes 依赖（`uv pip install -e ".[all]"`）
+- Python 3 及所有 Kopi 依赖（`uv pip install -e ".[all]"`）
 - Node.js + npm（用于浏览器自动化和 WhatsApp 桥接）
 - Playwright 与 Chromium（`npx playwright install --with-deps chromium --only-shell`）
 - ripgrep、ffmpeg、git 和 `xz-utils` 作为系统工具
@@ -315,13 +315,13 @@ kopi profile delete coder            # 拆除 s6 槽
 拉取最新镜像并重建容器。你的数据目录不受影响。
 
 ```sh
-docker pull nousresearch/kopi-ai-agent:latest
-docker rm -f hermes
+docker pull nousresearch/kopi-agent:latest
+docker rm -f kopi
 docker run -d \
   --name kopi \
   --restart unless-stopped \
   -v ~/.kopi:/opt/data \
-  nousresearch/kopi-ai-agent gateway run
+  nousresearch/kopi-agent gateway run
 ```
 
 或使用 Docker Compose：
@@ -333,7 +333,7 @@ docker compose up -d
 
 ## 技能与凭据文件
 
-当使用 Docker 作为执行环境时（不是上述方法，而是 agent 在 Docker 沙箱内运行命令——参见 [配置 → Docker 后端](./configuration.md#docker-backend)），Hermes 为所有工具调用复用单个长期运行的容器，并自动将技能目录（`~/.kopi/skills/`）和技能声明的所有凭据文件以只读卷的形式绑定挂载到该容器中。技能脚本、模板和引用在沙箱内无需手动配置即可使用，由于容器在 Hermes 进程的整个生命周期内持续存在，你安装的任何依赖或写入的文件都会在下次工具调用时保留。
+当使用 Docker 作为执行环境时（不是上述方法，而是 agent 在 Docker 沙箱内运行命令——参见 [配置 → Docker 后端](./configuration.md#docker-backend)），Kopi 为所有工具调用复用单个长期运行的容器，并自动将技能目录（`~/.kopi/skills/`）和技能声明的所有凭据文件以只读卷的形式绑定挂载到该容器中。技能脚本、模板和引用在沙箱内无需手动配置即可使用，由于容器在 Kopi 进程的整个生命周期内持续存在，你安装的任何依赖或写入的文件都会在下次工具调用时保留。
 
 SSH 和 Modal 后端也会进行相同的同步——技能和凭据文件在每次命令执行前通过 rsync 或 Modal mount API 上传。
 
@@ -343,53 +343,53 @@ SSH 和 Modal 后端也会进行相同的同步——技能和凭据文件在每
 
 ### npm 或 Python 工具——使用 `npx` 或 `uvx`
 
-对于发布到 npm 或 PyPI 的任何工具，指示 Hermes 通过 `npx`（npm）或 `uvx`（Python）运行，并将该命令记入其持久记忆。如果工具需要配置文件或凭据，指示其将这些文件放在 `/opt/data` 下（如 `/opt/data/<tool>/config.yaml`）。
+对于发布到 npm 或 PyPI 的任何工具，指示 Kopi 通过 `npx`（npm）或 `uvx`（Python）运行，并将该命令记入其持久记忆。如果工具需要配置文件或凭据，指示其将这些文件放在 `/opt/data` 下（如 `/opt/data/<tool>/config.yaml`）。
 
 依赖按需获取并在容器生命周期内缓存。写入 `/opt/data` 的配置在容器重启后仍然存在，因为它位于绑定挂载的宿主机目录上。包缓存本身在 `docker rm` 后会重建，但 `npx` 和 `uvx` 会在下次运行工具时透明地重新获取。
 
 ### 其他工具（apt 包、二进制文件）——安装并记住
 
-对于 npm 或 PyPI 之外的工具——`apt` 包、预构建二进制文件、镜像中未包含的语言运行时——指示 Hermes 如何安装（如 `apt-get update && apt-get install -y <package>`），并告知它记住该安装命令。工具在容器剩余生命周期内持续可用，Hermes 在容器重启后下次需要该工具时会重新运行安装命令。
+对于 npm 或 PyPI 之外的工具——`apt` 包、预构建二进制文件、镜像中未包含的语言运行时——指示 Kopi 如何安装（如 `apt-get update && apt-get install -y <package>`），并告知它记住该安装命令。工具在容器剩余生命周期内持续可用，Kopi 在容器重启后下次需要该工具时会重新运行安装命令。
 
 这种方式适合安装快速且偶尔使用的工具。对于频繁使用的工具，建议采用下一种方式。
 
 ### 持久安装——构建派生镜像
 
-当工具必须在每次容器启动时立即可用且无需重新安装延迟时，构建一个继承自 `nousresearch/kopi-ai-agent` 并在层中安装该工具的新镜像：
+当工具必须在每次容器启动时立即可用且无需重新安装延迟时，构建一个继承自 `nousresearch/kopi-agent` 并在层中安装该工具的新镜像：
 
 ```dockerfile
-FROM nousresearch/kopi-ai-agent:latest
+FROM nousresearch/kopi-agent:latest
 
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends <your-package> \
     && rm -rf /var/lib/apt/lists/*
-USER hermes
+USER kopi
 ```
 
 构建并替换官方镜像使用：
 
 ```sh
-docker build -t my-hermes:latest .
+docker build -t my-kopi:latest .
 docker run -d \
   --name kopi \
   --restart unless-stopped \
   -v ~/.kopi:/opt/data \
   -p 8642:8642 \
-  my-hermes:latest gateway run
+  my-kopi:latest gateway run
 ```
 
-入口点脚本和 `/opt/data` 语义原样继承，本页其余内容仍然适用。拉取更新的上游 `nousresearch/kopi-ai-agent` 时记得重新构建镜像。
+入口点脚本和 `/opt/data` 语义原样继承，本页其余内容仍然适用。拉取更新的上游 `nousresearch/kopi-agent` 时记得重新构建镜像。
 
 ### 复杂工具或多服务栈——运行 sidecar 容器
 
-对于自带服务（数据库、Web 服务器、队列、无头浏览器集群）或过于庞大而不适合放在 Hermes 容器内的工具，将其作为独立容器运行在共享 Docker 网络上。Hermes 通过容器名称访问 sidecar，与访问本地推理服务器的方式相同（参见 [连接本地推理服务器](#connecting-to-local-inference-servers-vllm-ollama-etc)）。
+对于自带服务（数据库、Web 服务器、队列、无头浏览器集群）或过于庞大而不适合放在 Kopi 容器内的工具，将其作为独立容器运行在共享 Docker 网络上。Kopi 通过容器名称访问 sidecar，与访问本地推理服务器的方式相同（参见 [连接本地推理服务器](#connecting-to-local-inference-servers-vllm-ollama-etc)）。
 
 ```yaml
 services:
-  hermes:
-    image: nousresearch/kopi-ai-agent:latest
-    container_name: hermes
+  kopi:
+    image: nousresearch/kopi-agent:latest
+    container_name: kopi
     restart: unless-stopped
     command: gateway run
     ports:
@@ -411,15 +411,15 @@ networks:
     driver: bridge
 ```
 
-在 Hermes 容器内，sidecar 可通过 `http://my-tool:<port>` 访问（或其提供的任何协议）。这种模式使每个服务的生命周期、资源限制和升级节奏保持独立，避免因单个工具的依赖而使 Hermes 镜像臃肿。
+在 Kopi 容器内，sidecar 可通过 `http://my-tool:<port>` 访问（或其提供的任何协议）。这种模式使每个服务的生命周期、资源限制和升级节奏保持独立，避免因单个工具的依赖而使 Kopi 镜像臃肿。
 
 ### 广泛有用的工具——提交 issue 或 pull request
 
-如果某个工具可能对大多数 KOPI AI AGENT 用户有用，考虑将其贡献到上游，而不是在私有派生镜像中维护。在 [kopi-ai-agent 仓库](https://github.com/LINYIQ66/kopi-ai-agent)提交 issue 或 pull request，描述该工具及其使用场景。被纳入官方镜像的工具惠及所有用户，并避免了维护下游 fork 的开销。
+如果某个工具可能对大多数 Kopi Agent 用户有用，考虑将其贡献到上游，而不是在私有派生镜像中维护。在 [kopi-agent 仓库](https://github.com/NousResearch/kopi-agent)提交 issue 或 pull request，描述该工具及其使用场景。被纳入官方镜像的工具惠及所有用户，并避免了维护下游 fork 的开销。
 
 ## 连接本地推理服务器（vLLM、Ollama 等）
 
-在 Docker 中运行 Hermes 且推理服务器（vLLM、Ollama、text-generation-inference 等）也在宿主机或另一个容器中运行时，网络配置需要额外注意。
+在 Docker 中运行 Kopi 且推理服务器（vLLM、Ollama、text-generation-inference 等）也在宿主机或另一个容器中运行时，网络配置需要额外注意。
 
 ### Docker Compose（推荐）
 
@@ -445,9 +445,9 @@ services:
           devices:
             - capabilities: [gpu]
 
-  hermes:
-    image: nousresearch/kopi-ai-agent:latest
-    container_name: hermes
+  kopi:
+    image: nousresearch/kopi-agent:latest
+    container_name: kopi
     restart: unless-stopped
     command: gateway run
     ports:
@@ -473,7 +473,7 @@ model:
 ```
 
 :::tip 关键点
-- 使用**容器名称**（`vllm`）作为主机名——而非 `localhost` 或 `127.0.0.1`，它们指向 Hermes 容器本身。
+- 使用**容器名称**（`vllm`）作为主机名——而非 `localhost` 或 `127.0.0.1`，它们指向 Kopi 容器本身。
 - `model` 值必须与传给 vLLM 的 `--served-model-name` 一致。
 - 将 `api_key` 设为任意非空字符串（vLLM 要求该请求头，但默认不验证其值）。
 - `base_url` 末尾**不要**加斜杠。
@@ -490,7 +490,7 @@ docker run -d \
   --name kopi \
   -v ~/.kopi:/opt/data \
   -p 8642:8642 \
-  nousresearch/kopi-ai-agent gateway run
+  nousresearch/kopi-agent gateway run
 ```
 
 ```yaml
@@ -509,7 +509,7 @@ docker run -d \
   --name kopi \
   --network host \
   -v ~/.kopi:/opt/data \
-  nousresearch/kopi-ai-agent gateway run
+  nousresearch/kopi-agent gateway run
 ```
 
 ```yaml
@@ -526,7 +526,7 @@ model:
 
 ### 验证连通性
 
-从 Hermes 容器内部确认推理服务器可达：
+从 Kopi 容器内部确认推理服务器可达：
 
 ```sh
 docker exec kopi curl -s http://vllm:8000/v1/models
@@ -554,7 +554,7 @@ model:
 
 ### 容器立即退出
 
-检查日志：`docker logs hermes`。常见原因：
+检查日志：`docker logs kopi`。常见原因：
 - `.env` 文件缺失或无效——先以交互方式运行以完成设置
 - 开放端口时存在端口冲突
 
@@ -575,7 +575,7 @@ docker run -d \
   --name kopi \
   --shm-size=1g \
   -v ~/.kopi:/opt/data \
-  nousresearch/kopi-ai-agent gateway run
+  nousresearch/kopi-agent gateway run
 ```
 
 ### 网络问题后 gateway 无法重连
@@ -590,6 +590,6 @@ docker restart kopi
 
 ```sh
 docker logs --tail 50 kopi          # 最近日志
-docker run -it --rm nousresearch/kopi-ai-agent:latest version     # 验证版本
+docker run -it --rm nousresearch/kopi-agent:latest version     # 验证版本
 docker stats kopi                    # 资源使用情况
 ```

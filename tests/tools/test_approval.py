@@ -2,11 +2,14 @@
 
 import ast
 import os
+import tempfile
 import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch as mock_patch
+
+import pytest
 
 import tools.approval as approval_module
 from kopi_constants import get_kopi_home
@@ -55,6 +58,11 @@ class TestApprovalModeParsing:
 
 
 class TestSmartApproval:
+    def test_smart_is_the_default_approval_mode(self):
+        from kopi_cli.config import DEFAULT_CONFIG
+
+        assert DEFAULT_CONFIG["approvals"]["mode"] == "smart"
+
     def test_smart_approval_uses_call_llm(self):
         response = SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content="APPROVE"))]
@@ -67,6 +75,35 @@ class TestSmartApproval:
         assert mock_call.call_args.kwargs["task"] == "approval"
         assert mock_call.call_args.kwargs["temperature"] == 0
         assert mock_call.call_args.kwargs["max_tokens"] == 16
+
+    def test_smart_approval_does_not_allowlist_the_pattern_for_session(self, monkeypatch):
+        session_key = "test-smart-per-command"
+        command = "python -c \"print('hello')\""
+        dangerous, pattern_key, _ = detect_dangerous_command(command)
+        assert dangerous is True
+
+        monkeypatch.setenv("KOPI_SESSION_KEY", session_key)
+        monkeypatch.setenv("KOPI_EXEC_ASK", "1")
+        monkeypatch.delenv("KOPI_CRON_SESSION", raising=False)
+        monkeypatch.setattr(
+            approval_module,
+            "_get_approval_config",
+            lambda: {"mode": "smart"},
+        )
+        monkeypatch.setattr(approval_module, "_YOLO_MODE_FROZEN", False)
+        monkeypatch.setattr(approval_module, "_smart_approve", lambda *_: "approve")
+        monkeypatch.setattr(
+            "tools.tirith_security.check_command_security",
+            lambda _command: {"action": "allow", "findings": [], "summary": ""},
+        )
+        approval_module.clear_session(session_key)
+        approval_module._permanent_approved.clear()
+
+        result = approval_module.check_all_command_guards(command, "local")
+
+        assert result["approved"] is True
+        assert result["smart_approved"] is True
+        assert is_approved(session_key, pattern_key) is False
 
 
 class TestDetectDangerousRm:
@@ -81,6 +118,53 @@ class TestDetectDangerousRm:
         assert is_dangerous is True
         assert key is not None
         assert "delete" in desc.lower()
+
+    def test_nonrecursive_verification_artifact_cleanup_is_not_dangerous(self):
+        with mock_patch("tempfile.gettempdir", return_value="/tmp"):
+            for prefix in ("kopi-verify-", "kopi-ad-hoc-"):
+                assert detect_dangerous_command(f"rm -f /tmp/{prefix}example.py") == (
+                    False,
+                    None,
+                    None,
+                )
+
+    def test_symlinked_temp_dir_only_exempts_canonical_target(self, tmp_path):
+        real_temp = tmp_path / "real-temp"
+        real_temp.mkdir()
+        linked_temp = tmp_path / "linked-temp"
+        linked_temp.symlink_to(real_temp, target_is_directory=True)
+        basename = "kopi-verify-example.py"
+
+        with mock_patch("tempfile.gettempdir", return_value=str(linked_temp)):
+            assert detect_dangerous_command(f"rm -f {linked_temp / basename}")[0] is True
+            assert detect_dangerous_command(f"rm -f {real_temp / basename}") == (
+                False,
+                None,
+                None,
+            )
+
+    def test_verification_cleanup_exemption_rejects_broader_deletions(self):
+        commands = (
+            "rm -rf /tmp/kopi-verify-example.py",
+            "rm -f /tmp/kopi-verify-example.py /tmp/other.py",
+            "rm -f /tmp/nested/kopi-verify-example.py",
+            "rm -f /tmp/nested/../kopi-verify-example.py",
+            "rm -f /tmp/./kopi-verify-example.py",
+            "rm -f /tmp//kopi-verify-example.py",
+            "rm -f /tmp/a/../../tmp/kopi-verify-example.py",
+            "rm -f /var/tmp/kopi-verify-example.py",
+            "rm -f /tmp/unrelated.py",
+            "rm -f /tmp/kopi-verify-*",
+            "rm -f /tmp/kopi-verify-$(touch>/tmp/pwned).py",
+            "rm -f /tmp/kopi-ad-hoc-`touch>/tmp/pwned`.py",
+            "rm -f /tmp/kopi-verify-example.py; touch /tmp/pwned",
+        )
+        with mock_patch("tempfile.gettempdir", return_value="/tmp"):
+            for command in commands:
+                is_dangerous, key, desc = detect_dangerous_command(command)
+                assert is_dangerous is True, command
+                assert key is not None, command
+                assert "delete" in desc.lower(), command
 
 
 class TestWindowsShellDestructiveCommands:
@@ -504,7 +588,7 @@ class TestTeePattern:
         assert key is None
 
 
-class TestHermesConfigWriteProtection:
+class TestKopiConfigWriteProtection:
     """Terminal-side pairing for the file_tools write_file/patch deny on
     ~/.kopi/config.yaml (#14639). config.yaml IS the security policy
     (approvals.mode/yolo live there, mtime-keyed cache reloads mid-session),
@@ -631,7 +715,7 @@ class TestHermesConfigWriteProtection:
         assert dangerous is False
 
     def test_normal_yaml_write_safe(self):
-        # A non-Hermes config.yaml in a project dir is handled by the project
+        # A non-Kopi config.yaml in a project dir is handled by the project
         # patterns, but a plain temp write must not false-positive.
         dangerous, key, desc = detect_dangerous_command("echo data > /tmp/scratch.txt")
         assert dangerous is False
@@ -900,13 +984,13 @@ class TestSensitiveInPlaceEditPattern:
 
 
 class TestWindowsAbsolutePathFolding:
-    """Windows absolute home / Hermes-home prefixes must fold to ~/ and
+    """Windows absolute home / Kopi-home prefixes must fold to ~/ and
     ~/.kopi/ in dangerous-command detection.
 
     Regression: on native Windows the home prefix uses backslash separators
     (``C:\\Users\\alice\\.ssh\\authorized_keys``). Detection stripped backslash
     escapes *before* folding, dissolving those separators, so writes to startup,
-    SSH, and Hermes config/env files returned "safe" without an approval prompt.
+    SSH, and Kopi config/env files returned "safe" without an approval prompt.
     The OS-specific ``Path.home()`` / ``get_kopi_home()`` tests above only
     exercise this branch on a Windows host; these monkeypatch a Windows-style
     HOME/KOPI_HOME so the fold is verified on the POSIX CI runner too."""
@@ -938,7 +1022,7 @@ class TestWindowsAbsolutePathFolding:
         assert key is not None
 
     def test_windows_kopi_home_config_folds(self, monkeypatch):
-        # Hermes home nests under the user home on Windows; it must fold before
+        # Kopi home nests under the user home on Windows; it must fold before
         # the user-home rewrite eats its prefix.
         monkeypatch.setenv("HOME", r"C:\Users\tester")
         monkeypatch.setenv("KOPI_HOME", r"C:\Users\tester\.kopi")
@@ -1058,6 +1142,110 @@ class TestFullCommandAlwaysShown:
         assert result == "deny"
 
 
+class TestSmartDeniedPrompt:
+    def test_callback_receives_smart_denied_capability(self):
+        captured = {}
+
+        def callback(command, description, **kwargs):
+            captured.update(kwargs)
+            return "deny"
+
+        result = prompt_dangerous_approval(
+            "rm -rf /tmp/example",
+            "recursive delete",
+            allow_permanent=False,
+            smart_denied=True,
+            approval_callback=callback,
+        )
+
+        assert result == "deny"
+        assert captured == {"allow_permanent": False, "smart_denied": True}
+
+    def test_short_prompt_smart_deny_rejects_session_input(self):
+        with mock_patch("builtins.input", return_value="session"):
+            result = prompt_dangerous_approval(
+                "rm -rf /tmp/example",
+                "recursive delete",
+                allow_permanent=False,
+                smart_denied=True,
+            )
+
+        assert result == "deny"
+
+    def test_short_prompt_smart_deny_displays_only_once_and_deny(self, capsys):
+        prompts = []
+
+        def input_once(prompt):
+            prompts.append(prompt)
+            return "deny"
+
+        with mock_patch("builtins.input", side_effect=input_once):
+            prompt_dangerous_approval(
+                "rm -rf /tmp/example",
+                "recursive delete",
+                allow_permanent=False,
+                smart_denied=True,
+            )
+
+        rendered = capsys.readouterr().out
+        assert "[o]nce" in rendered and "[d]eny" in rendered
+        assert "[s]ession" not in rendered and "[a]lways" not in rendered
+        assert prompts == ["      Choice [o/D]: "]
+
+    @pytest.mark.parametrize(
+        ("lang", "once_key", "deny_key", "once_label", "deny_label"),
+        [
+            ("tr", "b", "r", "[b]ir kez", "[r]eddet"),
+            ("fr", "o", "r", "[o]ne fois", "[r]efuser"),
+            ("ja", "o", "d", "[o]今回のみ", "[d]拒否"),
+        ],
+    )
+    def test_smart_deny_uses_locale_specific_once_deny_choices(
+        self, monkeypatch, capsys, lang, once_key, deny_key, once_label, deny_label,
+    ):
+        monkeypatch.setenv("KOPI_LANGUAGE", lang)
+        from agent import i18n
+        i18n.reset_language_cache()
+        prompts = []
+
+        def choose_once(prompt):
+            prompts.append(prompt)
+            return once_key
+
+        try:
+            with mock_patch("builtins.input", side_effect=choose_once):
+                result = prompt_dangerous_approval(
+                    "rm -rf /tmp/example", "recursive delete",
+                    allow_permanent=False, smart_denied=True,
+                )
+        finally:
+            i18n.reset_language_cache()
+
+        rendered = capsys.readouterr().out
+        assert result == "once"
+        assert once_label in rendered
+        assert deny_label in rendered
+        assert i18n.t("approval.choose_short", lang=lang).split("|")[1].strip() not in rendered
+        assert "/".join((once_key, deny_key.upper())) in prompts[0]
+
+    @pytest.mark.parametrize(("lang", "forbidden"), [("tr", "o"), ("fr", "s"), ("ja", "a")])
+    def test_smart_deny_rejects_localized_session_or_always_shortcuts(
+        self, monkeypatch, lang, forbidden,
+    ):
+        monkeypatch.setenv("KOPI_LANGUAGE", lang)
+        from agent import i18n
+        i18n.reset_language_cache()
+        try:
+            with mock_patch("builtins.input", return_value=forbidden):
+                result = prompt_dangerous_approval(
+                    "rm -rf /tmp/example", "recursive delete",
+                    allow_permanent=False, smart_denied=True,
+                )
+        finally:
+            i18n.reset_language_cache()
+        assert result == "deny"
+
+
 class TestForkBombDetection:
     """The fork bomb regex must match the classic :(){ :|:& };: pattern."""
 
@@ -1155,7 +1343,7 @@ class TestGatewayProtection:
         assert "self-termination" in desc
 
     def test_killall_kopi_detected(self):
-        cmd = "killall hermes"
+        cmd = "killall kopi"
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is True
         assert "self-termination" in desc
@@ -1289,7 +1477,7 @@ class TestIFSWhitespaceBypass:
         assert dangerous is True
 
     def test_ifs_sed_config_dangerous(self):
-        """In-place edit of the Hermes security config via IFS must be caught."""
+        """In-place edit of the Kopi security config via IFS must be caught."""
         cmd = "sed${IFS}-i ~/.kopi/config.yaml"
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is True
@@ -1376,7 +1564,7 @@ class TestHeredocScriptExecution:
 
 
 class TestPgrepKillExpansion:
-    """kill -9 $(pgrep hermes) bypasses the pkill/killall name-matching
+    """kill -9 $(pgrep kopi) bypasses the pkill/killall name-matching
     pattern because the command substitution is opaque to regex.
 
     See security audit Test 7.
@@ -1389,7 +1577,7 @@ class TestPgrepKillExpansion:
         assert "pgrep" in desc.lower()
 
     def test_kill_backtick_pgrep_detected(self):
-        cmd = "kill -9 `pgrep hermes`"
+        cmd = "kill -9 `pgrep kopi`"
         dangerous, _, desc = detect_dangerous_command(cmd)
         assert dangerous is True
 
@@ -1400,7 +1588,7 @@ class TestPgrepKillExpansion:
 
     def test_pkill_kopi_still_detected(self):
         """Existing pkill pattern must not regress."""
-        cmd = "pkill -9 hermes"
+        cmd = "pkill -9 kopi"
         dangerous, _, _ = detect_dangerous_command(cmd)
         assert dangerous is True
 
@@ -1411,7 +1599,7 @@ class TestPgrepKillExpansion:
         assert dangerous is False
 
     def test_kill_dollar_pidof_detected(self):
-        """`kill $(pidof hermes)` is the BSD/Linux equivalent of the
+        """`kill $(pidof kopi)` is the BSD/Linux equivalent of the
         pgrep expansion and bypasses the pkill/killall name pattern
         in the same way. See issue #33071."""
         cmd = "kill -TERM $(pidof kopi_cli.main)"
@@ -1420,13 +1608,13 @@ class TestPgrepKillExpansion:
         assert "pidof" in desc.lower() or "pgrep" in desc.lower()
 
     def test_kill_backtick_pidof_detected(self):
-        cmd = "kill -9 `pidof hermes`"
+        cmd = "kill -9 `pidof kopi`"
         dangerous, _, _ = detect_dangerous_command(cmd)
         assert dangerous is True
 
 
 class TestLaunchctlGatewayLifecycle:
-    """launchctl stop/kickstart/bootout/unload against the Hermes service
+    """launchctl stop/kickstart/bootout/unload against the Kopi service
     label achieves the same effect as `kopi gateway stop|restart` and
     must require the same approval. See issue #33071.
     """
@@ -1459,7 +1647,7 @@ class TestLaunchctlGatewayLifecycle:
         assert dangerous is False
 
     def test_launchctl_stop_unrelated_not_flagged(self):
-        """`launchctl stop` on a non-Hermes label is out of scope for the
+        """`launchctl stop` on a non-Kopi label is out of scope for the
         gateway-lifecycle guard."""
         cmd = "launchctl stop com.example.unrelated"
         dangerous, _, _ = detect_dangerous_command(cmd)
@@ -2060,7 +2248,7 @@ class TestApprovalTimeoutIsNotConsent:
     SESSION_KEY = "test-no-consent-session"
 
     def setup_method(self):
-        """Reset module state and force tight gateway_timeout for fast tests."""
+        """Reset module state and force a tight approval timeout for fast tests."""
         from tools import approval as mod
         mod._gateway_queues.clear()
         mod._gateway_notify_cbs.clear()
@@ -2097,7 +2285,7 @@ class TestApprovalTimeoutIsNotConsent:
         from tools import approval as mod
         monkeypatch.setattr(
             mod, "_get_approval_config",
-            lambda: {"mode": "manual", "gateway_timeout": seconds, "timeout": seconds},
+            lambda: {"mode": "manual", "timeout": seconds},
         )
 
     def test_timeout_returns_approved_false_with_no_consent(self, monkeypatch):
@@ -2140,10 +2328,12 @@ class TestApprovalTimeoutIsNotConsent:
         assert "rephrase" in msg.lower()
         assert "different command" in msg.lower()
 
-    def test_explicit_deny_carries_same_no_consent_shape(self):
+    def test_explicit_deny_carries_same_no_consent_shape(self, monkeypatch):
         """An explicit /deny must produce the same shape as timeout —
         the agent should treat both identically."""
         from tools import approval as mod
+
+        self._force_short_timeout(monkeypatch, seconds=60)
 
         notified = []
         mod.register_gateway_notify(self.SESSION_KEY, lambda data: notified.append(data))

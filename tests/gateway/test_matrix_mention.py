@@ -94,11 +94,11 @@ class TestIsBotMentioned:
         assert self.adapter._is_bot_mentioned("kopi can you help?")
 
     def test_localpart_case_insensitive(self):
-        assert self.adapter._is_bot_mentioned("HERMES can you help?")
+        assert self.adapter._is_bot_mentioned("KOPI can you help?")
 
     def test_matrix_pill_in_formatted_body(self):
-        html = '<a href="https://matrix.to/#/@kopi:example.org">Hermes</a> help'
-        assert self.adapter._is_bot_mentioned("Hermes help", html)
+        html = '<a href="https://matrix.to/#/@kopi:example.org">Kopi</a> help'
+        assert self.adapter._is_bot_mentioned("Kopi help", html)
 
     def test_no_mention(self):
         assert not self.adapter._is_bot_mentioned("hello everyone")
@@ -107,8 +107,8 @@ class TestIsBotMentioned:
         assert not self.adapter._is_bot_mentioned("")
 
     def test_partial_localpart_no_match(self):
-        # "hermesbot" should not match word-boundary check for "kopi"
-        assert not self.adapter._is_bot_mentioned("hermesbot is here")
+        # "kopibot" should not match word-boundary check for "kopi"
+        assert not self.adapter._is_bot_mentioned("kopibot is here")
 
     # m.mentions.user_ids — MSC3952 / Matrix v1.7 authoritative mentions
     # Ported from openclaw/openclaw#64796
@@ -172,9 +172,9 @@ class TestStripMention:
         assert result == "help me"
 
     def test_does_not_strip_bare_localpart_word(self):
-        # Regression: plain words like "KOPI AI AGENT" should not be mutated.
-        result = self.adapter._strip_mention("KOPI AI AGENT")
-        assert result == "KOPI AI AGENT"
+        # Regression: plain words like "Kopi Agent" should not be mutated.
+        result = self.adapter._strip_mention("Kopi Agent")
+        assert result == "Kopi Agent"
 
     def test_strip_returns_empty_for_mention_only(self):
         result = self.adapter._strip_mention("@kopi:example.org")
@@ -302,8 +302,8 @@ async def test_require_mention_html_pill(monkeypatch):
     monkeypatch.setenv("MATRIX_AUTO_THREAD", "false")
 
     adapter = _make_adapter()
-    formatted = '<a href="https://matrix.to/#/@kopi:example.org">Hermes</a> help'
-    event = _make_event("Hermes help", formatted_body=formatted)
+    formatted = '<a href="https://matrix.to/#/@kopi:example.org">Kopi</a> help'
+    event = _make_event("Kopi help", formatted_body=formatted)
 
     await adapter._on_room_message(event)
     adapter.handle_message.assert_awaited_once()

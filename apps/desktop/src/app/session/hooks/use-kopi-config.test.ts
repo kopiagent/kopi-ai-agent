@@ -2,23 +2,23 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getHermesConfig } from '@/kopi'
+import { getKopiConfig } from '@/kopi'
 import { persistString } from '@/lib/storage'
 import { $currentCwd, setCurrentCwd } from '@/store/session'
 
-import { useHermesConfig } from './use-kopi-config'
+import { useKopiConfig } from './use-kopi-config'
 
 vi.mock('@/kopi', () => ({
-  getHermesConfig: vi.fn(),
-  getHermesConfigDefaults: vi.fn().mockResolvedValue({})
+  getKopiConfig: vi.fn(),
+  getKopiConfigDefaults: vi.fn().mockResolvedValue({})
 }))
 
-const WORKSPACE_CWD_KEY = 'hermes.desktop.workspace-cwd'
+const WORKSPACE_CWD_KEY = 'kopi.desktop.workspace-cwd'
 
 const mockConfig = (config: Record<string, unknown>) =>
-  vi.mocked(getHermesConfig).mockResolvedValue(config as Awaited<ReturnType<typeof getHermesConfig>>)
+  vi.mocked(getKopiConfig).mockResolvedValue(config as Awaited<ReturnType<typeof getKopiConfig>>)
 
-describe('useHermesConfig refreshHermesConfig', () => {
+describe('useKopiConfig refreshKopiConfig', () => {
   beforeEach(() => {
     // Reset atoms and localStorage between tests
     setCurrentCwd('')
@@ -33,14 +33,14 @@ describe('useHermesConfig refreshHermesConfig', () => {
     mockConfig({ terminal: { cwd: '/Users/example/new-workspace' } })
 
     const { result } = renderHook(() =>
-      useHermesConfig({
+      useKopiConfig({
         activeSessionIdRef: { current: null },
         refreshProjectBranch: vi.fn().mockResolvedValue(undefined)
       })
     )
 
     await act(async () => {
-      await result.current.refreshHermesConfig()
+      await result.current.refreshKopiConfig()
     })
 
     // The configured terminal.cwd must override the stale localStorage value
@@ -53,14 +53,14 @@ describe('useHermesConfig refreshHermesConfig', () => {
     mockConfig({ terminal: { cwd: '/Users/example/new-workspace' } })
 
     const { result } = renderHook(() =>
-      useHermesConfig({
+      useKopiConfig({
         activeSessionIdRef: { current: 'session-1' },
         refreshProjectBranch: vi.fn().mockResolvedValue(undefined)
       })
     )
 
     await act(async () => {
-      await result.current.refreshHermesConfig()
+      await result.current.refreshKopiConfig()
     })
 
     // Config refreshes mid-session must not yank the workspace out from
@@ -72,14 +72,14 @@ describe('useHermesConfig refreshHermesConfig', () => {
     mockConfig({})
 
     const { result } = renderHook(() =>
-      useHermesConfig({
+      useKopiConfig({
         activeSessionIdRef: { current: null },
         refreshProjectBranch: vi.fn().mockResolvedValue(undefined)
       })
     )
 
     await act(async () => {
-      await result.current.refreshHermesConfig()
+      await result.current.refreshKopiConfig()
     })
 
     expect($currentCwd.get()).toBe('')
@@ -89,14 +89,14 @@ describe('useHermesConfig refreshHermesConfig', () => {
     mockConfig({ terminal: { cwd: '.' } })
 
     const { result } = renderHook(() =>
-      useHermesConfig({
+      useKopiConfig({
         activeSessionIdRef: { current: null },
         refreshProjectBranch: vi.fn().mockResolvedValue(undefined)
       })
     )
 
     await act(async () => {
-      await result.current.refreshHermesConfig()
+      await result.current.refreshKopiConfig()
     })
 
     expect($currentCwd.get()).toBe('')
@@ -109,14 +109,14 @@ describe('useHermesConfig refreshHermesConfig', () => {
     mockConfig({ terminal: { cwd: '/workspace/project-a' } })
 
     const { result } = renderHook(() =>
-      useHermesConfig({
+      useKopiConfig({
         activeSessionIdRef: { current: null },
         refreshProjectBranch
       })
     )
 
     await act(async () => {
-      await result.current.refreshHermesConfig()
+      await result.current.refreshKopiConfig()
     })
 
     expect(refreshProjectBranch).toHaveBeenCalledWith('/workspace/project-a')
@@ -129,14 +129,14 @@ describe('useHermesConfig refreshHermesConfig', () => {
     mockConfig({ terminal: { cwd: '/Users/example/new-workspace' } })
 
     const { result } = renderHook(() =>
-      useHermesConfig({
+      useKopiConfig({
         activeSessionIdRef: { current: 'session-1' },
         refreshProjectBranch
       })
     )
 
     await act(async () => {
-      await result.current.refreshHermesConfig()
+      await result.current.refreshKopiConfig()
     })
 
     expect(refreshProjectBranch).toHaveBeenCalledWith('/workspace/attached-project')

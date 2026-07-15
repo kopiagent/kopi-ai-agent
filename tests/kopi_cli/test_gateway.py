@@ -93,7 +93,7 @@ def test_run_gateway_refuses_root_in_official_docker(monkeypatch, tmp_path, caps
 
     assert exc_info.value.code == 1
     out = capsys.readouterr().out
-    assert "Refusing to run the Hermes gateway as root" in out
+    assert "Refusing to run the Kopi gateway as root" in out
     assert "/opt/kopi/docker/entrypoint.sh" in out
 
 
@@ -739,7 +739,7 @@ def test_install_linux_gateway_from_setup_non_root_never_offers_system(monkeypat
 
     assert scope == "user"
     assert not any("System service" in opt for opt in captured["options"])
-    assert "sudo hermes" not in out
+    assert "sudo kopi" not in out
 
 
 def test_install_linux_gateway_from_setup_system_choice_without_root_no_sudo_recipe(monkeypatch, capsys):
@@ -754,7 +754,7 @@ def test_install_linux_gateway_from_setup_system_choice_without_root_no_sudo_rec
 
     out = capsys.readouterr().out
     assert (scope, did_install) == ("system", False)
-    assert "sudo hermes" not in out
+    assert "sudo kopi" not in out
     assert "requires root" in out
 
 
@@ -1034,7 +1034,7 @@ def test_scan_gateway_pids_detects_windows_kopi_exe_case_variants(monkeypatch):
             return SimpleNamespace(
                 returncode=0,
                 stdout=(
-                    "CommandLine=C:\\Program Files\\Hermes\\Hermes.EXE gateway run --replace\n"
+                    "CommandLine=C:\\Program Files\\Kopi\\Kopi.EXE gateway run --replace\n"
                     "ProcessId=2468\n\n"
                 ),
                 stderr="",

@@ -13,7 +13,7 @@ import urllib.request
 
 DEFAULT_UA = (
     "kopi-osint-investigation/0.2 "
-    "(+https://github.com/LINYIQ66/kopi-ai-agent; "
+    "(+https://github.com/NousResearch/kopi-ai-agent; "
     "set KOPI_OSINT_UA env var to identify yourself per "
     "Wikimedia / SEC fair-use guidance)"
 )

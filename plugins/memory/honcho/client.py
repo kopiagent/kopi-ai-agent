@@ -1,7 +1,7 @@
 """Honcho client initialization and configuration.
 
 Resolution order for config file:
-  1. $KOPI_HOME/honcho.json  (instance-local, enables isolated Hermes instances)
+  1. $KOPI_HOME/honcho.json  (instance-local, enables isolated Kopi instances)
   2. ~/.honcho/config.json     (global, shared across all Honcho-enabled apps)
   3. Environment variables     (HONCHO_API_KEY, HONCHO_ENVIRONMENT)
 
@@ -34,7 +34,7 @@ HOST = "kopi"
 
 
 def profile_host_key(profile: str | None) -> str:
-    """Return the safe Honcho host key for a Hermes profile."""
+    """Return the safe Honcho host key for a Kopi profile."""
     if not profile or profile in {"default", "custom"}:
         return HOST
     sanitized = "".join(c if c.isalnum() or c in "_-" else "_" for c in profile).strip("_")
@@ -52,7 +52,7 @@ def _host_block(raw: dict, host: str) -> dict:
 
 
 def resolve_active_host() -> str:
-    """Derive the Honcho host key from the active Hermes profile.
+    """Derive the Honcho host key from the active Kopi profile.
 
     Resolution order:
       1. KOPI_HONCHO_HOST env var (explicit override)
@@ -331,7 +331,7 @@ class HonchoClientConfig:
     # honcho_reasoning tool param (agentic). When false, always uses
     # dialecticReasoningLevel and ignores model-provided overrides.
     dialectic_dynamic: bool = True
-    # Max chars of dialectic result to inject into Hermes system prompt
+    # Max chars of dialectic result to inject into Kopi system prompt
     dialectic_max_chars: int = 600
     # Dialectic depth: how many .chat() calls per dialectic cycle (1-3).
     # Depth 1: single call. Depth 2: self-audit + targeted synthesis.
@@ -410,7 +410,7 @@ class HonchoClientConfig:
         """Create config from the resolved Honcho config path.
 
         Resolution: $KOPI_HOME/honcho.json -> ~/.honcho/config.json -> env vars.
-        When host is None, derives it from the active Hermes profile.
+        When host is None, derives it from the active Kopi profile.
         """
         resolved_host = host or resolve_active_host()
         path = config_path or resolve_config_path()
@@ -680,10 +680,10 @@ class HonchoClientConfig:
 
         Resolution order:
           1. Gateway session key (stable per-chat identifier from gateway platforms)
-          2. per-session strategy — Hermes session_id ({timestamp}_{hex}); authoritative,
+          2. per-session strategy — Kopi session_id ({timestamp}_{hex}); authoritative,
              so a generated title never remaps a live conversation
           3. Manual directory override from sessions map
-          4. Hermes session title (from /title command; non-per-session)
+          4. Kopi session title (from /title command; non-per-session)
           5. per-repo strategy — git repo root directory name
           6. per-directory strategy — directory basename
           7. global strategy — workspace name

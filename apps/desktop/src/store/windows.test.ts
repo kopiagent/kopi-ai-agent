@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { canOpenSessionWindow, openNewSessionInNewWindow, openSessionInNewWindow } from './windows'
 
-const desktopWindow = window as unknown as { hermesDesktop?: Window['hermesDesktop'] }
-const initialHermesDesktop = desktopWindow.kopiDesktop
+const desktopWindow = window as unknown as { kopiDesktop?: Window['kopiDesktop'] }
+const initialKopiDesktop = desktopWindow.kopiDesktop
 
 const notifyError = vi.fn()
 
@@ -12,13 +12,13 @@ vi.mock('./notifications', () => ({
 }))
 
 function installBridge(
-  openSessionWindow?: Window['hermesDesktop']['openSessionWindow'],
-  openNewSessionWindow?: Window['hermesDesktop']['openNewSessionWindow']
+  openSessionWindow?: Window['kopiDesktop']['openSessionWindow'],
+  openNewSessionWindow?: Window['kopiDesktop']['openNewSessionWindow']
 ) {
   desktopWindow.kopiDesktop = {
     ...(openSessionWindow ? { openSessionWindow } : {}),
     ...(openNewSessionWindow ? { openNewSessionWindow } : {})
-  } as unknown as Window['hermesDesktop']
+  } as unknown as Window['kopiDesktop']
 }
 
 beforeEach(() => {
@@ -26,8 +26,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  if (initialHermesDesktop) {
-    desktopWindow.kopiDesktop = initialHermesDesktop
+  if (initialKopiDesktop) {
+    desktopWindow.kopiDesktop = initialKopiDesktop
   } else {
     delete desktopWindow.kopiDesktop
   }

@@ -1,4 +1,4 @@
-# KOPI AI AGENT CLI Configuration
+# Kopi Agent CLI Configuration
 # Copy this file to cli-config.yaml and customize as needed.
 # This file configures the CLI behavior. Environment variables in .env take precedence.
 
@@ -29,6 +29,7 @@ model:
   #   "xiaomi"       - Xiaomi MiMo (requires: XIAOMI_API_KEY)
   #   "arcee"        - Arcee AI Trinity models (requires: ARCEEAI_API_KEY)
   #   "ollama-cloud" - Ollama Cloud (requires: OLLAMA_API_KEY — https://ollama.com/settings)
+  #   "deepinfra"    - DeepInfra (requires: DEEPINFRA_API_KEY)
   #   "kilocode"     - KiloCode gateway (requires: KILOCODE_API_KEY)
   #   "azure-foundry" - Microsoft Foundry / Azure OpenAI (API key or Entra ID)
   #   "lmstudio"     - LM Studio local server (optional: LM_API_KEY, defaults to http://127.0.0.1:1234/v1)
@@ -66,8 +67,8 @@ model:
   # ── Token limits — two settings, easy to confuse ──────────────────────────
   #
   # context_length: TOTAL context window (input + output tokens combined).
-  #   Controls when Hermes compresses history and validates requests.
-  #   Leave unset — Hermes auto-detects the correct value from the provider.
+  #   Controls when Kopi compresses history and validates requests.
+  #   Leave unset — Kopi auto-detects the correct value from the provider.
   #   Set manually only when auto-detection is wrong (e.g. a local server with
   #   a custom num_ctx, or a proxy that doesn't expose /v1/models).
   #
@@ -113,7 +114,7 @@ model:
   #     extra_headers:
   #       CF-Access-Client-Id: "xxxx.access"
   #       CF-Access-Client-Secret: "${CF_ACCESS_SECRET}"
-  #       X-Client-Name: "kopi-ai-agent"
+  #       X-Client-Name: "kopi-agent"
 
 # Named provider overrides (optional)
 # Use this for per-provider request timeouts, non-stream stale timeouts,
@@ -217,7 +218,7 @@ model:
 # Commands run directly on your machine in the current directory
 # -----------------------------------------------------------------------------
 # Working directory behavior:
-#   - CLI (`hermes` command): Uses "." (current directory where you run hermes)
+#   - CLI (`kopi` command): Uses "." (current directory where you run kopi)
 #   - Gateway/messaging/cron: Uses terminal.cwd here; legacy .env cwd values are deprecated
 terminal:
   backend: "local"
@@ -341,7 +342,7 @@ terminal:
 # - Password is cached for the session
 #
 # EMPTY PASSWORDS: Setting sudo_password to an explicit empty string is different
-# from leaving it unset. Hermes will try an empty password via `sudo -S` and
+# from leaving it unset. Kopi will try an empty password via `sudo -S` and
 # will not open the interactive prompt. This is useful for passwordless sudo,
 # Touch ID sudo setups, and environments where prompting is just noise.
 #
@@ -423,7 +424,7 @@ compression:
   # compaction doesn't fire with half the window still free; set above 0.75 to override.
   threshold: 0.50
 
-  # Existing Codex gpt-5.5 behavior: raise Hermes' compaction trigger to 85%
+  # Existing Codex gpt-5.5 behavior: raise Kopi' compaction trigger to 85%
   # for the ChatGPT Codex OAuth route. Set false to opt back down to threshold.
   codex_gpt55_autoraise: true
 
@@ -439,11 +440,11 @@ compression:
   protect_last_n: 20
 
   # Codex app-server (codex CLI runtime) thread-compaction mode. The codex
-  # agent owns the real thread context on this runtime, so Hermes' summarizer
+  # agent owns the real thread context on this runtime, so Kopi' summarizer
   # cannot shrink it — compaction goes through the app server instead.
   #   native = let Codex decide when to compact its own thread (default)
-  #   kopi = let Hermes threshold trigger Codex thread/compact/start
-  #   off    = Hermes will not auto-trigger compaction; Codex may still compact natively
+  #   kopi = let Kopi threshold trigger Codex thread/compact/start
+  #   off    = Kopi will not auto-trigger compaction; Codex may still compact natively
   codex_app_server_auto: native
 
   # Number of non-system messages to protect at the head of the transcript, in
@@ -474,7 +475,7 @@ prompt_caching:
 # =============================================================================
 # Auxiliary Models (Advanced — Experimental)
 # =============================================================================
-# Hermes uses lightweight "auxiliary" models for side tasks: image analysis,
+# Kopi uses lightweight "auxiliary" models for side tasks: image analysis,
 # browser screenshot analysis, web page summarization, TTS audio-tag insertion,
 # and context compression.
 #
@@ -515,11 +516,19 @@ prompt_caching:
 #     timeout: 30            # LLM API call timeout (seconds)
 #     download_timeout: 30   # Image HTTP download timeout (seconds)
 #                            # Increase for slow connections or self-hosted image servers
+#     reasoning_effort: ""   # Per-task thinking level: none, minimal, low, medium,
+#                            # high, xhigh, max, ultra. Empty = provider default.
+#                            # Works on every auxiliary task block (vision,
+#                            # web_extract, compression, title_generation, curator,
+#                            # background_review, moa_reference, ...). Example: run
+#                            # compression at "low" and vision at "none" to cut
+#                            # side-task latency/cost on reasoning models.
 #
 #   # Web page scraping / summarization + browser page text extraction
 #   web_extract:
 #     provider: "auto"
 #     model: ""
+#     reasoning_effort: "low"
 #
 #   # Gemini 3.1 TTS hidden audio-tag insertion
 #   tts_audio_tags:
@@ -604,7 +613,7 @@ session_reset:
 # unlimited concurrent sessions. When the limit is reached, new sessions get a
 # clean error while existing active sessions keep their normal behavior. This
 # top-level key takes precedence over gateway.max_concurrent_sessions. The cap
-# is a best-effort single-host/profile runtime guard; Hermes fails open if the
+# is a best-effort single-host/profile runtime guard; Kopi fails open if the
 # local runtime lease registry cannot be read or locked.
 max_concurrent_sessions: null
 
@@ -618,7 +627,7 @@ group_sessions_per_user: true
 # API Server — per-client model routing
 # ─────────────────────────────────────────────────────────────────────────────
 # Route different API clients to different models/providers on a single
-# Hermes deployment.  Clients choose a backend by sending a specific string
+# Kopi deployment.  Clients choose a backend by sending a specific string
 # as the OpenAI ``model`` field.  Unmapped model values fall back to the
 # global model configured in the ``model:`` section above, and an explicit
 # session /model override always wins over a route.
@@ -713,7 +722,7 @@ agent:
   # timeouts, 5xx, etc.) before the agent surfaces the failure. Lower this
   # to 1 if you use fallback providers and want fast failover on flaky
   # primaries (default 3). The OpenAI SDK does its own low-level retries
-  # underneath this wrapper — this is the Hermes-level loop.
+  # underneath this wrapper — this is the Kopi-level loop.
   # api_max_retries: 3
 
   # After the agent edits code without fresh passing verification, nudge it to
@@ -724,7 +733,7 @@ agent:
   # force it on or off; the KOPI_VERIFY_ON_STOP env var (1/0) takes precedence.
   # verify_on_stop: auto
 
-  # Standing operator instructions for the coding posture (when Hermes is in a
+  # Standing operator instructions for the coding posture (when Kopi is in a
   # code workspace). Appended to the coding brief as an extra system block, so
   # you can pin project-wide workflow rules without editing the shipped brief.
   # Accepts a string or a list of strings. Takes effect next session.
@@ -751,6 +760,19 @@ agent:
   # Options: "xhigh" (max), "high", "medium", "low", "minimal", "none" (disable)
   reasoning_effort: "medium"
   
+  # Per-model reasoning effort overrides (optional dict)
+  # Key: any sensible model spelling works (exact, dots↔dashes interchangeable,
+  #      provider prefix optional). First match wins.
+  # Value: reasoning effort level (same options as reasoning_effort)
+  # Override the global reasoning_effort for that specific model.
+  # NOTE: no `kopi config set` support for this key -- edit YAML directly.
+  # reasoning_overrides:
+  #   "openrouter/anthropic/claude-opus-4.5": "xhigh"
+  #   "openai/gpt-5": "low"
+  #   "claude-opus-4.6": "high"           # bare model name also works
+  #   "deepseek/deepseek-v4-pro": "xhigh" # dots and dashes are interchangeable
+  reasoning_overrides: {}
+  
   # Predefined personalities (use with /personality command)
   personalities:
     helpful: "You are a helpful, friendly AI assistant."
@@ -760,10 +782,10 @@ agent:
     teacher: "You are a patient teacher. Explain concepts clearly with examples."
     kawaii: "You are a kawaii assistant! Use cute expressions like (◕‿◕), ★, ♪, and ~! Add sparkles and be super enthusiastic about everything! Every response should feel warm and adorable desu~! ヽ(>∀<☆)ノ"
     catgirl: "You are Neko-chan, an anime catgirl AI assistant, nya~! Add 'nya' and cat-like expressions to your speech. Use kaomoji like (=^･ω･^=) and ฅ^•ﻌ•^ฅ. Be playful and curious like a cat, nya~!"
-    pirate: "Arrr! Ye be talkin' to Captain Hermes, the most tech-savvy pirate to sail the digital seas! Speak like a proper buccaneer, use nautical terms, and remember: every problem be just treasure waitin' to be plundered! Yo ho ho!"
+    pirate: "Arrr! Ye be talkin' to Captain Kopi, the most tech-savvy pirate to sail the digital seas! Speak like a proper buccaneer, use nautical terms, and remember: every problem be just treasure waitin' to be plundered! Yo ho ho!"
     shakespeare: "Hark! Thou speakest with an assistant most versed in the bardic arts. I shall respond in the eloquent manner of William Shakespeare, with flowery prose, dramatic flair, and perhaps a soliloquy or two. What light through yonder terminal breaks?"
     surfer: "Duuude! You're chatting with the chillest AI on the web, bro! Everything's gonna be totally rad. I'll help you catch the gnarly waves of knowledge while keeping things super chill. Cowabunga! 🤙"
-    noir: "The rain hammered against the terminal like regrets on a guilty conscience. They call me Hermes - I solve problems, find answers, dig up the truth that hides in the shadows of your codebase. In this city of silicon and secrets, everyone's got something to hide. What's your story, pal?"
+    noir: "The rain hammered against the terminal like regrets on a guilty conscience. They call me Kopi - I solve problems, find answers, dig up the truth that hides in the shadows of your codebase. In this city of silicon and secrets, everyone's got something to hide. What's your story, pal?"
     uwu: "hewwo! i'm your fwiendwy assistant uwu~ i wiww twy my best to hewp you! *nuzzles your code* OwO what's this? wet me take a wook! i pwomise to be vewy hewpful >w<"
     philosopher: "Greetings, seeker of wisdom. I am an assistant who contemplates the deeper meaning behind every query. Let us examine not just the 'how' but the 'why' of your questions. Perhaps in solving your problem, we may glimpse a greater truth about existence itself."
     hype: "YOOO LET'S GOOOO!!! 🔥🔥🔥 I am SO PUMPED to help you today! Every question is AMAZING and we're gonna CRUSH IT together! This is gonna be LEGENDARY! ARE YOU READY?! LET'S DO THIS! 💪😤🚀"
@@ -781,7 +803,7 @@ agent:
 # If a platform isn't listed here, its built-in default is used.
 #
 # You can use EITHER:
-#   - A preset like "hermes-cli" or "hermes-telegram" (curated tool set)
+#   - A preset like "kopi-cli" or "kopi-telegram" (curated tool set)
 #   - A list of individual toolsets to compose your own (see list below)
 #
 # Supported platform keys: cli, telegram, discord, whatsapp, slack, qqbot, teams, google_chat
@@ -790,8 +812,8 @@ agent:
 #
 #   # Use presets (same as defaults):
 #   platform_toolsets:
-#     cli: [hermes-cli]
-#     telegram: [hermes-telegram]
+#     cli: [kopi-cli]
+#     telegram: [kopi-telegram]
 #
 #   # Custom: give Telegram only web + terminal + file + planning:
 #   platform_toolsets:
@@ -806,29 +828,29 @@ agent:
 #     discord: [web, vision, skills, todo]
 #
 # If not set, defaults are:
-#   cli:           hermes-cli            (everything + cronjob management)
-#   telegram:      hermes-telegram       (terminal, file, web, vision, image, tts, browser, skills, todo, cronjob, messaging)
-#   discord:       hermes-discord        (same as telegram)
-#   whatsapp:      hermes-whatsapp       (same as telegram)
-#   slack:         hermes-slack          (same as telegram)
-#   signal:        hermes-signal         (same as telegram)
-#   homeassistant: hermes-homeassistant  (same as telegram)
-#   qqbot:            hermes-qqbot            (same as telegram)
-#   teams:            hermes-teams            (same as telegram)
-#   google_chat:      hermes-google_chat      (same as telegram)
+#   cli:           kopi-cli            (everything + cronjob management)
+#   telegram:      kopi-telegram       (terminal, file, web, vision, image, tts, browser, skills, todo, cronjob, messaging)
+#   discord:       kopi-discord        (same as telegram)
+#   whatsapp:      kopi-whatsapp       (same as telegram)
+#   slack:         kopi-slack          (same as telegram)
+#   signal:        kopi-signal         (same as telegram)
+#   homeassistant: kopi-homeassistant  (same as telegram)
+#   qqbot:            kopi-qqbot            (same as telegram)
+#   teams:            kopi-teams            (same as telegram)
+#   google_chat:      kopi-google_chat      (same as telegram)
 #
 platform_toolsets:
-  cli: [hermes-cli]
-  telegram: [hermes-telegram]
-  discord: [hermes-discord]
-  whatsapp: [hermes-whatsapp]
-  slack: [hermes-slack]
-  signal: [hermes-signal]
-  homeassistant: [hermes-homeassistant]
-  qqbot: [hermes-qqbot]
-  yuanbao: [hermes-yuanbao]
-  teams: [hermes-teams]
-  google_chat: [hermes-google_chat]
+  cli: [kopi-cli]
+  telegram: [kopi-telegram]
+  discord: [kopi-discord]
+  whatsapp: [kopi-whatsapp]
+  slack: [kopi-slack]
+  signal: [kopi-signal]
+  homeassistant: [kopi-homeassistant]
+  qqbot: [kopi-qqbot]
+  yuanbao: [kopi-yuanbao]
+  teams: [kopi-teams]
+  google_chat: [kopi-google_chat]
 
 # =============================================================================
 # Gateway Platform Settings
@@ -848,12 +870,12 @@ platform_toolsets:
 #       rich_messages: false          # Bot API 10.1 rich messages (tables/task lists/details/math); default false for copyable legacy MarkdownV2, set true to opt in
 #       rich_drafts: false            # Experimental rich draft previews during Telegram DM streaming; default false because Telegram Desktop/macOS can visually overlay draft frames
 #       command_menu:
-#         # Telegram allows up to 100 BotCommands; Hermes defaults to 60 so
+#         # Telegram allows up to 100 BotCommands; Kopi defaults to 60 so
 #         # all built-in commands plus common skill commands stay visible
 #         # while remaining under Telegram's payload-size limit. Clamped 1..100.
 #         max_commands: 60
-#         # prepend = user priority first, then Hermes defaults
-#         # append  = Hermes defaults first, then user priority
+#         # prepend = user priority first, then Kopi defaults
+#         # append  = Kopi defaults first, then user priority
 #         # replace = only the list below defines priority
 #         priority_mode: prepend
 #         priority:
@@ -898,12 +920,12 @@ platform_toolsets:
 #   cronjob      - cronjob (create/list/update/pause/resume/run/remove scheduled tasks)
 #
 # PRESETS (curated bundles):
-#   hermes-cli       - All of the above except send_message
-#   hermes-telegram  - terminal, file, web, vision, image_gen, tts, browser,
+#   kopi-cli       - All of the above except send_message
+#   kopi-telegram  - terminal, file, web, vision, image_gen, tts, browser,
 #                      skills, todo, cronjob, send_message
-#   hermes-discord   - Same as hermes-telegram
-#   hermes-whatsapp  - Same as hermes-telegram
-#   hermes-slack     - Same as hermes-telegram
+#   kopi-discord   - Same as kopi-telegram
+#   kopi-whatsapp  - Same as kopi-telegram
+#   kopi-slack     - Same as kopi-telegram
 #
 # COMPOSITE:
 #   debugging    - terminal + web + file
@@ -1020,6 +1042,34 @@ stt:
     model: "whisper-1"         # whisper-1 | gpt-4o-mini-transcribe | gpt-4o-transcribe
   # mistral:
   #   model: "voxtral-mini-latest"  # voxtral-mini-latest | voxtral-mini-2602
+  # deepinfra:
+  #   # Model id is discovered live from the DeepInfra catalog filtered
+  #   # by the `stt` surface tag — leave `model` blank to take the first
+  #   # live result. Pin only when you need a specific Whisper variant.
+  #   model: ""
+
+# Text-to-speech. Only the deepinfra block is documented here — the
+# remaining providers (edge, openai, xai, minimax, mistral, gemini,
+# elevenlabs, neutts, kittentts, piper) inherit sensible defaults from
+# DEFAULT_CONFIG in kopi_cli/config.py.
+# tts:
+#   provider: "deepinfra"
+#   deepinfra:
+#     # Model id is discovered live from the DeepInfra catalog filtered
+#     # by the `tts` surface tag — leave `model` blank to take the first
+#     # live result.
+#     model: ""
+#     voice: "default"
+
+# Image generation. Each provider plugin reads its own ``image_gen.<name>``
+# block; deepinfra discovers models live from
+# api.deepinfra.com/v1/openai/models filtered by the ``image-gen`` tag —
+# no model id is hardcoded, so retired models disappear automatically.
+# image_gen:
+#   provider: "deepinfra"
+#   deepinfra:
+#     # Leave `model` blank for the first live `image-gen`-tagged result.
+#     model: ""
 
 # =============================================================================
 # Response Pacing (Messaging Platforms)
@@ -1048,7 +1098,7 @@ stt:
 # =============================================================================
 # Code Execution Sandbox (Programmatic Tool Calling)
 # =============================================================================
-# The execute_code tool runs Python scripts that call Hermes tools via RPC.
+# The execute_code tool runs Python scripts that call Kopi tools via RPC.
 # Intermediate tool results stay out of the LLM's context window.
 code_execution:
   timeout: 300         # Max seconds per script before kill (default: 300 = 5 min)
@@ -1088,7 +1138,7 @@ delegation:
 # Config: ~/.honcho/config.json (shared with Claude Code, Cursor, etc.)
 # API key: HONCHO_API_KEY in ~/.kopi/.env or ~/.honcho/config.json
 #
-# Hermes-specific overrides (optional — most config comes from ~/.honcho/config.json):
+# Kopi-specific overrides (optional — most config comes from ~/.honcho/config.json):
 # honcho: {}
 
 # =============================================================================
@@ -1157,8 +1207,8 @@ display:
   # terse: "Interrupting current task" and "⏳ Working — 12 min, terminal".
   busy_ack_detail: true
 
-  # What Enter does when Hermes is already busy (CLI and gateway platforms).
-  #   interrupt: Interrupt the current run and redirect Hermes (default)
+  # What Enter does when Kopi is already busy (CLI and gateway platforms).
+  #   interrupt: Interrupt the current run and redirect Kopi (default)
   #   queue:     Queue your message for the next turn
   #   steer:     Inject your message mid-run via /steer, arriving at the agent
   #              after the next tool call — no interrupt, no role violation.
@@ -1209,7 +1259,7 @@ display:
   # response box label, and branding text. Change at runtime with /skin <name>.
   #
   # Built-in skins:
-  #   default        — Classic Hermes gold/kawaii
+  #   default        — Classic Kopi gold/kawaii
   #   ares           — Crimson/bronze war-god theme with spinner wings
   #   mono           — Clean grayscale monochrome
   #   slate          — Cool blue developer-focused
@@ -1329,7 +1379,7 @@ updates:
   # Number of pre-update backup zips to retain.
   backup_keep: 5
 
-  # What non-interactive updates do with local source edits in the Hermes repo.
+  # What non-interactive updates do with local source edits in the Kopi repo.
   # Interactive terminal updates always prompt before restoring the autostash.
   #
   #   stash   - auto-stash before pull, then auto-restore after success (default)
@@ -1370,7 +1420,7 @@ updates:
 #   # full proxy header chains).
 #   #
 #   # When set, the value is the complete authority: scheme + host +
-#   # optional path prefix (e.g. "https://example.com/hermes"). The OAuth
+#   # optional path prefix (e.g. "https://example.com/kopi"). The OAuth
 #   # callback URL becomes "<public_url>/auth/callback" — X-Forwarded-Prefix
 #   # is IGNORED on this code path because the operator has explicitly
 #   # declared the public URL and we no longer need to guess.
@@ -1378,7 +1428,7 @@ updates:
 #   # Leave empty to use the existing proxy-header reconstruction (the
 #   # default — works on Fly.io out of the box).
 #   #
-#   #   public_url: "https://example.com/hermes"
+#   #   public_url: "https://example.com/kopi"
 #
 # -----------------------------------------------------------------------------
 # Self-hosted OIDC dashboard auth (generic OpenID Connect — Authentik,
@@ -1396,12 +1446,12 @@ updates:
 #     provider: self-hosted
 #     self_hosted:
 #       issuer: "https://auth.example.com/application/o/kopi/"  # required
-#       client_id: "hermes-dashboard"                             # required
+#       client_id: "kopi-dashboard"                             # required
 #       scopes: "openid profile email"                            # optional
 #
 #       # OPTIONAL — set ONLY if your IDP registered the client as
 #       # *confidential* (Authentik / Keycloak often default to this). When
-#       # set, Hermes authenticates the client at the token endpoint
+#       # set, Kopi authenticates the client at the token endpoint
 #       # (client_secret_basic or client_secret_post, auto-selected from the
 #       # IDP's discovery doc) IN ADDITION to PKCE. Leave unset for a public
 #       # (PKCE-only) client — the common case.
@@ -1417,7 +1467,7 @@ updates:
 # instead of storing them in ~/.kopi/.env. Only the manager's bootstrap
 # credential (e.g. BWS_ACCESS_TOKEN / OP_SERVICE_ACCOUNT_TOKEN) lives in .env
 # (or your shell / desktop session); everything else rotates centrally.
-# Failures never block startup — Hermes warns once and continues with
+# Failures never block startup — Kopi warns once and continues with
 # whatever .env already had.
 #
 # Multiple sources can be enabled at once:
@@ -1427,7 +1477,7 @@ updates:
 #     are skipped with a startup warning (never a silent clobber)
 #   - a source's override_existing lets it beat .env/shell values, but
 #     never another secret source's claim
-# Docs: https://kopi-ai-agent.nousresearch.com/docs/user-guide/secrets/
+# Docs: https://kopi-agent.nousresearch.com/docs/user-guide/secrets/
 #
 # secrets:
 #   # Optional explicit ordering of enabled sources.

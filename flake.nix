@@ -1,5 +1,5 @@
 {
-  description = "KOPI AI AGENT - AI agent framework by Kopi Ai Agent Pte Ltd";
+  description = "Kopi Agent - AI agent framework by Nous Research";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
