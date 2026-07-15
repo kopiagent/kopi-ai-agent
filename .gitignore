@@ -149,3 +149,4 @@ apps/desktop/demo/
 infographic/
 kopi-ai-agent.egg-info/
 kopi_ai_agent.egg-info/
+pnpm-*.yaml
