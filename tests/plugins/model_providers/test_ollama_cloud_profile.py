@@ -3,7 +3,7 @@
 Ollama Cloud's ``/v1/chat/completions`` endpoint supports top-level
 ``reasoning_effort`` with values ``none``, ``low``, ``medium``, ``high``,
 and (undocumented but empirically confirmed) ``max``.  The profile maps
-Hermes's ``xhigh`` → ``max`` to unlock DeepSeek V4's "Max thinking" tier
+Kopi's ``xhigh`` → ``max`` to unlock DeepSeek V4's "Max thinking" tier
 and passes the standard levels through unchanged.
 
 These tests pin the profile's wire-shape contract so Ollama Cloud
@@ -106,9 +106,9 @@ class TestOllamaCloudReasoningEffort:
 
     def test_unknown_effort_forwarded(self, ollama_cloud_profile):
         _, top_level = ollama_cloud_profile.build_api_kwargs_extras(
-            reasoning_config={"enabled": True, "effort": "ultra"},
+            reasoning_config={"enabled": True, "effort": "future-tier"},
         )
-        assert top_level == {"reasoning_effort": "ultra"}
+        assert top_level == {"reasoning_effort": "future-tier"}
 
 
 class TestOllamaCloudFullKwargsIntegration:

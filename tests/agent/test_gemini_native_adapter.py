@@ -443,7 +443,7 @@ def test_max_tokens_none_defaults_to_gemini_output_ceiling():
     """max_tokens=None must send the model's full output ceiling, not omit it.
 
     Gemini's native generateContent applies a low internal default when
-    maxOutputTokens is absent, truncating tool calls mid-stream. Hermes passes
+    maxOutputTokens is absent, truncating tool calls mid-stream. Kopi passes
     None to mean "unlimited", so the adapter must translate that to the
     published 65,535 ceiling rather than leaving the field unset.
     """
@@ -461,3 +461,53 @@ def test_explicit_max_tokens_is_respected():
 
     req = build_gemini_request(messages=[{"role": "user", "content": "hi"}], max_tokens=4096)
     assert req["generationConfig"]["maxOutputTokens"] == 4096
+
+
+# ---------------------------------------------------------------------------
+# X-Goog-Api-Client header tests
+# ---------------------------------------------------------------------------
+
+
+def test_x_goog_api_client_header_is_set():
+    """The X-Goog-Api-Client header should be set on inference requests."""
+    from agent.gemini_native_adapter import GeminiNativeClient
+
+    client = GeminiNativeClient(api_key="fake-key", model="gemini-2.0-flash")
+    headers = client._headers()
+
+    assert "X-Goog-Api-Client" in headers, "X-Goog-Api-Client header missing"
+    assert "kopi-ai-agent/" in headers["X-Goog-Api-Client"], (
+        "kopi-ai-agent not found in X-Goog-Api-Client header"
+    )
+
+
+def test_x_goog_api_client_header_format():
+    """Header value should be 'kopi-ai-agent/<version>' matching the package version."""
+    from agent.gemini_native_adapter import GeminiNativeClient, _KOPI_VERSION
+
+    client = GeminiNativeClient(api_key="fake-key", model="gemini-2.0-flash")
+    headers = client._headers()
+
+    expected = f"kopi-ai-agent/{_KOPI_VERSION}"
+    assert headers["X-Goog-Api-Client"] == expected
+
+
+def test_user_agent_contains_version():
+    """User-Agent should include the kopi-ai-agent version."""
+    from agent.gemini_native_adapter import GeminiNativeClient, _KOPI_VERSION
+
+    client = GeminiNativeClient(api_key="fake-key", model="gemini-2.0-flash")
+    headers = client._headers()
+
+    assert f"kopi-ai-agent/{_KOPI_VERSION}" in headers["User-Agent"]
+
+
+def test_kopi_version_is_valid():
+    """_KOPI_VERSION should be a non-empty string."""
+    from agent.gemini_native_adapter import _KOPI_VERSION
+
+    assert isinstance(_KOPI_VERSION, str)
+    assert len(_KOPI_VERSION) > 0
+    assert _KOPI_VERSION != "0.0.0", (
+        "Version should resolve from kopi_cli.__version__, not the fallback"
+    )

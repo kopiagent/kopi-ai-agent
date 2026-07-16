@@ -484,6 +484,31 @@ def test_complete_rejects_non_list_artifacts(worker_env):
     assert "artifacts must be a list" in err
 
 
+def test_complete_missing_scratch_artifact_stays_in_flight(worker_env):
+    """A false deliverable claim must return retry guidance, not mark Done."""
+    from kopi_cli import kanban_db as kb
+    from tools import kanban_tools as kt
+
+    with kb.connect() as conn:
+        task = kb.get_task(conn, worker_env)
+        assert task is not None
+        workspace = kb.resolve_workspace(task)
+        kb.set_workspace_path(conn, worker_env, workspace)
+
+    output = kt._handle_complete({
+        "summary": "report complete",
+        "artifacts": [str(workspace / "missing-report.md")],
+    })
+    error = json.loads(output).get("error", "")
+
+    assert "could not preserve" in error
+    assert "still in-flight" in error
+    assert "retry kanban_complete" in error
+    with kb.connect() as conn:
+        assert kb.get_task(conn, worker_env).status == "running"
+    assert workspace.exists()
+
+
 def test_complete_rejects_no_handoff(worker_env):
     from tools import kanban_tools as kt
     out = kt._handle_complete({})
@@ -1698,14 +1723,14 @@ def test_orchestrator_complete_any_task_allowed(monkeypatch, tmp_path):
 # The dispatcher pins the active board via KOPI_KANBAN_BOARD env var,
 # but a Telegram-side orchestrator handling multiple boards needs to be
 # able to route a single tool call to a specific board's DB without
-# restarting Hermes. These tests pin that ``board=<slug>`` argument
+# restarting Kopi. These tests pin that ``board=<slug>`` argument
 # routes each handler to that board's sqlite file, and that omitting
 # ``board`` preserves the legacy env-driven resolution.
 
 
 @pytest.fixture
 def multi_board_env(monkeypatch, tmp_path):
-    """Isolated Hermes home with two distinct kanban boards seeded.
+    """Isolated Kopi home with two distinct kanban boards seeded.
 
     Returns ``("default", "alt")`` slugs. The default board has one
     pre-existing task ``seed_default``; ``alt`` has ``seed_alt``. No

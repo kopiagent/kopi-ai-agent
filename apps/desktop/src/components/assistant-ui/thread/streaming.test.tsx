@@ -48,6 +48,7 @@ vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
   window.setTimeout(() => callback(performance.now()), 0)
 )
 vi.stubGlobal('cancelAnimationFrame', (id: number) => window.clearTimeout(id))
+vi.stubGlobal('CSS', { escape: (str: string) => str })
 
 Element.prototype.scrollTo = function scrollTo() {}
 
@@ -400,7 +401,7 @@ describe('assistant-ui streaming renderer', () => {
   it('renders assistant text incrementally before completion', async () => {
     const { container } = render(<StreamingHarness />)
 
-    expect(screen.getByRole('status', { name: 'Hermes is loading a response' })).toBeTruthy()
+    expect(screen.getByRole('status', { name: 'Kopi is loading a response' })).toBeTruthy()
 
     await wait(80)
 
@@ -408,7 +409,7 @@ describe('assistant-ui streaming renderer', () => {
       expect(container.textContent).toContain('first chunk')
     })
     expect(container.textContent).not.toContain('second chunk')
-    expect(screen.queryByRole('status', { name: 'Hermes is loading a response' })).toBeNull()
+    expect(screen.queryByRole('status', { name: 'Kopi is loading a response' })).toBeNull()
 
     await wait(500)
 

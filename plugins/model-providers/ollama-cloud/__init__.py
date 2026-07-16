@@ -6,7 +6,7 @@ supports top-level ``reasoning_effort`` with values ``none``, ``low``,
 empirically confirmed for DeepSeek V4 — ``max`` produces ~2.5× more
 thinking tokens than ``high``).
 
-This profile maps Hermes's ``xhigh`` → ``max`` to unlock DeepSeek V4's
+This profile maps Kopi's ``xhigh`` → ``max`` to unlock DeepSeek V4's
 "Max thinking" tier through Ollama Cloud.  ``low`` / ``medium`` / ``high``
 pass through unchanged.
 
@@ -51,7 +51,7 @@ class OllamaCloudProfile(ProviderProfile):
                 return {}, {}
             if effort == "none":
                 return {}, {}  # explicit none → suppress thinking
-            if effort in ("xhigh", "max"):
+            if effort in ("xhigh", "max", "ultra"):
                 top_level["reasoning_effort"] = "max"
             elif effort in ("low", "medium", "high"):
                 top_level["reasoning_effort"] = effort

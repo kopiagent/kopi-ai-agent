@@ -36,15 +36,15 @@
 
     # Deep-merge config type (from 0xrsydn/nix-kopi-ai-agent)
     deepConfigType = lib.types.mkOptionType {
-      name = "hermes-config-attrs";
-      description = "Hermes YAML config (attrset), merged deeply via lib.recursiveUpdate.";
+      name = "kopi-config-attrs";
+      description = "Kopi YAML config (attrset), merged deeply via lib.recursiveUpdate.";
       check = builtins.isAttrs;
       merge = _loc: defs: lib.foldl' lib.recursiveUpdate { } (map (d: d.value) defs);
     };
 
     # Generate config.yaml from Nix attrset (YAML is a superset of JSON)
     configJson = builtins.toJSON cfg.settings;
-    generatedConfigFile = pkgs.writeText "hermes-config.yaml" configJson;
+    generatedConfigFile = pkgs.writeText "kopi-config.yaml" configJson;
     configFile = if cfg.configFile != null then cfg.configFile else generatedConfigFile;
 
     configMergeScript = pkgs.callPackage ./configMergeScript.nix { };
@@ -60,7 +60,7 @@
       lib.mapAttrsToList (k: v: "${k}=${v}") cfg.environment
     );
     # Build documents derivation (from 0xrsydn)
-    documentDerivation = pkgs.runCommand "hermes-documents" { } (
+    documentDerivation = pkgs.runCommand "kopi-documents" { } (
       ''
         mkdir -p $out
       '' + lib.concatStringsSep "\n" (
@@ -74,7 +74,7 @@
 
     containerName = "kopi-ai-agent";
     containerDataDir = "/data";     # stateDir mount point inside container
-    containerHomeDir = "/home/hermes";
+    containerHomeDir = "/home/kopi";
 
     # ── Container mode helpers ──────────────────────────────────────────
     containerBin = if cfg.container.backend == "docker"
@@ -84,7 +84,7 @@
     # Runs as root inside the container on every start. Provisions the
     # kopi user + sudo on first boot (writable layer persists), then
     # drops privileges. Supports arbitrary base images (Debian, Alpine, etc).
-    containerEntrypoint = pkgs.writeShellScript "hermes-container-entrypoint" ''
+    containerEntrypoint = pkgs.writeShellScript "kopi-container-entrypoint" ''
       set -eu
 
       KOPI_UID="''${KOPI_UID:?KOPI_UID must be set}"
@@ -97,7 +97,7 @@
       if [ -n "$EXISTING_GROUP" ]; then
         GROUP_NAME="$EXISTING_GROUP"
       else
-        GROUP_NAME="hermes"
+        GROUP_NAME="kopi"
         if command -v groupadd >/dev/null 2>&1; then
           groupadd -g "$KOPI_GID" "$GROUP_NAME"
         elif command -v addgroup >/dev/null 2>&1; then
@@ -111,8 +111,8 @@
         TARGET_USER=$(echo "$PASSWD_ENTRY" | cut -d: -f1)
         TARGET_HOME=$(echo "$PASSWD_ENTRY" | cut -d: -f6)
       else
-        TARGET_USER="hermes"
-        TARGET_HOME="/home/hermes"
+        TARGET_USER="kopi"
+        TARGET_HOME="/home/kopi"
         if command -v useradd >/dev/null 2>&1; then
           useradd -u "$KOPI_UID" -g "$KOPI_GID" -m -d "$TARGET_HOME" -s /bin/bash "$TARGET_USER"
         elif command -v adduser >/dev/null 2>&1; then
@@ -137,7 +137,7 @@
       # nodejs/npm: writable node so npm i -g works (nix store copies are read-only)
       #   Node 22 via NodeSource — Ubuntu 24.04 ships Node 18 which is EOL.
       # curl: needed for uv installer + NodeSource setup
-      if [ ! -f /var/lib/hermes-tools-provisioned ] && command -v apt-get >/dev/null 2>&1; then
+      if [ ! -f /var/lib/kopi-tools-provisioned ] && command -v apt-get >/dev/null 2>&1; then
         echo "First boot: provisioning agent tools..."
         apt-get update -qq
         apt-get install -y -qq sudo curl ca-certificates gnupg
@@ -148,13 +148,13 @@
           > /etc/apt/sources.list.d/nodesource.list
         apt-get update -qq
         apt-get install -y -qq nodejs
-        touch /var/lib/hermes-tools-provisioned
+        touch /var/lib/kopi-tools-provisioned
       fi
 
       if command -v sudo >/dev/null 2>&1 && [ ! -f /etc/sudoers.d/kopi ]; then
         mkdir -p /etc/sudoers.d
-        echo "$TARGET_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/hermes
-        chmod 0440 /etc/sudoers.d/hermes
+        echo "$TARGET_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/kopi
+        chmod 0440 /etc/sudoers.d/kopi
       fi
 
       # uv (Python manager) — not in Ubuntu repos, retry-safe outside the sentinel
@@ -209,7 +209,7 @@
 
   in {
     options.services.kopi-ai-agent = with lib; {
-      enable = mkEnableOption "KOPI AI AGENT gateway service";
+      enable = mkEnableOption "Kopi Agent gateway service";
 
       # ── Package ──────────────────────────────────────────────────────────
       package = mkOption {
@@ -221,13 +221,13 @@
       # ── Service identity ─────────────────────────────────────────────────
       user = mkOption {
         type = types.str;
-        default = "hermes";
+        default = "kopi";
         description = "System user running the gateway.";
       };
 
       group = mkOption {
         type = types.str;
-        default = "hermes";
+        default = "kopi";
         description = "System group running the gateway.";
       };
 
@@ -240,7 +240,7 @@
       # ── Directories ──────────────────────────────────────────────────────
       stateDir = mkOption {
         type = types.str;
-        default = "/var/lib/hermes";
+        default = "/var/lib/kopi";
         description = "State directory. Contains .kopi/ subdir (KOPI_HOME).";
       };
 
@@ -265,7 +265,7 @@
         type = deepConfigType;
         default = { };
         description = ''
-          Declarative Hermes config (attrset). Deep-merged across module
+          Declarative Kopi config (attrset). Deep-merged across module
           definitions and rendered as config.yaml.
         '';
         example = literalExpression ''
@@ -285,7 +285,7 @@
         description = ''
           Paths to environment files containing secrets (API keys, tokens).
           Contents are merged into $KOPI_HOME/.env at activation time.
-          Hermes reads this file on every startup via load_kopi_dotenv().
+          Kopi reads this file on every startup via load_kopi_dotenv().
         '';
       };
 
@@ -484,14 +484,14 @@
         description = ''
           Directory-based plugin packages to symlink into the kopi plugins
           directory. Each package should contain a plugin.yaml and __init__.py
-          at its root. Hermes discovers these automatically on startup.
+          at its root. Kopi discovers these automatically on startup.
         '';
         example = literalExpression ''
           [
             (pkgs.fetchFromGitHub {
               owner = "stephenschoettler";
-              repo = "hermes-lcm";
-              name = "hermes-lcm";
+              repo = "kopi-lcm";
+              name = "kopi-lcm";
               rev = "v0.7.0";
               hash = "sha256-...";
             })
@@ -511,11 +511,11 @@
         example = literalExpression ''
           [
             (pkgs.python312Packages.buildPythonPackage {
-              pname = "rtk-hermes";
+              pname = "rtk-kopi";
               version = "1.0.0";
               src = pkgs.fetchFromGitHub {
                 owner = "ogallotti";
-                repo = "rtk-hermes";
+                repo = "rtk-kopi";
                 rev = "main";
                 hash = "sha256-...";
               };
@@ -700,7 +700,7 @@
         warnings = [
           ''
             services.kopi-ai-agent: container.enable is true and container.hostUsers
-            is set, but addToSystemPackages is false. Without a host-installed hermes
+            is set, but addToSystemPackages is false. Without a host-installed kopi
             binary, container routing will not work for interactive users.
             Set addToSystemPackages = true or ensure kopi is on PATH.
           ''
@@ -724,7 +724,7 @@
 
       # ── Activation: link config + auth + documents ────────────────────
       {
-        system.activationScripts."kopi-ai-agent-setup" = lib.stringAfter ([ "users" ] ++ lib.optional (config.system.activationScripts ? setupSecrets) "setupSecrets") ''
+        system.activationScripts."kopi-agent-setup" = lib.stringAfter ([ "users" ] ++ lib.optional (config.system.activationScripts ? setupSecrets) "setupSecrets") ''
           # Ensure directories exist (activation runs before tmpfiles)
           mkdir -p ${cfg.stateDir}/.kopi
           mkdir -p ${cfg.stateDir}/home
@@ -751,7 +751,7 @@
           # Preserves user-added keys (skills, streaming, etc.); Nix keys win.
           # If configFile is user-provided (not generated), overwrite instead of merge.
           # Mode is configYamlMode (0660 under addToSystemPackages so interactive
-          # hermes-group users can save settings via the CLI/TUI, else 0640).
+          # kopi-group users can save settings via the CLI/TUI, else 0640).
           ${if cfg.configFile != null then ''
             install -o ${cfg.user} -g ${cfg.group} -m ${configYamlMode} -D ${configFile} ${cfg.stateDir}/.kopi/config.yaml
           '' else ''
@@ -774,7 +774,7 @@
     backend=${cfg.container.backend}
     container_name=${containerName}
     exec_user=${cfg.user}
-    kopi_bin=${containerDataDir}/current-package/bin/hermes
+    kopi_bin=${containerDataDir}/current-package/bin/kopi
     KOPI_CONTAINER_MODE_EOF
             chown ${cfg.user}:${cfg.group} ${cfg.stateDir}/.kopi/.container-mode
             chmod 0644 ${cfg.stateDir}/.kopi/.container-mode
@@ -830,7 +830,7 @@
           ''}
 
           # Seed .env from Nix-declared environment + environmentFiles.
-          # Hermes reads $KOPI_HOME/.env at startup via load_kopi_dotenv(),
+          # Kopi reads $KOPI_HOME/.env at startup via load_kopi_dotenv(),
           # so this is the single source of truth for both native and container mode.
           ${lib.optionalString (cfg.environment != {} || cfg.environmentFiles != []) ''
             ENV_FILE="${cfg.stateDir}/.kopi/.env"
@@ -874,7 +874,7 @@
       # ══════════════════════════════════════════════════════════════════
       (lib.mkIf (!cfg.container.enable) {
         systemd.services.kopi-ai-agent = {
-          description = "KOPI AI AGENT Gateway";
+          description = "Kopi Agent Gateway";
           wantedBy = [ "multi-user.target" ];
           after = [ "network-online.target" ];
           wants = [ "network-online.target" ];
@@ -896,7 +896,7 @@
             # reads them at Python startup — no systemd EnvironmentFile needed.
 
             ExecStart = lib.concatStringsSep " " ([
-              "${effectivePackage}/bin/hermes"
+              "${effectivePackage}/bin/kopi"
               "gateway"
             ] ++ cfg.extraArgs);
 
@@ -935,7 +935,7 @@
         virtualisation.docker.enable = lib.mkDefault (cfg.container.backend == "docker");
 
         systemd.services.kopi-ai-agent = {
-          description = "KOPI AI AGENT Gateway (container)";
+          description = "Kopi Agent Gateway (container)";
           wantedBy = [ "multi-user.target" ];
           after = [ "network-online.target" ]
             ++ lib.optional (cfg.container.backend == "docker") "docker.service";

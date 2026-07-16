@@ -31,7 +31,7 @@ from fastapi.testclient import TestClient
 from kopi_cli.web_server import _SESSION_TOKEN, app
 
 client = TestClient(app)
-HEADERS = {"X-Hermes-Session-Token": _SESSION_TOKEN}
+HEADERS = {"X-Kopi-Session-Token": _SESSION_TOKEN}
 
 
 def _make_profile_home(tmp_path, monkeypatch, profile="coder"):
@@ -340,6 +340,56 @@ def test_codex_dashboard_worker_persists_inside_session_profile(tmp_path, monkey
         ws._oauth_sessions.pop(sid, None)
 
 
+def test_codex_dashboard_start_rewords_device_authorization_error(monkeypatch):
+    from kopi_cli import web_server as ws
+
+    before_sessions = set(ws._oauth_sessions)
+
+    class _Resp:
+        status_code = 400
+        text = "Enable device code authorization"
+
+        def json(self):
+            return {
+                "error": {
+                    "message": "Enable device code authorization",
+                    "code": "device_authorization_not_enabled",
+                }
+            }
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def post(self, url, **kwargs):
+            assert url.endswith("/deviceauth/usercode")
+            return _Resp()
+
+    monkeypatch.setattr(httpx, "Client", _Client)
+
+    try:
+        resp = client.post(
+            "/api/providers/oauth/openai-codex/start",
+            headers=HEADERS,
+        )
+
+        assert resp.status_code == 500
+        detail = resp.json()["detail"]
+        assert "OpenAI rejected the device-code login request" in detail
+        assert "Enable device-code authorization in OpenAI" in detail
+        assert "click Login again" in detail
+        assert "kopi auth" not in detail
+    finally:
+        for sid in set(ws._oauth_sessions) - before_sessions:
+            ws._oauth_sessions.pop(sid, None)
+
+
 def test_nous_dashboard_poller_preserves_effective_scope_when_token_omits_scope(monkeypatch):
     from kopi_cli import auth as auth_mod
     from kopi_cli import web_server as ws
@@ -503,7 +553,7 @@ def test_copilot_acp_now_in_accounts():
 
 
 def test_oauth_catalog_marks_external_providers_not_disconnectable():
-    """External CLI credentials are visible in Accounts but cannot be removed by Hermes."""
+    """External CLI credentials are visible in Accounts but cannot be removed by Kopi."""
     resp = client.get("/api/providers/oauth", headers=HEADERS)
     assert resp.status_code == 200, resp.text
     providers = {p["id"]: p for p in resp.json()["providers"]}

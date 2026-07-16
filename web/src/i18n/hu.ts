@@ -50,12 +50,12 @@ export const hu: Translations = {
   },
 
   app: {
-    brand: "KOPI AI AGENT",
+    brand: "Kopi Agent",
     brandShort: "HA",
     closeNavigation: "Navigáció bezárása",
     closeModelTools: "Modell és eszközök bezárása",
     footer: {
-      org: "Kopi Ai Agent Pte Ltd",
+      org: "Nous Research",
     },
     activeSessionsLabel: "Aktív munkamenetek:",
     gatewayStatusLabel: "Átjáró állapota:",
@@ -120,8 +120,8 @@ export const hu: Translations = {
     starting: "Indul",
     startedInBackground: "Háttérben elindítva — kövesse a naplókat a folyamathoz",
     stopped: "Leállítva",
-    updateHermes: "Hermes frissítése",
-    updatingHermes: "Hermes frissítése…",
+    updateKopi: "Kopi frissítése",
+    updatingKopi: "Kopi frissítése…",
     waitingForOutput: "Várakozás a kimenetre…",
   },
 
@@ -320,7 +320,7 @@ export const hu: Translations = {
     enableRuntime: "Engedélyezés",
     forceReinstall: "Kényszerített újratelepítés (a meglévő mappa előbb törlődik)",
     headline:
-      "Hermes-bővítmények felfedezése, telepítése, engedélyezése és frissítése (a `kopi plugins` paritás).",
+      "Kopi-bővítmények felfedezése, telepítése, engedélyezése és frissítése (a `kopi plugins` paritás).",
     identifierLabel: "Git URL vagy owner/repo",
     inactive: "inaktív",
     installBtn: "Telepítés",
@@ -434,7 +434,7 @@ export const hu: Translations = {
     showValue: "Tényleges érték megjelenítése",
     hideValue: "Érték elrejtése",
     customTitle: "Egyéni kulcsok",
-    customHint: "A .env fájlban tárolt tetszőleges környezeti változók, amelyeket a Hermes nem ismer fel. Használd ezeket környezeti változók beillesztésére képességekhez, MCP-kiszolgálókhoz vagy saját eszközeidhez.",
+    customHint: "A .env fájlban tárolt tetszőleges környezeti változók, amelyeket a Kopi nem ismer fel. Használd ezeket környezeti változók beillesztésére képességekhez, MCP-kiszolgálókhoz vagy saját eszközeidhez.",
     customConfigured: "{count} egyéni kulcs beállítva",
     addCustomKey: "Egyéni kulcs hozzáadása",
     customKeyName: "Változó neve",
@@ -446,16 +446,19 @@ export const hu: Translations = {
   oauth: {
     title: "Szolgáltatói bejelentkezések (OAuth)",
     providerLogins: "Szolgáltatói bejelentkezések (OAuth)",
-    description: "{connected} / {total} OAuth-szolgáltató csatlakoztatva. A bejelentkezési folyamat jelenleg a CLI-n keresztül fut; kattintson a Parancs másolása gombra, és illessze be egy terminálba a beállításhoz.",
+    description:
+      "{connected} / {total} OAuth-szolgáltató csatlakoztatva. Használja a Bejelentkezés gombot az irányítópult által támogatott folyamatokhoz; a CLI-parancsok továbbra is elérhetők külső vagy tartalék beállításhoz.",
     connected: "Csatlakoztatva",
     expired: "Lejárt",
-    notConnected: "Nincs csatlakoztatva. Futtassa a {command} parancsot egy terminálban.",
+    notConnected: "Nincs csatlakoztatva. Használja a Bejelentkezés gombot, ha elérhető, vagy futtassa a {command} parancsot egy terminálban.",
     runInTerminal: "egy terminálban.",
     noProviders: "Nem észlelhető OAuth-képes szolgáltató.",
     login: "Bejelentkezés",
     disconnect: "Lecsatlakozás",
     managedExternally: "Külsőleg kezelt",
     copied: "Másolva ✓",
+    copyCode: "Kód másolása",
+    copyFailed: "Nem sikerült automatikusan másolni. Jelölje ki a kódot, és másolja kézzel.",
     cli: "Másolás",
     copyCliCommand: "CLI-parancs másolása (külső / tartalék)",
     connect: "Csatlakozás",
@@ -494,11 +497,11 @@ export const hu: Translations = {
   achievements: {
     hero: {
       kicker: "Agentic Gamerscore",
-      title: "Hermes Achievements",
+      title: "Kopi Achievements",
       subtitle:
-        "Gyűjthető Hermes-jelvények, valós munkamenet-előzmények alapján szerezve. Az ismert, de még nem szerzett teljesítmények Felfedezettként jelennek meg; a Titkos teljesítmények rejtve maradnak az első egyező viselkedésig.",
+        "Gyűjthető Kopi-jelvények, valós munkamenet-előzmények alapján szerezve. Az ismert, de még nem szerzett teljesítmények Felfedezettként jelennek meg; a Titkos teljesítmények rejtve maradnak az első egyező viselkedésig.",
       scan_subtitle:
-        "Hermes munkamenet-előzmények vizsgálata. Az első vizsgálat 5–10 másodpercig is eltarthat nagy előzmények esetén.",
+        "Kopi munkamenet-előzmények vizsgálata. Az első vizsgálat 5–10 másodpercig is eltarthat nagy előzmények esetén.",
     },
     actions: {
       rescan: "Újravizsgálat",
@@ -513,7 +516,7 @@ export const hu: Translations = {
       highest_tier: "Legmagasabb szint",
       highest_tier_hint: "Copper → Silver → Gold → Diamond → Olympian",
       latest: "Legutóbbi",
-      latest_hint_empty: "futtasd többet a Hermest",
+      latest_hint_empty: "futtasd többet a Kopit",
       none_yet: "Még semmi",
     },
     state: {
@@ -544,10 +547,10 @@ export const hu: Translations = {
       tiers_header: "Szintek",
       secret_header: "Titkos teljesítmények",
       secret_body:
-        "A titkos teljesítmények elrejtik a pontos kiváltó eseményt. Amint a Hermes kapcsolódó jelet észlel, a kártya Felfedezettre vált, és megjeleníti a követelményt.",
+        "A titkos teljesítmények elrejtik a pontos kiváltó eseményt. Amint a Kopi kapcsolódó jelet észlel, a kártya Felfedezettre vált, és megjeleníti a követelményt.",
       scan_status_header: "Vizsgálat állapota",
       scan_status_body:
-        "A Hermes egyszer átvizsgálja a helyi előzményeket, majd a kártyák automatikusan megjelennek. Semmi sem akadt el, ha ez néhány másodpercig tart.",
+        "A Kopi egyszer átvizsgálja a helyi előzményeket, majd a kártyák automatikusan megjelennek. Semmi sem akadt el, ha ez néhány másodpercig tart.",
       what_scanned_header: "Mit vizsgálunk",
       what_scanned_body:
         "Munkamenetek, eszközhívások, modell-metaadatok, hibák, teljesítmények és helyi feloldási állapot.",
@@ -594,7 +597,7 @@ export const hu: Translations = {
         "A „Megosztás az X-en” új lapon nyit meg egy előre kitöltött bejegyzést. Először kattints a „Kép másolása” gombra, ha az 1200×630-as jelvényt is csatolnád — az X engedi, hogy közvetlenül beillesszd a bejegyzésszerkesztőbe. A „PNG letöltése” bárhol felhasználható fájlként menti.",
       clipboard_unsupported:
         "A kép vágólapra másolása nem támogatott ebben a böngészőben — használd inkább a Letöltést.",
-      tweet_text: "Just unlocked {tier_part}\"{name}\" in KOPI AI AGENT ☤",
+      tweet_text: "Just unlocked {tier_part}\"{name}\" in Kopi Agent ☤",
     },
   },
   kanban: {

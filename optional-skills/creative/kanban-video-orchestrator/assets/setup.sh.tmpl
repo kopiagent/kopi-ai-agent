@@ -21,7 +21,7 @@ echo "═══ Checking required API keys ═══"
 
 check_key() {
     local var="$1"
-    local kc_account="${2:-hermes}"
+    local kc_account="${2:-kopi}"
     local kc_service="${3:-$1}"
     local _kopi_env="${KOPI_HOME:-$HOME/.kopi}/.env"
     if grep -q "^${var}=" "$_kopi_env" 2>/dev/null && \
@@ -50,9 +50,9 @@ mkdir -p "$WORKSPACE"/{taste,audio/{voiceover,sfx},assets,scenes,checkpoints,too
 echo "  ✓ $WORKSPACE"
 
 # ─────────────────────────────────────────────────────────────────────
-# 3. Create Hermes profiles
+# 3. Create Kopi profiles
 # ─────────────────────────────────────────────────────────────────────
-echo "═══ Creating Hermes profiles ═══"
+echo "═══ Creating Kopi profiles ═══"
 
 {{PROFILE_CREATE_COMMANDS}}
 
@@ -66,7 +66,7 @@ configure_profile() {
     local toolsets_json="$2"     # JSON array string, e.g. '["kanban","terminal","file"]'
     local skills_json="$3"       # JSON array string, e.g. '["ascii-video"]'
     python3 - "$profile" "$toolsets_json" "$skills_json" "$WORKSPACE" <<'PY'
-"""Patch a Hermes profile config.yaml using PyYAML so we don't depend on the
+"""Patch a Kopi profile config.yaml using PyYAML so we don't depend on the
 exact default-config string format. Validates the patch took effect and exits
 non-zero if anything's off."""
 import json

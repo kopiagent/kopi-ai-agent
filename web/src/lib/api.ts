@@ -1,4 +1,4 @@
-import { buildHermesWebSocketUrl } from "@kopi/shared";
+import { buildKopiWebSocketUrl } from "@kopi/shared";
 
 // The dashboard can be served either at the root of its host (e.g.
 // https://kanban.tilos.com/) or under a URL prefix when reverse-proxied
@@ -34,8 +34,7 @@ declare global {
     __KOPI_AUTH_REQUIRED__?: boolean;
   }
 }
-let _sessionToken: string | null = null;
-const SESSION_HEADER = "X-Hermes-Session-Token";
+const SESSION_HEADER = "X-Kopi-Session-Token";
 
 function setSessionHeader(headers: Headers, token: string): void {
   if (!headers.has(SESSION_HEADER)) {
@@ -137,7 +136,7 @@ export async function fetchJSON<T>(
       // fallback the post-login handler can read.
       try {
         sessionStorage.setItem(
-          "hermes.lastLocation",
+          "kopi.lastLocation",
           window.location.pathname + window.location.search,
         );
       } catch {
@@ -160,13 +159,13 @@ export async function fetchJSON<T>(
       let alreadyReloaded = false;
       try {
         alreadyReloaded =
-          sessionStorage.getItem("hermes.tokenReloadAttempted") === "1";
+          sessionStorage.getItem("kopi.tokenReloadAttempted") === "1";
       } catch {
         /* SSR / privacy mode — fall through to throw */
       }
       if (!alreadyReloaded) {
         try {
-          sessionStorage.setItem("hermes.tokenReloadAttempted", "1");
+          sessionStorage.setItem("kopi.tokenReloadAttempted", "1");
         } catch {
           /* SSR / privacy mode — best effort */
         }
@@ -180,7 +179,7 @@ export async function fetchJSON<T>(
     // current ``window.__KOPI_SESSION_TOKEN__`` is valid, so the next
     // 401 — if any — should be allowed to trigger its own reload cycle.
     try {
-      sessionStorage.removeItem("hermes.tokenReloadAttempted");
+      sessionStorage.removeItem("kopi.tokenReloadAttempted");
     } catch {
       /* SSR / privacy mode — ignore */
     }
@@ -204,7 +203,7 @@ async function getSessionToken(): Promise<string> {
     _sessionToken = injected;
     return _sessionToken;
   }
-  throw new Error("Session token not available — page must be served by the Hermes dashboard server");
+  throw new Error("Session token not available — page must be served by the KOPI dashboard server");
 }
 
 /**
@@ -251,7 +250,7 @@ export async function buildWsAuthParam(): Promise<[string, string]> {
  * the caller can read ``.blob()`` / ``.formData()`` / stream it.
  *
  * Auth, in both modes, exactly as ``fetchJSON`` does it:
- *  - loopback / ``--insecure``: attach the ``X-Hermes-Session-Token`` header.
+ *  - loopback / ``--insecure``: attach the ``X-Kopi-Session-Token`` header.
  *  - gated OAuth: no token header (it's absent by design); the
  *    ``kopi_session_at`` cookie rides along via ``credentials: 'include'``.
  *
@@ -294,7 +293,7 @@ export async function buildWsUrl(
   path: string,
   params?: Record<string, string>,
 ): Promise<string> {
-  return buildHermesWebSocketUrl({
+  return buildKopiWebSocketUrl({
     authParam: await buildWsAuthParam(),
     basePath: BASE,
     params,
@@ -315,9 +314,29 @@ function appendProfileParam(url: string, profile?: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}profile=${encodeURIComponent(profile)}`;
 }
 
+export interface OfficeAgent {
+  subagent_id: string;
+  parent_id: string | null;
+  depth: number;
+  kind?: "main" | "subagent";
+  goal: string;
+  model: string;
+  started_at: number;
+  tool_count: number;
+  status: string;
+  tool?: string;
+}
+export interface OfficeStateResponse {
+  agents: OfficeAgent[];
+  count: number;
+  ts: number;
+}
+
 export const api = {
   buildWsUrl,
   getStatus: () => fetchJSON<StatusResponse>("/api/status"),
+  /** Live multi-agent activity for the pixel-office page (P1). */
+  getOfficeState: () => fetchJSON<OfficeStateResponse>("/api/office/state"),
   /**
    * Identity probe for the dashboard auth gate (Phase 7).
    *
@@ -414,6 +433,15 @@ export const api = {
     fetchJSON<SessionStoreStats>(appendProfileParam("/api/sessions/stats", profile)),
   exportSessionUrl: (id: string, profile = getManagementProfile()) =>
     appendProfileParam(`/api/sessions/${encodeURIComponent(id)}/export`, profile),
+  importSessions: (
+    sessions: Array<Record<string, unknown>>,
+    profile = getManagementProfile(),
+  ) =>
+    fetchJSON<SessionImportResponse>("/api/sessions/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessions, profile: profile || undefined }),
+    }),
   pruneSessions: (
     older_than_days: number,
     source?: string,
@@ -553,17 +581,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key }),
     }),
-  revealEnvVar: async (key: string) => {
-    const token = await getSessionToken();
-    return fetchJSON<{ key: string; value: string }>("/api/env/reveal", {
+  revealEnvVar: (key: string) =>
+    fetchJSON<{ key: string; value: string }>("/api/env/reveal", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        [SESSION_HEADER]: token,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key }),
-    });
-  },
+    }),
 
   // Cron jobs
   getCronJobs: (profile = "all") =>
@@ -788,58 +811,42 @@ export const api = {
   // OAuth provider management
   getOAuthProviders: () =>
     fetchJSON<OAuthProvidersResponse>("/api/providers/oauth"),
-  disconnectOAuthProvider: async (providerId: string) => {
-    const token = await getSessionToken();
-    return fetchJSON<{ ok: boolean; provider: string }>(
+  disconnectOAuthProvider: (providerId: string) =>
+    fetchJSON<{ ok: boolean; provider: string }>(
       `/api/providers/oauth/${encodeURIComponent(providerId)}`,
       {
         method: "DELETE",
-        headers: { [SESSION_HEADER]: token },
       },
-    );
-  },
-  startOAuthLogin: async (providerId: string) => {
-    const token = await getSessionToken();
-    return fetchJSON<OAuthStartResponse>(
+    ),
+  startOAuthLogin: (providerId: string) =>
+    fetchJSON<OAuthStartResponse>(
       `/api/providers/oauth/${encodeURIComponent(providerId)}/start`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          [SESSION_HEADER]: token,
-        },
+        headers: { "Content-Type": "application/json" },
         body: "{}",
       },
-    );
-  },
-  submitOAuthCode: async (providerId: string, sessionId: string, code: string) => {
-    const token = await getSessionToken();
-    return fetchJSON<OAuthSubmitResponse>(
+    ),
+  submitOAuthCode: (providerId: string, sessionId: string, code: string) =>
+    fetchJSON<OAuthSubmitResponse>(
       `/api/providers/oauth/${encodeURIComponent(providerId)}/submit`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          [SESSION_HEADER]: token,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, code }),
       },
-    );
-  },
+    ),
   pollOAuthSession: (providerId: string, sessionId: string) =>
     fetchJSON<OAuthPollResponse>(
       `/api/providers/oauth/${encodeURIComponent(providerId)}/poll/${encodeURIComponent(sessionId)}`,
     ),
-  cancelOAuthSession: async (sessionId: string) => {
-    const token = await getSessionToken();
-    return fetchJSON<{ ok: boolean }>(
+  cancelOAuthSession: (sessionId: string) =>
+    fetchJSON<{ ok: boolean }>(
       `/api/providers/oauth/sessions/${encodeURIComponent(sessionId)}`,
       {
         method: "DELETE",
-        headers: { [SESSION_HEADER]: token },
       },
-    );
-  },
+    ),
 
   // Messaging platforms (gateway channels)
   getMessagingPlatforms: () =>
@@ -925,9 +932,9 @@ export const api = {
   // Gateway / update actions
   restartGateway: () =>
     fetchJSON<ActionResponse>("/api/gateway/restart", { method: "POST" }),
-  updateHermes: () =>
+  updateKopi: () =>
     fetchJSON<ActionResponse>("/api/kopi/update", { method: "POST" }),
-  checkHermesUpdate: (force = false) =>
+  checkKopiUpdate: (force = false) =>
     fetchJSON<UpdateCheckResponse>(
       `/api/kopi/update/check${force ? "?force=true" : ""}`,
     ),
@@ -1328,6 +1335,16 @@ export interface SessionStoreStats {
   archived: number;
   messages: number;
   by_source: Record<string, number>;
+}
+
+export interface SessionImportResponse {
+  ok: boolean;
+  imported: number;
+  skipped: number;
+  detached: number;
+  imported_ids: string[];
+  skipped_ids: string[];
+  errors: Array<Record<string, unknown>>;
 }
 
 export interface SkillHubResult {
@@ -1797,7 +1814,7 @@ export interface StatusResponse {
   auth_providers?: string[];
   /** False when the dashboard is running in a hosted/managed layout where
    * updates are handled by the outer launcher instead of ``kopi update``. */
-  can_update_hermes?: boolean;
+  can_update_kopi?: boolean;
   config_path: string;
   config_version: number;
   env_path: string;

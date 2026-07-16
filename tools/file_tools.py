@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import posixpath
+import sys
 import threading
 from pathlib import Path, PurePosixPath
 
@@ -406,6 +407,17 @@ def _resolve_base_dir(
         if not posixpath.isabs(base_text):
             base_text = posixpath.join(os.getcwd(), base_text)
         return _normalize_without_host_deref(base_text)
+    # Git Bash ``pwd -P`` reports ``/c/Users/...``; translate before Path so
+    # relative file-tool paths don't anchor under a nonexistent ``\\c\\Users``.
+    from tools.environments.local import _msys_to_windows_path
+
+    base_text = _msys_to_windows_path(base_text)
+    if sys.platform == "win32":
+        import ntpath
+
+        if not ntpath.isabs(base_text):
+            base_text = ntpath.join(os.getcwd(), base_text)
+        return Path(ntpath.normpath(base_text))
     base = Path(base_text)
     if not base.is_absolute():
         # Last-resort anchoring: a live cwd should already be absolute, but if a
@@ -420,14 +432,31 @@ def _resolve_path_for_task(filepath: str, task_id: str = "default") -> Path | Pu
 
     See :func:`_resolve_base_dir` for how the base is chosen. Absolute input
     paths are returned resolved-but-unanchored.
+
+    On native Windows, Git Bash / MSYS drive paths (``/c/Users/...``) are
+    translated to ``C:\\Users\\...`` before resolution so file tools don't
+    treat them as relative ``\\c\\Users\\...`` under the process cwd.
     """
     container_paths = _uses_container_paths(task_id)
-    expanded = _expand_tilde(filepath)
     if container_paths:
+        expanded = _expand_tilde(filepath)
         if posixpath.isabs(expanded):
             return _normalize_without_host_deref(expanded)
         resolved = _resolve_base_dir(task_id, container_paths=True) / expanded
         return _normalize_without_host_deref(resolved)
+
+    # Host paths only — never rewrite Linux paths inside a container/WSL env.
+    from tools.environments.local import _msys_to_windows_path
+
+    expanded = _expand_tilde(_msys_to_windows_path(filepath))
+    if sys.platform == "win32":
+        import ntpath
+
+        if ntpath.isabs(expanded):
+            return Path(ntpath.normpath(expanded))
+        joined = ntpath.join(str(_resolve_base_dir(task_id, container_paths=False)), expanded)
+        return Path(ntpath.normpath(joined))
+
     p = Path(expanded)
     if p.is_absolute():
         return p.resolve()
@@ -614,7 +643,7 @@ _kopi_config_resolved_loaded = False
 
 
 def _get_kopi_config_resolved() -> str | None:
-    """Return the resolved absolute path of the Hermes config file (cached)."""
+    """Return the resolved absolute path of the Kopi config file (cached)."""
     global _kopi_config_resolved, _kopi_config_resolved_loaded
     if _kopi_config_resolved_loaded:
         return _kopi_config_resolved
@@ -646,14 +675,14 @@ def _check_sensitive_path(filepath: str, task_id: str = "default") -> str | None
             return _err
     if resolved in _SENSITIVE_EXACT_PATHS or normalized in _SENSITIVE_EXACT_PATHS:
         return _err
-    # Prevent agents from modifying the Hermes config file directly.
+    # Prevent agents from modifying the Kopi config file directly.
     # approvals.mode and other security settings live here; a malicious or
     # prompt-injected agent could silently disable exec approval by writing to
     # this file.
     kopi_config = _get_kopi_config_resolved()
     if kopi_config and (resolved == kopi_config or normalized == kopi_config):
         return (
-            f"Refusing to write to Hermes config file: {filepath}\n"
+            f"Refusing to write to Kopi config file: {filepath}\n"
             "Agent cannot modify security-sensitive configuration. "
             "Edit ~/.kopi/config.yaml directly or use 'kopi config' instead."
         )
@@ -661,7 +690,7 @@ def _check_sensitive_path(filepath: str, task_id: str = "default") -> str | None
 
 
 def _get_container_mirror_prefix_for_task(task_id: str = "default") -> str | None:
-    """Return the container-side Hermes mirror prefix for Docker file tools."""
+    """Return the container-side Kopi mirror prefix for Docker file tools."""
     try:
         from tools.terminal_tool import (
             _active_environments,
@@ -695,9 +724,9 @@ def _get_container_mirror_prefix_for_task(task_id: str = "default") -> str | Non
 
 
 def _check_cross_profile_path(filepath: str, task_id: str = "default") -> str | None:
-    """Return a soft-guard warning when ``filepath`` lands in another Hermes
+    """Return a soft-guard warning when ``filepath`` lands in another Kopi
     profile's scoped area, a host-side sandbox-mirror of authoritative profile
-    state, or the Docker container's sandbox mirror of Hermes state.
+    state, or the Docker container's sandbox mirror of Kopi state.
 
     Three detectors run in order:
 
@@ -706,13 +735,13 @@ def _check_cross_profile_path(filepath: str, task_id: str = "default") -> str | 
     * sandbox-mirror (#32049) — writes that hit the
       ``…/sandboxes/<backend>/<task>/home/.kopi/…`` mirror created by a
       non-local terminal backend (Docker, Daytona, etc.), where the host
-      Hermes process never reads the mirror and the authoritative file is
+      Kopi process never reads the mirror and the authoritative file is
       left untouched.
     * container-mirror (#32049 follow-up) — writes from inside a Docker
       container whose bind-mounted home strips the ``sandboxes/`` prefix, so
       the agent sees a plain ``/root/.kopi/…`` path.
 
-    Returns ``None`` when the write is in-scope or outside Hermes scope.
+    Returns ``None`` when the write is in-scope or outside Kopi scope.
     All detectors are soft guards — the agent can override any by
     passing ``cross_profile=True`` to its write tool after explicit user
     direction. Defense-in-depth, NOT a security boundary — the terminal
@@ -1261,7 +1290,7 @@ def read_file_tool(path: str, offset: int = 1, limit: int = 500, task_id: str = 
                 ),
             })
 
-        # ── Hermes internal path guard ────────────────────────────────
+        # ── Kopi internal path guard ────────────────────────────────
         # Prevent prompt injection via catalog or hub metadata files,
         # and block credential stores under KOPI_HOME.  Pass the
         # already-resolved path so a relative-path read against
@@ -1640,7 +1669,7 @@ def write_file_tool(path: str, content: str, task_id: str = "default",
                     session_id: str | None = None) -> str:
     """Write content to a file.
 
-    ``cross_profile`` opts out of the soft cross-Hermes-profile guard. The
+    ``cross_profile`` opts out of the soft cross-Kopi-profile guard. The
     guard fires only on writes that land in another profile's
     skills/plugins/cron/memories directory; everything else is unaffected.
     Pass ``True`` after explicit user direction — same shape as ``force``
@@ -1724,7 +1753,7 @@ def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
                session_id: str | None = None) -> str:
     """Patch a file using replace mode or V4A patch format.
 
-    ``cross_profile`` opts out of the soft cross-Hermes-profile guard for
+    ``cross_profile`` opts out of the soft cross-Kopi-profile guard for
     targets under another profile's skills/plugins/cron/memories
     directory. Same shape as ``write_file``'s flag.
     """
@@ -2034,7 +2063,7 @@ WRITE_FILE_SCHEMA = {
             "content": {"type": "string", "description": "Complete content to write to the file"},
             "cross_profile": {
                 "type": "boolean",
-                "description": "Opt out of the cross-profile soft guard. Defaults to false. Set true ONLY after explicit user direction to edit another Hermes profile's skills/plugins/cron/memories — by default these writes are blocked with a warning because they affect a different profile than the one this session is running under.",
+                "description": "Opt out of the cross-profile soft guard. Defaults to false. Set true ONLY after explicit user direction to edit another Kopi profile's skills/plugins/cron/memories — by default these writes are blocked with a warning because they affect a different profile than the one this session is running under.",
                 "default": False,
             },
         },
@@ -2085,7 +2114,7 @@ PATCH_SCHEMA = {
             },
             "cross_profile": {
                 "type": "boolean",
-                "description": "Opt out of the cross-profile soft guard. Defaults to false. Set true ONLY after explicit user direction to edit another Hermes profile's skills/plugins/cron/memories.",
+                "description": "Opt out of the cross-profile soft guard. Defaults to false. Set true ONLY after explicit user direction to edit another Kopi profile's skills/plugins/cron/memories.",
                 "default": False,
             },
         },

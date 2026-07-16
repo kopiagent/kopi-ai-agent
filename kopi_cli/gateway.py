@@ -595,7 +595,7 @@ def find_gateway_pids(
             profiles (the pre-7923 global behaviour).  ``kopi update``
             needs this because a code update affects every profile.
             When ``False`` (default), only PIDs belonging to the current
-            Hermes profile are returned.
+            Kopi profile are returned.
     """
     _exclude = set(exclude_pids or set())
     pids: list[int] = []
@@ -624,7 +624,7 @@ def find_gateway_pids(
 def find_profile_gateway_processes(
     exclude_pids: set | None = None,
 ) -> list[ProfileGatewayProcess]:
-    """Return running gateway PIDs mapped to Hermes profiles via PID files."""
+    """Return running gateway PIDs mapped to Kopi profiles via PID files."""
     _exclude = set(exclude_pids or set())
     processes: list[ProfileGatewayProcess] = []
     try:
@@ -938,6 +938,32 @@ def _read_systemd_unit_environment(system: bool = False) -> dict[str, str]:
     return parsed
 
 
+def _kopi_home_from_systemd_unit_file(system: bool = False) -> str | None:
+    """Read ``KOPI_HOME`` from the on-disk unit file (not ``systemctl show``).
+
+    Prefer the file when refreshing/comparing: under ``sudo``, ``systemctl``
+    may be slow/unavailable in tests, and the on-disk unit is what
+    ``systemd_unit_is_current`` / ``refresh_systemd_unit_if_needed`` already
+    compare against.
+    """
+    unit_path = get_systemd_unit_path(system=system)
+    if not unit_path.exists():
+        return None
+    try:
+        text = unit_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("Environment="):
+            continue
+        body = stripped[len("Environment=") :].strip().strip('"')
+        if body.startswith("KOPI_HOME="):
+            value = body.split("=", 1)[1].strip().strip('"')
+            return value or None
+    return None
+
+
 def _sync_kopi_home_from_systemd_unit(system: bool) -> None:
     """When acting on a system-scope unit, adopt its ``KOPI_HOME``.
 
@@ -949,8 +975,11 @@ def _sync_kopi_home_from_systemd_unit(system: bool) -> None:
     """
     if not system:
         return
-    env = _read_systemd_unit_environment(system=True)
-    unit_home = env.get("KOPI_HOME", "").strip()
+    # Prefer the on-disk unit (source of truth for refresh/compare). Fall
+    # back to ``systemctl show`` for units that only exist in the manager.
+    unit_home = (_kopi_home_from_systemd_unit_file(system=True) or "").strip()
+    if not unit_home:
+        unit_home = _read_systemd_unit_environment(system=True).get("KOPI_HOME", "").strip()
     if not unit_home:
         return
     current = os.environ.get("KOPI_HOME", "").strip()
@@ -1610,7 +1639,7 @@ def _systemd_operational(system: bool = False) -> bool:
 def _container_systemd_operational() -> bool:
     """Return True when a container exposes working user or system systemd.
 
-    This is NOT our Hermes Docker image — that one runs s6-overlay as
+    This is NOT our Kopi Docker image — that one runs s6-overlay as
     PID 1 (since Phase 2 of the s6-overlay supervision plan) and is
     detected via ``service_manager.detect_service_manager() == "s6"``.
     This function handles the "container managed by something else"
@@ -1672,7 +1701,7 @@ def _windows_gateway_should_absorb_console_controls() -> bool:
 # =============================================================================
 
 _SERVICE_BASE = "kopi-gateway"
-SERVICE_DESCRIPTION = "KOPI AI AGENT Gateway - Messaging Platform Integration"
+SERVICE_DESCRIPTION = "Kopi Agent Gateway - Messaging Platform Integration"
 
 
 def _profile_suffix() -> str:
@@ -1713,7 +1742,7 @@ def _profile_arg(kopi_home: str | None = None, default_root: str | Path | None =
         kopi_home: Optional explicit KOPI_HOME path. Defaults to the current
             ``get_kopi_home()`` value. Should be passed when generating a
             service definition for a different user (e.g. system service).
-        default_root: Optional Hermes root to compare against. Used when
+        default_root: Optional Kopi root to compare against. Used when
             generating a system service for another user from a sudo/root
             process, where ``Path.home()`` and ``get_default_kopi_root()``
             refer to root but the target profile lives under the service user.
@@ -2013,7 +2042,7 @@ def has_conflicting_systemd_units() -> bool:
     return len(get_installed_systemd_scopes()) > 1
 
 
-# Legacy service names from older Hermes installs that predate the
+# Legacy service names from older Kopi installs that predate the
 # kopi-gateway rename. Kept as an explicit allowlist (NOT a glob) so
 # profile units (kopi-gateway-*.service) and unrelated third-party
 # "kopi" units are never matched.
@@ -2043,9 +2072,9 @@ def _legacy_unit_search_paths() -> list[tuple[bool, Path]]:
 
 
 def _find_legacy_kopi_units() -> list[tuple[str, Path, bool]]:
-    """Return ``[(unit_name, unit_path, is_system)]`` for legacy Hermes gateway units.
+    """Return ``[(unit_name, unit_path, is_system)]`` for legacy Kopi gateway units.
 
-    Detects unit files installed by older Hermes versions that used a
+    Detects unit files installed by older Kopi versions that used a
     different service name (e.g. ``kopi.service`` before the rename to
     ``kopi-gateway.service``). When both a legacy unit and the current
     ``kopi-gateway.service`` are active, they fight over the same bot
@@ -2081,12 +2110,12 @@ def _find_legacy_kopi_units() -> list[tuple[str, Path, bool]]:
 
 
 def has_legacy_kopi_units() -> bool:
-    """Return True when any legacy Hermes gateway unit files exist."""
+    """Return True when any legacy Kopi gateway unit files exist."""
     return bool(_find_legacy_kopi_units())
 
 
 def print_legacy_unit_warning() -> None:
-    """Warn about legacy Hermes gateway unit files if any are installed.
+    """Warn about legacy Kopi gateway unit files if any are installed.
 
     Idempotent: prints nothing when no legacy units are detected. Safe to
     call from any status/install/setup path.
@@ -2094,7 +2123,7 @@ def print_legacy_unit_warning() -> None:
     legacy = _find_legacy_kopi_units()
     if not legacy:
         return
-    print_warning("Legacy Hermes gateway unit(s) detected from an older install:")
+    print_warning("Legacy Kopi gateway unit(s) detected from an older install:")
     for name, path, is_system in legacy:
         scope = "system" if is_system else "user"
         print_info(f"    {path}  ({scope} scope)")
@@ -2108,7 +2137,7 @@ def remove_legacy_kopi_units(
     interactive: bool = True,
     dry_run: bool = False,
 ) -> tuple[int, list[Path]]:
-    """Stop, disable, and remove legacy Hermes gateway unit files.
+    """Stop, disable, and remove legacy Kopi gateway unit files.
 
     Iterates over whatever ``_find_legacy_kopi_units()`` returns — which is
     an explicit allowlist of legacy names (not a glob). Profile units and
@@ -2126,14 +2155,14 @@ def remove_legacy_kopi_units(
     """
     legacy = _find_legacy_kopi_units()
     if not legacy:
-        print("No legacy Hermes gateway units found.")
+        print("No legacy Kopi gateway units found.")
         return 0, []
 
     user_units = [(n, p) for n, p, is_sys in legacy if not is_sys]
     system_units = [(n, p) for n, p, is_sys in legacy if is_sys]
 
     print()
-    print("Legacy Hermes gateway unit(s) found:")
+    print("Legacy Kopi gateway unit(s) found:")
     for name, path, is_system in legacy:
         scope = "system" if is_system else "user"
         print(f"  {path}  ({scope} scope)")
@@ -2421,7 +2450,7 @@ def print_systemd_linger_guidance() -> None:
 def _launchd_user_home() -> Path:
     """Return the real macOS user home for launchd artifacts.
 
-    Profile-mode Hermes often sets ``HOME`` to a profile-scoped directory, but
+    Profile-mode Kopi often sets ``HOME`` to a profile-scoped directory, but
     launchd user agents still live under the actual account home.
     """
     import pwd
@@ -2826,6 +2855,24 @@ def _normalize_launchd_plist_for_comparison(text: str) -> str:
 
 
 def systemd_unit_is_current(system: bool = False) -> bool:
+    # ── KOPI_HOME sync chokepoint ──────────────────────────────────────
+    # Every path that compares OR regenerates the unit funnels through here:
+    # ``refresh_systemd_unit_if_needed`` gates on this before rewriting, and
+    # ``systemd_status`` / ``systemd_install`` call it directly. Doing the
+    # sync here — and ONLY here — enforces the invariant "the operator's
+    # pinned KOPI_HOME is adopted before any compare/regenerate" at a single
+    # site, so a future callsite cannot regress it by forgetting to pre-sync.
+    #
+    # Under ``sudo kopi gateway … --system``, KOPI_HOME is often stripped
+    # and falls back to ``/root/.kopi``. Adopting the unit's pinned home
+    # first makes TimeoutStopSec / WorkingDirectory / KOPI_HOME comparisons
+    # use the real operator config — otherwise start/restart "refresh" rewrites
+    # a correct unit from root's defaults and ``status`` keeps warning forever.
+    # ``_sync_...`` is idempotent (early-returns once os.environ matches), so
+    # the mutation persists for callers that read runtime state after this
+    # (e.g. ``systemd_restart``'s post-refresh get_running_pid / drain-timeout).
+    _sync_kopi_home_from_systemd_unit(system=system)
+
     unit_path = get_systemd_unit_path(system=system)
     if not unit_path.exists():
         return False
@@ -2907,7 +2954,14 @@ def _refuse_temp_home_service_write(definition: str, kind: str) -> bool:
 def refresh_systemd_unit_if_needed(system: bool = False) -> bool:
     """Rewrite the installed systemd unit when the generated definition has changed."""
     unit_path = get_systemd_unit_path(system=system)
-    if not unit_path.exists() or systemd_unit_is_current(system=system):
+    if not unit_path.exists():
+        return False
+
+    # The gate below funnels through ``systemd_unit_is_current``, which is the
+    # single KOPI_HOME-sync chokepoint (adopts the unit's pinned home before
+    # any compare/regenerate). No separate pre-sync needed here — and the env
+    # mutation it performs persists for the regenerate path below.
+    if systemd_unit_is_current(system=system):
         return False
 
     expected_user = _read_systemd_user_from_unit(unit_path) if system else None
@@ -2943,7 +2997,7 @@ def refresh_systemd_unit_if_needed(system: bool = False) -> bool:
     unit_path.write_text(new_unit, encoding="utf-8")
     _run_systemctl(["daemon-reload"], system=system, check=True, timeout=30)
     print(
-        f"↻ Updated gateway {_service_scope_label(system)} service definition to match the current Hermes install"
+        f"↻ Updated gateway {_service_scope_label(system)} service definition to match the current Kopi install"
     )
     return True
 
@@ -3094,6 +3148,15 @@ def systemd_install(
     unit_path = get_systemd_unit_path(system=system)
     scope_flag = " --system" if system else ""
 
+    # Existing system units already pin KOPI_HOME; adopt it before any
+    # regenerate. This pre-sync is NOT redundant with the systemd_unit_is_current
+    # chokepoint: the ``--force`` path below skips the is_current gate and calls
+    # generate_systemd_unit() directly (line ~3172), so without this a
+    # ``sudo kopi gateway install --system --force`` would bake /root/.kopi
+    # into an already-correct unit. Keep it to protect that bypass path.
+    if unit_path.exists():
+        _sync_kopi_home_from_systemd_unit(system=system)
+
     if unit_path.exists() and not force:
         if not systemd_unit_is_current(system=system):
             print(
@@ -3184,6 +3247,9 @@ def systemd_start(system: bool = False):
         # Raises UserSystemdUnavailableError with a remediation message.
         _preflight_user_systemd()
     _require_service_installed("start", system=system)
+    # KOPI_HOME sync happens inside refresh_systemd_unit_if_needed's
+    # systemd_unit_is_current gate (the single chokepoint), and the unit is
+    # guaranteed to exist here by _require_service_installed, so the gate runs.
     refresh_systemd_unit_if_needed(system=system)
     _run_systemctl(["start", get_service_name()], system=system, check=True, timeout=30)
     print(f"✓ {_service_scope_label(system).capitalize()} service started")
@@ -3224,8 +3290,12 @@ def systemd_restart(system: bool = False):
     else:
         _preflight_user_systemd()
     _require_service_installed("restart", system=system)
+    # KOPI_HOME sync happens inside refresh_systemd_unit_if_needed's
+    # systemd_unit_is_current gate (the single chokepoint). The unit exists
+    # here (_require_service_installed), so the gate runs and its os.environ
+    # mutation persists for the get_running_pid / drain-timeout reads below —
+    # no separate pre-sync needed.
     refresh_systemd_unit_if_needed(system=system)
-    _sync_kopi_home_from_systemd_unit(system=system)
     from gateway.status import get_running_pid
 
     pid = get_running_pid() or _systemd_main_pid(system=system)
@@ -3325,8 +3395,6 @@ def systemd_status(deep: bool = False, system: bool = False, full: bool = False)
         print("✗ Gateway service is not installed")
         print(f"  Run: {'sudo ' if system else ''}kopi gateway install{scope_flag}")
         return
-
-    _sync_kopi_home_from_systemd_unit(system=system)
 
     if has_conflicting_systemd_units():
         print_systemd_scope_conflict_warning()
@@ -4045,7 +4113,7 @@ def refresh_launchd_plist_if_needed() -> bool:
             _launchd_reload_log_path(),
         )
     print(
-        "↻ Updated gateway launchd service definition to match the current Hermes install"
+        "↻ Updated gateway launchd service definition to match the current Kopi install"
     )
     return True
 
@@ -4344,14 +4412,14 @@ def launchd_status(deep: bool = False):
     # unmanageable domain).  A PID in the output confirms a live process.
     launchd_pid = _parse_launchd_pid_from_list_output(list_output) if service_listed else None
 
-    # Hermes PID tracking — may be a detached fallback process spawned when
+    # Kopi PID tracking — may be a detached fallback process spawned when
     # launchd cannot manage the domain on this host.
     from gateway.status import get_running_pid
     fallback_pid = get_running_pid(cleanup_stale=False)
 
     # Avoid double-counting: when launchd IS supervising, fallback_pid and
     # launchd_pid point at the same process (the gateway writes both the
-    # launchd PID and the Hermes PID file).
+    # launchd PID and the Kopi PID file).
     if launchd_pid is not None and fallback_pid == launchd_pid:
         fallback_pid = None
 
@@ -4363,9 +4431,9 @@ def launchd_status(deep: bool = False):
     # ── Report ──
     print(f"Launchd plist: {plist_path}")
     if launchd_plist_is_current():
-        print("✓ Service definition matches the current Hermes install")
+        print("✓ Service definition matches the current Kopi install")
     else:
-        print("⚠ Service definition is stale relative to the current Hermes install")
+        print("⚠ Service definition is stale relative to the current Kopi install")
         print("  Run: kopi gateway start")
 
     if service_listed:
@@ -4618,12 +4686,12 @@ def _guard_official_docker_root_gateway() -> None:
         return
 
     print_error(
-        "Refusing to run the Hermes gateway as root inside the official Docker image."
+        "Refusing to run the Kopi gateway as root inside the official Docker image."
     )
     print(
         "  The image entrypoint normally drops privileges to the 'kopi' user. "
         "If you override entrypoint in Docker Compose, include "
-        "/opt/kopi/docker/entrypoint.sh before the Hermes command."
+        "/opt/kopi/docker/entrypoint.sh before the Kopi command."
     )
     print(
         "  Running the gateway as root can leave root-owned files in "
@@ -4710,7 +4778,7 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False, fo
     from gateway.run import start_gateway
 
     print("┌─────────────────────────────────────────────────────────┐")
-    print("│           ⚕ Hermes Gateway Starting...                 │")
+    print("│           ⚕ Kopi Gateway Starting...                 │")
     print("├─────────────────────────────────────────────────────────┤")
     print("│  Messaging platforms + cron scheduler                    │")
     print("│  Press Ctrl+C to stop                                   │")
@@ -4835,7 +4903,7 @@ _PLATFORMS = [
         "setup_instructions": [
             "1. In Mattermost: Integrations → Bot Accounts → Add Bot Account",
             "   (System Console → Integrations → Bot Accounts must be enabled)",
-            "2. Give it a username (e.g. hermes) and copy the bot token",
+            "2. Give it a username (e.g. kopi) and copy the bot token",
             "3. Works with any self-hosted Mattermost instance — enter your server URL",
             "4. To find your user ID: click your avatar (top-left) → Profile",
             "   Your user ID is displayed there — click it to copy.",
@@ -4866,7 +4934,7 @@ _PLATFORMS = [
                 "name": "MATTERMOST_HOME_CHANNEL",
                 "prompt": "Home channel ID (for cron/notification delivery, or empty to set later with /set-home)",
                 "password": False,
-                "help": "Channel ID where Hermes delivers cron results and notifications.",
+                "help": "Channel ID where Kopi delivers cron results and notifications.",
             },
             {
                 "name": "MATTERMOST_REPLY_MODE",
@@ -4905,7 +4973,7 @@ _PLATFORMS = [
             "2. Complete the BlueBubbles setup wizard — sign in with your Apple ID",
             "3. In BlueBubbles Settings → API, note the Server URL and password",
             "4. The server URL is typically http://<your-mac-ip>:1234",
-            "5. Hermes connects via the BlueBubbles REST API and receives",
+            "5. Kopi connects via the BlueBubbles REST API and receives",
             "   incoming messages via a local webhook",
             "6. To authorize users, use DM pairing: kopi pairing generate bluebubbles",
             "   Share the code — the user sends it via iMessage to get approved",
@@ -4986,7 +5054,7 @@ _PLATFORMS = [
             "1. Download the Yuanbao app from https://yuanbao.tencent.com/",
             "2. In the app, go to PAI → My Bot and create a new bot",
             "3. After the bot is created, copy the App ID and App Secret",
-            "4. Enter them below and Hermes will connect automatically over WebSocket",
+            "4. Enter them below and Kopi will connect automatically over WebSocket",
         ],
         "vars": [
             {
@@ -5458,10 +5526,10 @@ def _setup_weixin():
     print()
     print(color("  ─── 💬 Weixin / WeChat Setup ───", Colors.CYAN))
     print()
-    print_info("  1. Hermes will open Tencent iLink QR login in this terminal.")
+    print_info("  1. Kopi will open Tencent iLink QR login in this terminal.")
     print_info("  2. Use WeChat to scan and confirm the QR code.")
     print_info(
-        "  3. Hermes will store the returned account_id/token in ~/.kopi/.env."
+        "  3. Kopi will store the returned account_id/token in ~/.kopi/.env."
     )
     print_info(
         "  4. This adapter supports native text, image, video, and document delivery."
@@ -5780,7 +5848,7 @@ def _setup_signal():
         print_info("    Docker: bbernhard/signal-cli-rest-api")
         print()
         print_info("  After installing, link your account and start the daemon:")
-        print_info('    signal-cli link -n "HermesAgent"')
+        print_info('    signal-cli link -n "KopiAgent"')
         print_info("    signal-cli --account +YOURNUMBER daemon --http 127.0.0.1:8080")
         print()
 
@@ -7053,7 +7121,7 @@ def _gateway_command_inner(args):
         _gateway_list()
 
     elif subcmd == "migrate-legacy":
-        # Stop, disable, and remove legacy Hermes gateway unit files from
+        # Stop, disable, and remove legacy Kopi gateway unit files from
         # pre-rename installs (e.g. kopi.service). Profile units and
         # unrelated third-party services are never touched.
         dry_run = getattr(args, "dry_run", False)

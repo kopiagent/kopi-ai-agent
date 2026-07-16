@@ -38,7 +38,7 @@ def test_config_migration_runs_on_boot(
         f"docker_config_migrate.py not found in image: {r.stdout}"
     )
 
-    # Verify config.yaml is owned by kopi (migration ran as hermes)
+    # Verify config.yaml is owned by kopi (migration ran as kopi)
     r = docker_exec_sh(
         container_name,
         'stat -c "%U" /opt/data/config.yaml',

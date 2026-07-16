@@ -1,4 +1,4 @@
-# Termux / Android dependency constraints for KOPI AI AGENT.
+# Termux / Android dependency constraints for Kopi Agent.
 #
 # Usage:
 #   python -m pip install -e '.[termux]' -c constraints-termux.txt

@@ -49,7 +49,7 @@ export async function refreshProfiles(): Promise<ProfileInfo[]> {
 // User-defined order for the named (non-default) profile squares in the rail.
 // Names absent from the list fall back to alphabetical, appended at the tail —
 // so a freshly created profile lands at the end until the user drags it.
-const PROFILE_ORDER_STORAGE_KEY = 'hermes.desktop.profileOrder'
+const PROFILE_ORDER_STORAGE_KEY = 'kopi.desktop.profileOrder'
 
 export const $profileOrder = atom<string[]>(storedStringArray(PROFILE_ORDER_STORAGE_KEY))
 
@@ -81,7 +81,7 @@ export function sortByProfileOrder<T extends { name: string }>(items: T[], order
 // Optional per-profile color override (long-press a rail square to pick). Absent
 // names fall back to the deterministic hue from profileColor(); a local-only
 // cosmetic preference, so single-profile users never touch it.
-const PROFILE_COLORS_STORAGE_KEY = 'hermes.desktop.profileColors'
+const PROFILE_COLORS_STORAGE_KEY = 'kopi.desktop.profileColors'
 
 export const $profileColors = atom<Record<string, string>>(storedStringRecord(PROFILE_COLORS_STORAGE_KEY))
 
@@ -278,7 +278,7 @@ export async function ensureGatewayProfile(profile: string | null | undefined): 
 
 export const ALL_PROFILES = '__all__'
 
-const SHOW_ALL_PROFILES_STORAGE_KEY = 'hermes.desktop.showAllProfiles'
+const SHOW_ALL_PROFILES_STORAGE_KEY = 'kopi.desktop.showAllProfiles'
 
 // Opt-in unified view. When false, scope follows the live gateway profile, so
 // single-profile users (who never see the switcher) are completely unaffected.

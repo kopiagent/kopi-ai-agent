@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _isolate_hermes(tmp_path, monkeypatch):
+def _isolate_kopi(tmp_path, monkeypatch):
     monkeypatch.setenv("KOPI_HOME", str(tmp_path / ".kopi"))
     (tmp_path / ".kopi").mkdir(exist_ok=True)
 

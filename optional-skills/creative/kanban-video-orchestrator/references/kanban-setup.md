@@ -1,7 +1,7 @@
 # Kanban Setup — Project Bootstrap & Profile Configuration
 
 Once the brief is locked and the team is designed, the next step is producing
-the actual `setup.sh` that creates the project workspace, configures Hermes
+the actual `setup.sh` that creates the project workspace, configures Kopi
 profiles, and fires the initial kanban task.
 
 This file documents the patterns. The companion script
@@ -11,7 +11,7 @@ JSON.
 > **Credit:** the single-project-workspace layout, profile-config patching
 > approach, SOUL.md-per-profile convention, and `--workspace dir:<path>` rule
 > are adapted from alt-glitch's original multi-agent video pipeline:
-> [Kopi Ai Agent Pte Ltd/kanban-video-pipeline](https://github.com/LINYIQ66/kanban-video-pipeline).
+> [NousResearch/kanban-video-pipeline](https://github.com/NousResearch/kanban-video-pipeline).
 > This skill generalizes those patterns across video styles and replaces the
 > string-replacement config patcher with a PyYAML-based one.
 
@@ -116,7 +116,7 @@ PY
 }
 ```
 
-PyYAML must be installed in the user's Python (it ships with most Hermes
+PyYAML must be installed in the user's Python (it ships with most Kopi
 installs). If absent: `pip install pyyaml`.
 
 The setup script should also **validate** the patch by re-reading the file
@@ -218,7 +218,7 @@ The director turns this into actual `kanban_create` calls.
 ## API-key prerequisites check
 
 Before firing the kanban, verify required keys are available. Check both
-the Hermes `.env` (`${KOPI_HOME:-$HOME/.kopi}/.env`) and macOS Keychain
+the Kopi `.env` (`${KOPI_HOME:-$HOME/.kopi}/.env`) and macOS Keychain
 (if on macOS):
 
 ```bash

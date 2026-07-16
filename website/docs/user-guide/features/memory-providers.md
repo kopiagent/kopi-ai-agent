@@ -6,7 +6,7 @@ description: "External memory provider plugins — Honcho, OpenViking, Mem0, Hin
 
 # Memory Providers
 
-KOPI AI AGENT ships with 8 external memory provider plugins that give the agent persistent, cross-session knowledge beyond the built-in MEMORY.md and USER.md. Only **one** external provider can be active at a time — the built-in memory is always active alongside it.
+Kopi Agent ships with 8 external memory provider plugins that give the agent persistent, cross-session knowledge beyond the built-in MEMORY.md and USER.md. Only **one** external provider can be active at a time — the built-in memory is always active alongside it.
 
 ## Quick Start
 
@@ -27,7 +27,7 @@ memory:
 
 ## How It Works
 
-When a memory provider is active, Hermes automatically:
+When a memory provider is active, Kopi automatically:
 
 1. **Injects provider context** into the system prompt (what the provider knows)
 2. **Prefetches relevant memories** before each turn (background, non-blocking)
@@ -70,7 +70,7 @@ kopi memory setup        # select "honcho" — runs the Honcho-specific post-set
 
 The legacy `kopi honcho setup` command still works (it now redirects to `kopi memory setup`), but is only registered after Honcho is selected as the active memory provider.
 
-**Config:** `$KOPI_HOME/honcho.json` (profile-local) or `~/.honcho/config.json` (global). Resolution order: `$KOPI_HOME/honcho.json` > `~/.kopi/honcho.json` > `~/.honcho/config.json`. See the [config reference](https://github.com/LINYIQ66/kopi-ai-agent/blob/main/plugins/memory/honcho/README.md) and the [Honcho integration guide](https://docs.honcho.dev/v3/guides/integrations/kopi).
+**Config:** `$KOPI_HOME/honcho.json` (profile-local) or `~/.honcho/config.json` (global). Resolution order: `$KOPI_HOME/honcho.json` > `~/.kopi/honcho.json` > `~/.honcho/config.json`. See the [config reference](https://github.com/NousResearch/kopi-agent/blob/main/plugins/memory/honcho/README.md) and the [Honcho integration guide](https://docs.honcho.dev/v3/guides/integrations/kopi).
 
 <details>
 <summary>Full config reference</summary>
@@ -110,11 +110,11 @@ The legacy `kopi honcho setup` command still works (it now redirects to `kopi me
 {
   "apiKey": "your-key-from-app.honcho.dev",
   "hosts": {
-    "hermes": {
+    "kopi": {
       "enabled": true,
-      "aiPeer": "hermes",
+      "aiPeer": "kopi",
       "peerName": "your-name",
-      "workspace": "hermes"
+      "workspace": "kopi"
     }
   }
 }
@@ -129,11 +129,11 @@ The legacy `kopi honcho setup` command still works (it now redirects to `kopi me
 {
   "baseUrl": "http://localhost:8000",
   "hosts": {
-    "hermes": {
+    "kopi": {
       "enabled": true,
-      "aiPeer": "hermes",
+      "aiPeer": "kopi",
       "peerName": "your-name",
-      "workspace": "hermes"
+      "workspace": "kopi"
     }
   }
 }
@@ -147,15 +147,15 @@ If you previously used `kopi honcho setup`, your config and all server-side data
 
 **Multi-peer setup:**
 
-Honcho models conversations as peers exchanging messages — one user peer plus one AI peer per Hermes profile, all sharing a workspace. The workspace is the shared environment: the user peer is global across profiles, each AI peer is its own identity. Every AI peer builds an independent representation / card from its own observations, so a `coder` profile stays code-oriented while a `writer` profile stays editorial against the same user.
+Honcho models conversations as peers exchanging messages — one user peer plus one AI peer per Kopi profile, all sharing a workspace. The workspace is the shared environment: the user peer is global across profiles, each AI peer is its own identity. Every AI peer builds an independent representation / card from its own observations, so a `coder` profile stays code-oriented while a `writer` profile stays editorial against the same user.
 
 The mapping:
 
 | Concept | What it is |
 |---------|-----------|
-| **Workspace** | Shared environment. All Hermes profiles under one workspace see the same user identity. |
+| **Workspace** | Shared environment. All Kopi profiles under one workspace see the same user identity. |
 | **User peer** (`peerName`) | The human. Shared across profiles in the workspace. |
-| **AI peer** (`aiPeer`) | One per Hermes profile. Host key `kopi` → default; `hermes.<profile>` for others. |
+| **AI peer** (`aiPeer`) | One per Kopi profile. Host key `kopi` → default; `kopi.<profile>` for others. |
 | **Observation** | Per-peer toggles controlling what Honcho models from whose messages. `directional` (default, all four on) or `unified` (single-observer pool). |
 
 ### New profile, fresh Honcho peer
@@ -164,7 +164,7 @@ The mapping:
 kopi profile create coder --clone
 ```
 
-`--clone` creates a `hermes.coder` host block in `honcho.json` with `aiPeer: "coder"`, shared `workspace`, inherited `peerName`, `recallMode`, `writeFrequency`, `observation`, etc. The AI peer is eagerly created in Honcho so it exists before the first message.
+`--clone` creates a `kopi.coder` host block in `honcho.json` with `aiPeer: "coder"`, shared `workspace`, inherited `peerName`, `recallMode`, `writeFrequency`, `observation`, etc. The AI peer is eagerly created in Honcho so it exists before the first message.
 
 ### Existing profiles, backfill Honcho peers
 
@@ -172,14 +172,14 @@ kopi profile create coder --clone
 kopi honcho sync
 ```
 
-Scans every Hermes profile, creates host blocks for any profile without one, inherits settings from the default `kopi` block, and creates the new AI peers eagerly. Idempotent — skips profiles that already have a host block.
+Scans every Kopi profile, creates host blocks for any profile without one, inherits settings from the default `kopi` block, and creates the new AI peers eagerly. Idempotent — skips profiles that already have a host block.
 
 ### Per-profile observation
 
 Each host block can override the observation config independently. Example: a code-focused profile where the AI peer observes the user but doesn't self-model:
 
 ```json
-"hermes.coder": {
+"kopi.coder": {
   "aiPeer": "coder",
   "observation": {
     "user": { "observeMe": true, "observeOthers": true },
@@ -222,13 +222,13 @@ Off-gateway these keys do nothing. `kopi memory setup` only prompts for them whe
 ```json
 {
   "apiKey": "your-key",
-  "workspace": "hermes",
+  "workspace": "kopi",
   "peerName": "eri",
   "hosts": {
-    "hermes": {
+    "kopi": {
       "enabled": true,
-      "aiPeer": "hermes",
-      "workspace": "hermes",
+      "aiPeer": "kopi",
+      "workspace": "kopi",
       "peerName": "eri",
       "recallMode": "hybrid",
       "writeFrequency": "async",
@@ -246,10 +246,10 @@ Off-gateway these keys do nothing. `kopi memory setup` only prompts for them whe
       "messageMaxChars": 25000,
       "saveMessages": true
     },
-    "hermes.coder": {
+    "kopi.coder": {
       "enabled": true,
       "aiPeer": "coder",
-      "workspace": "hermes",
+      "workspace": "kopi",
       "peerName": "eri",
       "recallMode": "tools",
       "observation": {
@@ -257,10 +257,10 @@ Off-gateway these keys do nothing. `kopi memory setup` only prompts for them whe
         "ai": { "observeMe": true, "observeOthers": true }
       }
     },
-    "hermes.writer": {
+    "kopi.writer": {
       "enabled": true,
       "aiPeer": "writer",
-      "workspace": "hermes",
+      "workspace": "kopi",
       "peerName": "eri"
     }
   },
@@ -272,7 +272,7 @@ Off-gateway these keys do nothing. `kopi memory setup` only prompts for them whe
 
 </details>
 
-See the [config reference](https://github.com/LINYIQ66/kopi-ai-agent/blob/main/plugins/memory/honcho/README.md) and [Honcho integration guide](https://docs.honcho.dev/v3/guides/integrations/kopi).
+See the [config reference](https://github.com/NousResearch/kopi-agent/blob/main/plugins/memory/honcho/README.md) and [Honcho integration guide](https://docs.honcho.dev/v3/guides/integrations/kopi).
 
 
 ---
@@ -296,7 +296,7 @@ Context database by Volcengine (ByteDance) with filesystem-style knowledge hiera
 pip install openviking
 openviking-server
 
-# Then configure Hermes
+# Then configure Kopi
 kopi memory setup    # select "openviking"
 # Or manually:
 kopi config set memory.provider openviking
@@ -311,7 +311,7 @@ echo "OPENVIKING_API_KEY=..." >> ~/.kopi/.env
 - `viking://` URI scheme for hierarchical knowledge browsing
 
 `OPENVIKING_ACCOUNT` and `OPENVIKING_USER` are used for local/trusted mode.
-`OPENVIKING_AGENT` is Hermes' peer ID in OpenViking for peer-scoped memories.
+`OPENVIKING_AGENT` is Kopi' peer ID in OpenViking for peer-scoped memories.
 
 ---
 
@@ -429,14 +429,14 @@ The setup wizard installs dependencies automatically and only installs what's ne
 | `auto_retain` | `true` | Automatically retain conversation turns |
 | `auto_recall` | `true` | Automatically recall memories before each turn |
 | `retain_async` | `true` | Process retain asynchronously on the server |
-| `retain_context` | `conversation between KOPI AI AGENT and the User` | Context label for retained memories |
+| `retain_context` | `conversation between Kopi Agent and the User` | Context label for retained memories |
 | `retain_tags` | — | Default tags applied to retained memories; merged with per-call tool tags |
 | `retain_source` | — | Optional `metadata.source` attached to retained memories |
 | `retain_user_prefix` | `User` | Label used before user turns in auto-retained transcripts |
 | `retain_assistant_prefix` | `Assistant` | Label used before assistant turns in auto-retained transcripts |
 | `recall_tags` | — | Tags to filter on recall |
 
-See [plugin README](https://github.com/LINYIQ66/kopi-ai-agent/blob/main/plugins/memory/hindsight/README.md) for the full configuration reference.
+See [plugin README](https://github.com/NousResearch/kopi-agent/blob/main/plugins/memory/hindsight/README.md) for the full configuration reference.
 
 ---
 
@@ -517,7 +517,7 @@ Persistent memory via the `brv` CLI — hierarchical knowledge tree with tiered 
 # Install the CLI first
 curl -fsSL https://byterover.dev/install.sh | sh
 
-# Then configure Hermes
+# Then configure Kopi
 kopi memory setup    # select "byterover"
 # Or manually:
 kopi config set memory.provider byterover
@@ -571,7 +571,7 @@ echo 'SUPERMEMORY_API_KEY=***' >> ~/.kopi/.env
 - Full-session ingest — the entire conversation is sent once at session boundaries
 - Session-end conversation ingest (to `/v4/conversations`) for richer profile + graph building in Supermemory
 - Profile facts injected on first turn and at configurable intervals
-- **Profile-scoped containers** — use `{identity}` in `container_tag` (e.g. `kopi-{identity}` → `kopi-coder`) to isolate memories per Hermes profile
+- **Profile-scoped containers** — use `{identity}` in `container_tag` (e.g. `kopi-{identity}` → `kopi-coder`) to isolate memories per Kopi profile
 - **Multi-container mode** — enable `enable_custom_container_tags` with a `custom_containers` list to let the agent read/write across named containers. Automatic operations stay on the primary container.
 
 <details>
@@ -579,7 +579,7 @@ echo 'SUPERMEMORY_API_KEY=***' >> ~/.kopi/.env
 
 ```json
 {
-  "container_tag": "hermes",
+  "container_tag": "kopi",
   "enable_custom_container_tags": true,
   "custom_containers": ["project-alpha", "shared-knowledge"],
   "custom_container_instructions": "Use project-alpha for coding context."

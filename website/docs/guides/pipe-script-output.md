@@ -7,7 +7,7 @@ description: "Send text from any shell script, cron job, CI hook, or monitoring 
 # Pipe Script Output to Messaging Platforms
 
 `kopi send` is a small, scriptable CLI that pushes a message to any
-messaging platform Hermes is already configured for. Think of it as a
+messaging platform Kopi is already configured for. Think of it as a
 cross-platform `curl` for notifications — you don't need a running
 gateway, you don't need an LLM, and you don't need to re-paste bot tokens
 into each of your scripts.
@@ -20,7 +20,7 @@ Use it for:
 - Quick one-shot messages from a terminal
 - Piping any tool's output anywhere (`make | kopi send --to slack:#builds`)
 
-The command reuses the same credentials and platform adapters that `hermes
+The command reuses the same credentials and platform adapters that `kopi
 gateway` already uses, so there's no second configuration surface to
 maintain.
 
@@ -76,7 +76,7 @@ kopi send --list telegram
 | `platform:#channel` | `discord:#ops` | Human-friendly channel name (resolved against the channel directory) |
 | `platform:+E164` | `signal:+15551234567` | Phone-addressed platforms: Signal, SMS, WhatsApp |
 
-Any platform Hermes ships adapters for works as a target:
+Any platform Kopi ships adapters for works as a target:
 `telegram`, `discord`, `slack`, `signal`, `sms`, `whatsapp`, `matrix`,
 `mattermost`, `feishu`, `dingtalk`, `wecom`, `weixin`, `email`, and
 others.
@@ -102,7 +102,7 @@ branch on them the same way they would on `curl` or `grep`.
 2. **`--file PATH`** — `kopi send --to telegram --file msg.txt`
 3. **Piped stdin** — `echo hi | kopi send --to telegram`
 
-When stdin is a TTY (no pipe), Hermes does **not** wait for input — you'll
+When stdin is a TTY (no pipe), Kopi does **not** wait for input — you'll
 get a clear usage error instead. This keeps scripts from hanging if they
 accidentally omit the body.
 
@@ -124,8 +124,8 @@ if [ "$ram_pct" -ge 85 ]; then
 fi
 ```
 
-Because `kopi send` reuses your Hermes config, the same script works on
-any host where Hermes is installed — no need to export bot tokens into
+Because `kopi send` reuses your Kopi config, the same script works on
+any host where Kopi is installed — no need to export bot tokens into
 each machine's environment manually.
 
 :::tip Don't alert the gateway about itself
@@ -224,7 +224,7 @@ IDs.
 
 ## Comparison with Other Approaches
 
-| Approach | Multi-platform | Reuses Hermes creds | Needs gateway | Best for |
+| Approach | Multi-platform | Reuses Kopi creds | Needs gateway | Best for |
 |----------|----------------|---------------------|---------------|----------|
 | `kopi send` | ✅ | ✅ | No (bot-token) | Everything below |
 | Raw `curl` to each platform | Each scripted separately | Manual | No | Critical watchdogs |

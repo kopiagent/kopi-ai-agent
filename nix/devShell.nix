@@ -11,7 +11,7 @@
     { pkgs, self', ... }:
     let
       packages = builtins.attrValues self'.packages;
-      hermesNpmLib = self'.packages.default.passthru.kopiNpmLib;
+      kopiNpmLib = self'.packages.default.passthru.kopiNpmLib;
 
       # Collect all packageJsonPath values from npm workspace packages.
       npmPackageJsonPaths = builtins.filter (p: p != null) (
@@ -28,21 +28,25 @@
         packages =
           with pkgs;
           [
-            (pkgs.runCommand "hermes" { } ''
+            (pkgs.runCommand "kopi" { } ''
               mkdir -p $out/bin
-              install -Dm755 ${../hermes} $out/bin/hermes
+              install -Dm755 ${../kopi} $out/bin/kopi
+            '')
+            (pkgs.runCommand "dev-sandbox" { } ''
+              mkdir -p $out/bin
+              install -Dm755 ${../scripts/dev-sandbox.sh} $out/bin/sandbox
             '')
             uv
           ]
           ++ self'.packages.default.passthru.devDeps;
         shellHook = ''
           ${combinedNonNpm}
-          ${hermesNpmLib.mkNpmDevShellHook npmPackageJsonPaths}
+          ${kopiNpmLib.mkNpmDevShellHook npmPackageJsonPaths}
 
           # for the devshell to pick up the src
           export KOPI_PYTHON_SRC_ROOT=$(git rev-parse --show-toplevel)
-          echo "KOPI AI AGENT dev shell in $KOPI_PYTHON_SRC_ROOT"
-          echo "Ready. Run 'hermes' to start."
+          echo "Kopi Agent dev shell in $KOPI_PYTHON_SRC_ROOT"
+          echo "Ready. Run 'kopi' or 'sandbox kopi' to start."
         '';
       };
     };

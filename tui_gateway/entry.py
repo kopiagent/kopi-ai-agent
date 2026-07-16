@@ -2,7 +2,7 @@ import os
 import sys
 
 # Stop a ``utils/`` (or ``proxy/``, ``ui/``) package in the launch directory
-# from shadowing Hermes's own top-level modules.  ``kopi_bootstrap`` lives at
+# from shadowing Kopi's own top-level modules.  ``kopi_bootstrap`` lives at
 # the repo root next to this package, so importing it is safe before the guard
 # runs (its name won't collide with a user package), and it owns the canonical
 # path-hardening logic shared with the other entry points.
@@ -296,7 +296,7 @@ def main():
     # MCP tool discovery — runs in a background daemon thread so a slow or
     # unreachable MCP server can't freeze TUI startup.  Previously this ran
     # inline before ``gateway.ready``, which meant any configured-but-down
-    # server stalled the whole shell on "summoning hermes…" for the full
+    # server stalled the whole shell on "summoning kopi…" for the full
     # connect-retry backoff (e.g. a dead stdio/http server burns 1+2+4s of
     # retries → ~7s of dead air before the composer appears).  Discovery is
     # idempotent and registers tools into the shared registry as servers

@@ -1,29 +1,29 @@
 ---
 name: kopi-s6-container-supervision
-description: Modify, debug, or extend the s6-overlay supervision tree inside the KOPI AI AGENT Docker image — adding new services, debugging profile gateways, understanding the Architecture B main-program pattern.
+description: Modify, debug, or extend the s6-overlay supervision tree inside the Kopi Agent Docker image — adding new services, debugging profile gateways, understanding the Architecture B main-program pattern.
 version: 1.0.0
-author: KOPI AI AGENT
+author: Kopi Agent
 license: MIT
 platforms: [linux]
 environments: [s6]
 metadata:
-  hermes:
+  kopi:
     tags: [docker, s6, supervision, gateway, profiles]
-    related_skills: [kopi-ai-agent, kopi-ai-agent-dev]
+    related_skills: [kopi-agent, kopi-agent-dev]
 ---
 
-# Hermes s6-overlay Container Supervision
+# Kopi s6-overlay Container Supervision
 
 ## When to use this skill
 
 Load this skill when you're working on:
-- Adding or removing a static service in the Hermes Docker image (something that should be supervised at every container start, like the dashboard)
+- Adding or removing a static service in the Kopi Docker image (something that should be supervised at every container start, like the dashboard)
 - Diagnosing why a per-profile gateway isn't starting, restarting, or surviving `docker restart`
 - Understanding why the container's CMD is `/opt/kopi/docker/main-wrapper.sh` and how leading-dash args reach the user's program
 - Modifying `cont-init.d` boot scripts (UID remap, volume seeding, profile reconciliation)
 - Changing the rendered run-script for per-profile gateways (Phase 4)
 
-If you're just running the KOPI AI AGENT and want to use Docker, see `website/docs/user-guide/docker.md` instead.
+If you're just running the Kopi Agent and want to use Docker, see `website/docs/user-guide/docker.md` instead.
 
 ## Architecture at a glance
 
@@ -123,7 +123,7 @@ docker exec <c> tail -n 50 /opt/data/logs/container-boot.log
 ### Add a new static service
 
 1. Create `docker/s6-rc.d/<name>/type` with `longrun\n` and `docker/s6-rc.d/<name>/run` (use `#!/command/with-contenv sh` + `# shellcheck shell=sh`).
-2. Drop to kopi via `s6-setuidgid hermes` at the top of run (unless you specifically need root).
+2. Drop to kopi via `s6-setuidgid kopi` at the top of run (unless you specifically need root).
 3. Create empty `docker/s6-rc.d/<name>/dependencies.d/base` so it waits for the base bundle.
 4. Create empty `docker/s6-rc.d/user/contents.d/<name>` so it joins the user bundle.
 5. The `COPY docker/s6-rc.d/` in the Dockerfile picks it up automatically — no other changes.
@@ -135,8 +135,8 @@ Edit `S6ServiceManager._render_run_script` in `kopi_cli/service_manager.py`. The
 ### Run the docker test harness
 
 ```sh
-docker build -t kopi-ai-agent-harness:latest .
-KOPI_TEST_IMAGE=kopi-ai-agent-harness:latest scripts/run_tests.sh tests/docker/ -v
+docker build -t kopi-agent-harness:latest .
+KOPI_TEST_IMAGE=kopi-agent-harness:latest scripts/run_tests.sh tests/docker/ -v
 # Expect 19 passed, 0 xfailed against the s6 image
 ```
 
@@ -150,11 +150,11 @@ The harness lives in `tests/docker/` and skips when Docker isn't available. The 
 
 ### Profile directory ownership
 
-The cont-init reconciler runs as kopi (`s6-setuidgid hermes` in `02-reconcile-profiles`). If a profile dir ends up root-owned (e.g. because `docker exec <c> kopi profile create …` ran as root by default), the reconciler can't read SOUL.md and fails with `PermissionError`. Mitigation: `stage2-hook.sh` chowns `$KOPI_HOME/profiles` to kopi on **every** boot, idempotently. Don't remove that block.
+The cont-init reconciler runs as kopi (`s6-setuidgid kopi` in `02-reconcile-profiles`). If a profile dir ends up root-owned (e.g. because `docker exec <c> kopi profile create …` ran as root by default), the reconciler can't read SOUL.md and fails with `PermissionError`. Mitigation: `stage2-hook.sh` chowns `$KOPI_HOME/profiles` to kopi on **every** boot, idempotently. Don't remove that block.
 
 ### Files written by `docker exec` are root-owned
 
-`docker exec` defaults to root. Either pass `--user hermes` or rely on the stage2 chown sweep next reboot. Don't write files under `$KOPI_HOME/profiles/<name>/` as root manually — the next reconcile pass will sweep them but in-flight operations may hit perm errors.
+`docker exec` defaults to root. Either pass `--user kopi` or rely on the stage2 chown sweep next reboot. Don't write files under `$KOPI_HOME/profiles/<name>/` as root manually — the next reconcile pass will sweep them but in-flight operations may hit perm errors.
 
 ### Service slot exists but s6-svstat says "s6-supervise not running"
 
@@ -174,5 +174,5 @@ Check whether something is invoking `s6-svscanctl -t` or `/run/s6/basedir/bin/ha
 
 ## Related skills
 
-- `kopi-ai-agent-dev`: General kopi-ai-agent codebase navigation
-- `kopi-tool-quirks`: Specific Hermes-tool workarounds (sed/grep/etc.) — load when debugging the s6 stack's interaction with kopi built-in tools.
+- `kopi-agent-dev`: General kopi-agent codebase navigation
+- `kopi-tool-quirks`: Specific Kopi-tool workarounds (sed/grep/etc.) — load when debugging the s6 stack's interaction with kopi built-in tools.

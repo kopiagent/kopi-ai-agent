@@ -48,7 +48,7 @@ export interface OAuthProviderStatus {
 export interface OAuthProvider {
   cli_command: string
   /** Shell command that clears an external provider's credentials, run in the
-   *  embedded terminal. Null when Hermes doesn't know how to remove it. */
+   *  embedded terminal. Null when Kopi doesn't know how to remove it. */
   disconnect_command?: null | string
   disconnect_hint?: null | string
   disconnectable?: boolean
@@ -200,7 +200,7 @@ export interface GatewayReadyPayload {
   skin?: unknown
 }
 
-export interface HermesConfig {
+export interface KopiConfig {
   agent?: {
     reasoning_effort?: string
     personalities?: Record<string, unknown>
@@ -222,7 +222,7 @@ export interface HermesConfig {
   }
 }
 
-export type HermesConfigRecord = Record<string, unknown>
+export type KopiConfigRecord = Record<string, unknown>
 
 export interface ModelInfoResponse {
   auto_context_length?: number
@@ -303,6 +303,7 @@ export interface PaginatedSessions {
 
 export interface RpcEvent<T = unknown> {
   payload?: T
+  profile?: string
   session_id?: string
   type: string
 }
@@ -393,6 +394,7 @@ export interface SessionResumeResponse {
 }
 
 export interface SessionRuntimeInfo {
+  approval_mode?: 'manual' | 'off' | 'smart'
   branch?: string
   config_warning?: string
   credential_warning?: string
@@ -556,6 +558,7 @@ export interface CronJob {
   last_run_at?: null | string
   name?: null | string
   next_run_at?: null | string
+  no_agent?: boolean
   prompt?: null | string
   schedule?: CronJobSchedule
   schedule_display?: null | string
@@ -651,7 +654,7 @@ export interface SkillInfo {
   name: string
   /** Total observed activity (use + view + patch). Absent on older backends. */
   usage?: number
-  /** 'agent' = learned/local (editable), 'bundled' = ships with Hermes, 'hub' = installed. */
+  /** 'agent' = learned/local (editable), 'bundled' = ships with Kopi, 'hub' = installed. */
   provenance?: 'agent' | 'bundled' | 'hub'
 }
 
@@ -717,7 +720,7 @@ export interface ToolsetModelsResponse {
  *  cua-driver runs on macOS, Windows, and Linux. `ready` is the single OS-aware
  *  readiness signal: on macOS both TCC grants (Accessibility + Screen
  *  Recording, which attach to cua-driver's own `com.trycua.driver` identity,
- *  not Hermes); elsewhere, driver health from `cua-driver doctor`. `null`
+ *  not Kopi); elsewhere, driver health from `cua-driver doctor`. `null`
  *  means unknown (binary missing / probe failed). */
 export interface ComputerUsePermissionSource {
   attribution?: string

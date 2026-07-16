@@ -19,7 +19,7 @@ from gateway.status import (
 
 ACCEPT = [
     "pythonw.exe -m kopi_cli.main gateway run",
-    r"C:\Users\me\hermes\venv\Scripts\pythonw.exe -m kopi_cli.main gateway run",
+    r"C:\Users\me\kopi\venv\Scripts\pythonw.exe -m kopi_cli.main gateway run",
     "python -m kopi_cli.main --profile work gateway run",
     "python -m kopi_cli.main gateway run --replace",
     "python -m kopi_cli/main.py gateway run",
@@ -36,8 +36,8 @@ ACCEPT = [
     "kopi -p gateway gateway run",
     "python -m kopi_cli.main --profile gateway gateway run",
     # quoted Windows paths with spaces (shlex-aware tokenization)
-    r'"C:\Program Files\Hermes\kopi-gateway.exe"',
-    r'"C:\Program Files\Hermes\gateway\run.py" run',
+    r'"C:\Program Files\Kopi\kopi-gateway.exe"',
+    r'"C:\Program Files\Kopi\gateway\run.py" run',
     r'"C:\Program Files\Py\pythonw.exe" -m kopi_cli.main gateway run',
 ]
 

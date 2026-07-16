@@ -218,7 +218,7 @@ def build_gateway_parser(
         "migrate-legacy",
         help="Remove legacy kopi.service units from pre-rename installs",
         description=(
-            "Stop, disable, and remove legacy Hermes gateway unit files "
+            "Stop, disable, and remove legacy Kopi gateway unit files "
             "(e.g. kopi.service) left over from older installs. Profile "
             "units (kopi-gateway-<profile>.service) and unrelated "
             "third-party services are never touched."

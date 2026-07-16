@@ -831,6 +831,70 @@ def test_load_pool_does_not_persist_env_seeded_secret_value(tmp_path, monkeypatc
     assert persisted["secret_fingerprint"].startswith("sha256:")
 
 
+def test_load_pool_collapses_duplicate_env_rows_to_active_key(tmp_path, monkeypatch):
+    """One env source is one credential, even if auth.json contains stale duplicates."""
+    key = "sk-or-active-main-key"
+    monkeypatch.setenv("KOPI_HOME", str(tmp_path / "kopi"))
+    monkeypatch.setenv("OPENROUTER_API_KEY", key)
+    _write_auth_store(
+        tmp_path,
+        {
+            "version": 1,
+            "credential_pool": {
+                "openrouter": [
+                    {
+                        "id": "current-row",
+                        "label": "OPENROUTER_API_KEY",
+                        "auth_type": "api_key",
+                        "priority": 0,
+                        "source": "env:OPENROUTER_API_KEY",
+                    },
+                    {
+                        "id": "stale-duplicate",
+                        "label": "OPENROUTER_API_KEY",
+                        "auth_type": "api_key",
+                        "priority": 1,
+                        "source": "env:OPENROUTER_API_KEY",
+                    },
+                ]
+            },
+        },
+    )
+
+    from agent.credential_pool import load_pool
+
+    pool = load_pool("openrouter")
+
+    assert [(entry.id, entry.runtime_api_key) for entry in pool.entries()] == [
+        ("current-row", key)
+    ]
+    persisted = json.loads((tmp_path / "kopi" / "auth.json").read_text())
+    assert [entry["id"] for entry in persisted["credential_pool"]["openrouter"]] == [
+        "current-row"
+    ]
+
+
+def test_credential_pool_never_selects_empty_borrowed_entry():
+    from agent.credential_pool import CredentialPool, PooledCredential
+
+    pool = CredentialPool(
+        "openrouter",
+        [
+            PooledCredential(
+                provider="openrouter",
+                id="metadata-only",
+                label="OPENROUTER_API_KEY",
+                auth_type="api_key",
+                priority=0,
+                source="env:OPENROUTER_API_KEY",
+                access_token="",
+            )
+        ],
+    )
+
+    assert pool.select() is None
+    assert pool.acquire_lease() is None
+
 
 def test_load_pool_persists_bitwarden_origin_metadata_without_secret(tmp_path, monkeypatch):
     """Bitwarden-injected env vars retain source metadata but not raw values."""
@@ -1669,7 +1733,7 @@ def test_load_pool_api_key_path_skips_oauth_autodiscovery(tmp_path, monkeypatch)
     ANTHROPIC_TOKEN.  That env-var pattern is the explicit signal that the
     user opted into the API-key path and explicitly OUT of the OAuth
     masquerade (Claude Code identity injection + `mcp_` tool-name rewrite
-    + claude-cli user-agent).  Autodiscovered Claude Code / Hermes PKCE
+    + claude-cli user-agent).  Autodiscovered Claude Code / Kopi PKCE
     tokens from other tools' credential files must NOT be silently mixed
     into the anthropic pool — otherwise rotation on a 401/429 could flip
     the session onto OAuth credentials mid-conversation.
@@ -3050,6 +3114,11 @@ def test_codex_oauth_nonterminal_refresh_does_not_quarantine(tmp_path, monkeypat
 def test_persist_preserves_concurrent_disk_only_entry(tmp_path, monkeypatch):
     """Regression for #19566: stale rotation writes keep concurrent entries."""
     monkeypatch.setenv("KOPI_HOME", str(tmp_path / "kopi"))
+    # Block external-credential autodiscovery: a real ~/.claude/.credentials.json
+    # on a dev machine would seed an extra claude_code entry and break the
+    # exact-id assertions below (passes on CI where no such file exists).
+    monkeypatch.setattr("agent.anthropic_adapter.read_kopi_oauth_credentials", lambda: None)
+    monkeypatch.setattr("agent.anthropic_adapter.read_claude_code_credentials", lambda: None)
     _write_auth_store(
         tmp_path,
         {
@@ -3111,6 +3180,9 @@ def test_persist_preserves_concurrent_disk_only_entry(tmp_path, monkeypatch):
 
 def test_remove_index_does_not_resurrect_via_disk_merge(tmp_path, monkeypatch):
     monkeypatch.setenv("KOPI_HOME", str(tmp_path / "kopi"))
+    # Block external-credential autodiscovery (see note in the test above).
+    monkeypatch.setattr("agent.anthropic_adapter.read_kopi_oauth_credentials", lambda: None)
+    monkeypatch.setattr("agent.anthropic_adapter.read_claude_code_credentials", lambda: None)
     _write_auth_store(
         tmp_path,
         {

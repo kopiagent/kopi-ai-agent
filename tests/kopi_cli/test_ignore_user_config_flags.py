@@ -2,7 +2,7 @@
 
 Ported from openai/codex#18646 (`feat: add --ignore-user-config and --ignore-rules`).
 Codex's flags fully isolate a run from user-level config and exec-policy .rules
-files. In Hermes the equivalent isolation is:
+files. In Kopi the equivalent isolation is:
 
 * ``--ignore-user-config`` → skip ``~/.kopi/config.yaml`` in ``load_cli_config()``
   (credentials in ``.env`` are still loaded).
@@ -11,7 +11,7 @@ files. In Hermes the equivalent isolation is:
   skip_memory=True)``).
 
 Both flags are wired via env vars so they work cleanly across the
-argparse → cmd_chat → cli.main() → HermesCLI → AIAgent call chain.
+argparse → cmd_chat → cli.main() → KopiCLI → AIAgent call chain.
 """
 
 from __future__ import annotations
@@ -48,6 +48,12 @@ class TestIgnoreUserConfigEnvGate:
     """
 
     def _write_user_config(self, tmp_path, model_default):
+        # NOTE: the model value is a sentinel that can never appear in a real
+        # config. With KOPI_IGNORE_USER_CONFIG=1, load_cli_config() falls
+        # back to the repo-root ``cli-config.yaml`` (untracked, gitignored) —
+        # on a dev machine that file can legitimately set the same popular
+        # model this test previously used ("anthropic/claude-sonnet-4.6"),
+        # making the != assertion flip locally while passing on CI.
         config_yaml = textwrap.dedent(
             f"""
             model:
@@ -66,13 +72,13 @@ class TestIgnoreUserConfigEnvGate:
         return cli.load_cli_config
 
     def test_user_config_loaded_when_flag_unset(self, tmp_path, monkeypatch):
-        self._write_user_config(tmp_path, "anthropic/claude-sonnet-4.6")
+        self._write_user_config(tmp_path, "test-vendor/ignore-user-config-sentinel")
         load_cli_config = self._reload_cli(monkeypatch, tmp_path)
 
         cfg = load_cli_config()
 
         # User config value wins
-        assert cfg["model"]["default"] == "anthropic/claude-sonnet-4.6"
+        assert cfg["model"]["default"] == "test-vendor/ignore-user-config-sentinel"
         assert cfg["agent"]["system_prompt"] == "from user config"
 
     def test_user_config_skipped_when_flag_set(self, tmp_path, monkeypatch):
@@ -81,7 +87,7 @@ class TestIgnoreUserConfigEnvGate:
         The built-in default ``model.default`` is empty string (no user override),
         and the user's ``agent.system_prompt`` is not seen.
         """
-        self._write_user_config(tmp_path, "anthropic/claude-sonnet-4.6")
+        self._write_user_config(tmp_path, "test-vendor/ignore-user-config-sentinel")
         monkeypatch.setenv("KOPI_IGNORE_USER_CONFIG", "1")
 
         load_cli_config = self._reload_cli(monkeypatch, tmp_path)
@@ -93,41 +99,41 @@ class TestIgnoreUserConfigEnvGate:
         # User-set model.default MUST NOT leak through — either the built-in
         # default ("" or unset) or a project-level fallback, but never the
         # user's value
-        assert cfg["model"].get("default", "") != "anthropic/claude-sonnet-4.6"
+        assert cfg["model"].get("default", "") != "test-vendor/ignore-user-config-sentinel"
 
     def test_flag_ignored_when_set_to_other_value(self, tmp_path, monkeypatch):
         """Only the literal value "1" activates the bypass, matching the yolo pattern."""
-        self._write_user_config(tmp_path, "anthropic/claude-sonnet-4.6")
+        self._write_user_config(tmp_path, "test-vendor/ignore-user-config-sentinel")
         monkeypatch.setenv("KOPI_IGNORE_USER_CONFIG", "true")  # not "1"
 
         load_cli_config = self._reload_cli(monkeypatch, tmp_path)
         cfg = load_cli_config()
 
         # "true" != "1", so user config IS loaded
-        assert cfg["model"]["default"] == "anthropic/claude-sonnet-4.6"
+        assert cfg["model"]["default"] == "test-vendor/ignore-user-config-sentinel"
 
 
 class TestIgnoreRulesEnvGate:
-    """The constructor / env var must propagate to ``HermesCLI.ignore_rules``
+    """The constructor / env var must propagate to ``KopiCLI.ignore_rules``
     so ``AIAgent`` is built with ``skip_context_files=True`` and
     ``skip_memory=True``.
     """
 
     def test_env_var_enables_ignore_rules(self, monkeypatch):
-        """Setting KOPI_IGNORE_RULES=1 flips HermesCLI.ignore_rules True."""
+        """Setting KOPI_IGNORE_RULES=1 flips KopiCLI.ignore_rules True."""
         monkeypatch.setenv("KOPI_IGNORE_RULES", "1")
 
-        # Import HermesCLI lazily — cli.py has heavy module-init side effects
+        # Import KopiCLI lazily — cli.py has heavy module-init side effects
         # that we don't want to run at test collection time.
         import cli
         importlib.reload(cli)
 
-        # Build only enough of HermesCLI to reach the ignore_rules assignment.
+        # Build only enough of KopiCLI to reach the ignore_rules assignment.
         # The full __init__ pulls in provider/auth/session DB, so we cheat:
         # create the object via object.__new__ and manually run the assignment
         # the same way the real constructor does.
-        obj = object.__new__(cli.HermesCLI)
-        # Replicate the exact logic from cli.py HermesCLI.__init__:
+        obj = object.__new__(cli.KopiCLI)
+        # Replicate the exact logic from cli.py KopiCLI.__init__:
         ignore_rules = False  # constructor default
         obj.ignore_rules = ignore_rules or os.environ.get("KOPI_IGNORE_RULES") == "1"
 
@@ -136,7 +142,7 @@ class TestIgnoreRulesEnvGate:
     def test_constructor_flag_alone_enables_ignore_rules(self, monkeypatch):
         monkeypatch.delenv("KOPI_IGNORE_RULES", raising=False)
         import cli
-        obj = object.__new__(cli.HermesCLI)
+        obj = object.__new__(cli.KopiCLI)
         ignore_rules = True  # constructor argument
         obj.ignore_rules = ignore_rules or os.environ.get("KOPI_IGNORE_RULES") == "1"
         assert obj.ignore_rules is True
@@ -144,7 +150,7 @@ class TestIgnoreRulesEnvGate:
     def test_neither_flag_nor_env_leaves_rules_enabled(self, monkeypatch):
         monkeypatch.delenv("KOPI_IGNORE_RULES", raising=False)
         import cli
-        obj = object.__new__(cli.HermesCLI)
+        obj = object.__new__(cli.KopiCLI)
         ignore_rules = False
         obj.ignore_rules = ignore_rules or os.environ.get("KOPI_IGNORE_RULES") == "1"
         assert obj.ignore_rules is False

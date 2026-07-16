@@ -1,4 +1,4 @@
-"""``kopi logs`` — view and filter Hermes log files.
+"""``kopi logs`` — view and filter Kopi log files.
 
 Supports tailing, following, session filtering, level filtering,
 component filtering, and relative time ranges.  All log files live
@@ -179,7 +179,7 @@ def tail_log(
     log_path = get_kopi_home() / "logs" / filename
     if not log_path.exists():
         print(f"Log file not found: {log_path}")
-        print("(Logs are created when Hermes runs — try 'kopi chat' first)")
+        print("(Logs are created when Kopi runs — try 'kopi chat' first)")
         sys.exit(1)
 
     # Parse --since into a datetime cutoff

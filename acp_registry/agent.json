@@ -1,11 +1,11 @@
 {
   "id": "kopi-ai-agent",
-  "name": "KOPI AI AGENT",
+  "name": "Kopi Agent",
   "version": "0.18.2",
-  "description": "Self-improving open-source AI agent by Kopi Ai Agent Pte Ltd with ACP editor integration, persistent memory, skills, and rich tool support.",
-  "repository": "https://github.com/LINYIQ66/kopi-ai-agent",
-  "website": "https://kopiaiagent.com/docs/user-guide/features/acp",
-  "authors": ["Kopi Ai Agent Pte Ltd"],
+  "description": "Self-improving open-source AI agent by Nous Research with ACP editor integration, persistent memory, skills, and rich tool support.",
+  "repository": "https://github.com/NousResearch/kopi-ai-agent",
+  "website": "https://kopi-ai-agent.nousresearch.com/docs/user-guide/features/acp",
+  "authors": ["Nous Research"],
   "license": "MIT",
   "distribution": {
     "uvx": {

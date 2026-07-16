@@ -273,7 +273,7 @@ _detached_ws_transport = _DropTransport()
 
 
 class _SlashWorker:
-    """Persistent HermesCLI subprocess for slash commands."""
+    """Persistent KopiCLI subprocess for slash commands."""
 
     def __init__(self, session_key: str, model: str, profile_home: str | None = None):
         self._lock = threading.Lock()
@@ -294,7 +294,7 @@ class _SlashWorker:
         self._closed = False
         from kopi_cli._subprocess_compat import windows_hide_flags
 
-        # slash_worker runs the Hermes agent → needs provider credentials.
+        # slash_worker runs the Kopi agent → needs provider credentials.
         # Tier-1 secrets (gateway/GitHub/infra) are still stripped (#29157).
         env = kopi_subprocess_env(inherit_credentials=True)
         if profile_home:
@@ -568,24 +568,21 @@ def _finalize_session(session: dict | None, end_reason: str = "tui_close") -> No
         history = list(session.get("history", []))
 
     # ── Persist unflushed messages to SQLite ──────────────────────────
-    # Two sources, tried in order of freshness:
-    #   1. agent._session_messages — set by the last _persist_session()
-    #      call inside run_conversation().  This is the most recent
-    #      snapshot the agent thread wrote, and may include partial
-    #      turn data that hasn't reached session["history"] yet.
-    #   2. session["history"] — updated after run_conversation()
-    #      returns.  Stale when the agent is mid‑turn, but correct
-    #      when the turn completed before finalize.
-    # Best‑effort — the agent thread may still be mid‑turn, so only
-    # previously completed messages are guaranteed.
+    # Flush ``agent._session_messages`` via ``_persist_session``'s marker-based
+    # dedup (same contract as the gateway-shutdown flush, #13121). Do NOT pass
+    # ``conversation_history``: ``session["history"]`` and ``_session_messages``
+    # alias the SAME list once a turn completes, so passing it made
+    # ``_flush_messages_to_session_db`` treat every message as already-durable
+    # and skip it — a data-loss bug when finalize is the sole persist path after
+    # a WS disconnect/restart (e.g. the in-turn flush hit a transient SQLite
+    # failure). Markers persist the genuinely-unflushed tail without duplicating
+    # durable rows (including a resumed-but-not-run session's already-in-DB
+    # transcript, which stays in ``session["history"]`` only).
     if agent is not None and hasattr(agent, "_persist_session"):
-        snapshot = (
-            getattr(agent, "_session_messages", None)
-            or history
-        )
+        snapshot = getattr(agent, "_session_messages", None)
         if snapshot:
             try:
-                agent._persist_session(snapshot, conversation_history=history)
+                agent._persist_session(snapshot)
             except Exception:
                 pass
 
@@ -1155,6 +1152,13 @@ def _emit_approval_request(sid: str, data: dict | None) -> None:
     platforms and the SSE/API stream fixed in #50767). Reuse the shared gateway
     seam so all approval transports redact consistently."""
     payload = dict(data or {})
+    if "choices" not in payload:
+        if payload.get("smart_denied"):
+            payload["choices"] = ["once", "deny"]
+        elif payload.get("allow_permanent") is False:
+            payload["choices"] = ["once", "session", "deny"]
+        elif "allow_permanent" in payload:
+            payload["choices"] = ["once", "session", "always", "deny"]
     if "command" in payload:
         from gateway.run import _redact_approval_command
 
@@ -1862,7 +1866,10 @@ def _persist_session_git_meta(session: dict, cwd: str) -> None:
 
 
 def _set_session_cwd(session: dict, cwd: str) -> str:
-    resolved = os.path.abspath(os.path.expanduser(str(cwd)))
+    from kopi_constants import translate_cwd_for_wsl_backend
+
+    cwd = translate_cwd_for_wsl_backend(str(cwd))
+    resolved = os.path.abspath(os.path.expanduser(cwd))
     if not os.path.isdir(resolved):
         raise ValueError(f"working directory does not exist: {cwd}")
     session["cwd"] = resolved
@@ -2038,15 +2045,26 @@ def _block(event: str, sid: str, payload: dict, timeout: int = 300) -> str:
         _pending[rid] = (sid, ev)
         payload["request_id"] = rid
         _pending_prompt_payloads[rid] = (event, dict(payload))
+    answered = False
+    answer = ""
+    answer_present = False
     try:
         _emit(event, sid, payload)
-        ev.wait(timeout=timeout)
+        answered = ev.wait(timeout=timeout)
     finally:
         with _prompt_lock:
             _pending.pop(rid, None)
             _pending_prompt_payloads.pop(rid, None)
-    with _prompt_lock:
-        return _answers.pop(rid, "")
+            answer_present = rid in _answers
+            answer = _answers.pop(rid, "")
+
+    if not answered and not answer_present and event in {"secret.request", "sudo.request"}:
+        _emit(
+            f"{event.removesuffix('.request')}.expire",
+            sid,
+            {"request_id": rid},
+        )
+    return answer
 
 
 def _clear_pending(sid: str | None = None) -> None:
@@ -2475,6 +2493,19 @@ def _write_config_key(key_path: str, value):
 
 
 _STATUSBAR_MODES = frozenset({"off", "top", "bottom"})
+_APPROVAL_MODES = frozenset({"manual", "smart", "off"})
+
+
+def _load_approval_mode() -> str:
+    from kopi_cli.config import DEFAULT_CONFIG, _deep_merge
+    from tools.approval import _normalize_approval_mode
+
+    raw_cfg = _load_cfg()
+    cfg = _deep_merge(DEFAULT_CONFIG, raw_cfg if isinstance(raw_cfg, dict) else {})
+    approvals = cfg.get("approvals")
+    raw = approvals.get("mode") if isinstance(approvals, dict) else None
+    mode = _normalize_approval_mode(raw)
+    return mode if mode in _APPROVAL_MODES else "manual"
 
 
 def _coerce_statusbar(raw) -> str:
@@ -2531,15 +2562,17 @@ def _display_mouse_tracking(display: dict) -> str:
     return "all"
 
 
-def _load_reasoning_config() -> dict | None:
-    from kopi_constants import parse_reasoning_effort
+def _load_reasoning_config(model: str = "") -> dict | None:
+    """Load reasoning effort from config.yaml, respecting per-model overrides.
 
-    # Pass the raw value through — ``or ""`` would coerce a YAML boolean
-    # False (``reasoning_effort: false``/``off``/``no``) to "", silently
-    # re-enabling thinking for users who explicitly turned it off.
-    return parse_reasoning_effort(
-        (_load_cfg().get("agent") or {}).get("reasoning_effort", "")
-    )
+    Thin wrapper over the shared chokepoint
+    :func:`kopi_constants.resolve_reasoning_config` (per-model override >
+    global ``agent.reasoning_effort``; YAML boolean False = disabled).
+    Closes #21256.
+    """
+    from kopi_constants import resolve_reasoning_config
+
+    return resolve_reasoning_config(_load_cfg(), model)
 
 
 def _load_service_tier() -> str | None:
@@ -2613,7 +2646,7 @@ def _load_enabled_toolsets() -> list[str] | None:
     cfg = None
     fallback_notice = None
 
-    # Coding posture (base Hermes): with no explicit pin, collapse to the
+    # Coding posture (base Kopi): with no explicit pin, collapse to the
     # coding toolset (+ enabled MCP servers) when sitting in a code workspace.
     # The desktop app and `kopi --tui` both land here. See
     # agent/coding_context.py. No config is loaded yet at this point, so we let
@@ -3310,7 +3343,8 @@ def _current_profile_name() -> str:
 # checkout), surfacing a one-click "update to align" prompt instead of failing
 # cryptically downstream. Bump whenever the desktop's backend contract changes.
 # v2: adds the file.attach RPC (remote-gateway non-image file upload).
-DESKTOP_BACKEND_CONTRACT = 2
+# v3: adds approvals.mode config RPCs and session.info reconciliation.
+DESKTOP_BACKEND_CONTRACT = 3
 
 
 def _session_info(agent, session: dict | None = None) -> dict:
@@ -3344,17 +3378,15 @@ def _session_info(agent, session: dict | None = None) -> dict:
     # the desktop status bar (it would show YOLO "off" while approvals.mode=off
     # silently auto-approves every dangerous command).
     yolo = False
+    approval_mode = "manual"
     try:
-        from tools.approval import (
-            _YOLO_MODE_FROZEN,
-            _get_approval_mode,
-            is_session_yolo_enabled,
-        )
+        from tools.approval import _YOLO_MODE_FROZEN, is_session_yolo_enabled
 
         session_yolo = (
             bool(is_session_yolo_enabled(session_key)) if session_key else False
         )
-        yolo = bool(_YOLO_MODE_FROZEN) or session_yolo or _get_approval_mode() == "off"
+        approval_mode = _load_approval_mode()
+        yolo = bool(_YOLO_MODE_FROZEN) or session_yolo or approval_mode == "off"
     except Exception:
         yolo = False
     info: dict = {
@@ -3364,6 +3396,7 @@ def _session_info(agent, session: dict | None = None) -> dict:
         "service_tier": service_tier,
         "fast": service_tier == "priority",
         "yolo": yolo,
+        "approval_mode": approval_mode,
         "tools": {},
         "skills": {},
         "cwd": cwd,
@@ -3669,6 +3702,19 @@ def _on_tool_progress(
         # the stable tool id and args. Emitting another id-less progress row
         # here makes the desktop live view diverge from hydrated history.
         return
+    if event_type == "tool.output_risk" and name:
+        metadata = _kwargs.get("risk_metadata")
+        if not isinstance(metadata, dict):
+            return
+        payload: dict[str, object] = {
+            "tool_id": str(_kwargs.get("tool_call_id") or ""),
+            "name": str(name),
+            "risk": str(metadata.get("risk") or "low"),
+            "findings": [str(item) for item in metadata.get("findings", [])],
+            "redacted": bool(metadata.get("redacted", False)),
+        }
+        _emit("tool.output_risk", sid, payload)
+        return
     if event_type == "reasoning.available" and preview:
         payload: dict[str, object] = {"text": str(preview)}
         if _session_verbose(sid):
@@ -3860,6 +3906,9 @@ def _agent_cbs(sid: str) -> dict:
         "tool_gen_callback": lambda name: _tool_progress_enabled(sid)
         and _emit("tool.generating", sid, {"name": name}),
         "thinking_callback": lambda text: _emit("thinking.delta", sid, {"text": text}),
+        # Affection reaction (ily / <3 / good bot) → hearts. Core-detected, so
+        # the TUI heart and desktop floating hearts share one signal.
+        "reaction_callback": lambda kind: _emit("reaction", sid, {"kind": kind}),
         "reasoning_callback": lambda text: _emit(
             "reasoning.delta",
             sid,
@@ -4116,7 +4165,7 @@ def _load_fallback_model():
     """Return the configured fallback chain for TUI-created agents.
 
     Delegates to the shared ``get_fallback_chain`` helper so the TUI path
-    stays in parity with ``HermesCLI.__init__`` and ``gateway/run.py``:
+    stays in parity with ``KopiCLI.__init__`` and ``gateway/run.py``:
     ``fallback_providers`` is the primary source of truth and keeps its
     order, with legacy ``fallback_model`` entries merged in afterwards
     (deduped on provider/model/base_url).
@@ -4164,7 +4213,7 @@ def _background_agent_kwargs(agent, task_id: str) -> dict:
         "openrouter_min_coding_score": getattr(agent, "openrouter_min_coding_score", None),
         "session_id": task_id,
         "reasoning_config": getattr(agent, "reasoning_config", None)
-        or _load_reasoning_config(),
+        or _load_reasoning_config(str(getattr(agent, "model", "") or "")),
         "service_tier": getattr(agent, "service_tier", None) or _load_service_tier(),
         "request_overrides": dict(getattr(agent, "request_overrides", {}) or {}),
         "platform": "tui",
@@ -4593,7 +4642,7 @@ def _make_agent(
         reasoning_config=(
             reasoning_config_override
             if reasoning_config_override is not None
-            else _load_reasoning_config()
+            else _load_reasoning_config(str(model or ""))
         ),
         service_tier=(
             service_tier_override
@@ -6679,7 +6728,7 @@ def _pet_active_selection():
 def _pet_state_rows(spritesheet) -> list[str]:
     """Row taxonomy for the concrete active pet sheet.
 
-    Hermes has to support both the legacy 8-row petdex atlas and the current
+    Kopi has to support both the legacy 8-row petdex atlas and the current
     Codex/petdex 9-row atlas. The desktop canvas gets this list and indexes it
     with the same `PetState` names the Python renderer uses.
     """
@@ -7780,7 +7829,7 @@ def _(rid, params: dict) -> dict:
     provider = getattr(agent, "provider", None) or "unknown"
     model = getattr(agent, "model", None) or "(unknown)"
     lines = [
-        "Hermes TUI Status",
+        "Kopi TUI Status",
         "",
         f"Session ID: {key}",
         f"Path: {display_kopi_home()}",
@@ -7954,7 +8003,7 @@ def _(rid, params: dict) -> dict:
         return err
 
     agent = session["agent"]
-    # Mirror the classic CLI /save: snapshot under the Hermes profile home
+    # Mirror the classic CLI /save: snapshot under the Kopi profile home
     # (~/.kopi/sessions/saved/) rather than the project/workspace CWD, and
     # include the system prompt so the export matches the dashboard save.
     saved_dir = get_kopi_home() / "sessions" / "saved"
@@ -8746,10 +8795,18 @@ def _notification_poller_loop(
             continue
 
         rid = f"__notif__{int(time.time() * 1000)}"
+        from tools.async_delegation import (
+            claim_event_delivery, complete_event_delivery, release_event_delivery,
+        )
+        _claim = claim_event_delivery(evt, "tui-poller")
+        if _claim is None:
+            continue
         try:
             _emit("message.start", sid)
             _run_prompt_submit(rid, sid, session, text)
+            complete_event_delivery(evt, _claim)
         except Exception as exc:
+            release_event_delivery(evt, _claim)
             print(
                 f"[tui_gateway] notification poller dispatch failed: "
                 f"{type(exc).__name__}: {exc}",
@@ -8798,10 +8855,18 @@ def _notification_poller_loop(
             session["running"] = True
 
         rid = f"__notif__{int(time.time() * 1000)}"
+        from tools.async_delegation import (
+            claim_event_delivery, complete_event_delivery, release_event_delivery,
+        )
+        _claim = claim_event_delivery(evt, "tui-poller")
+        if _claim is None:
+            continue
         try:
             _emit("message.start", sid)
             _run_prompt_submit(rid, sid, session, text)
+            complete_event_delivery(evt, _claim)
         except Exception as exc:
+            release_event_delivery(evt, _claim)
             print(
                 f"[tui_gateway] notification poller dispatch failed: "
                 f"{type(exc).__name__}: {exc}",
@@ -9351,10 +9416,18 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                         process_registry.completion_queue.put(_evt)
                         break
                     session["running"] = True
+                from tools.async_delegation import (
+                    claim_event_delivery, complete_event_delivery, release_event_delivery,
+                )
+                _claim = claim_event_delivery(_evt, "tui-post-turn")
+                if _claim is None:
+                    continue
                 try:
                     _emit("message.start", sid)
                     _run_prompt_submit(rid, sid, session, synth)
+                    complete_event_delivery(_evt, _claim)
                 except Exception as _n_exc:
+                    release_event_delivery(_evt, _claim)
                     print(
                         f"[tui_gateway] completion notification dispatch failed: "
                         f"{type(_n_exc).__name__}: {_n_exc}",
@@ -10066,14 +10139,14 @@ def _(rid, params: dict) -> dict:
                 if has_history
                 else None
             ),
-            "Restart exactly the app intended for the Preview URL, not Hermes Desktop itself.",
+            "Restart exactly the app intended for the Preview URL, not Kopi Desktop itself.",
             "The Preview URL and port are the target. Preserve that target unless you conclude it is impossible.",
             "If the prior conversation shows a specific command that bound this URL/port, prefer re-running THAT exact command (in the same cwd) over guessing a new one.",
-            "First inspect what process, if any, owns the Preview URL port. If a stale server exists, inspect its cwd and prefer that cwd over the Hermes/Desktop process cwd.",
+            "First inspect what process, if any, owns the Preview URL port. If a stale server exists, inspect its cwd and prefer that cwd over the Kopi/Desktop process cwd.",
             "The Current working directory is only a hint. Do not assume it is the preview app root when the port owner or files indicate another root.",
             "If the console shows a module-script MIME error for src/main.tsx or similar, a static server is serving source files. Do not restart python -m http.server or any dumb static server for that app.",
             "For module-script MIME failures, inspect package.json/vite config in the candidate app root and start the real dev server/bundler (for example npm/pnpm/yarn dev) so module transforms happen.",
-            "Before declaring success, verify the Preview URL responds with the intended app, not Hermes Desktop. If it serves Hermes/Desktop UI or another unrelated app, stop that process and report failure.",
+            "Before declaring success, verify the Preview URL responds with the intended app, not Kopi Desktop. If it serves Kopi/Desktop UI or another unrelated app, stop that process and report failure.",
             "Do not modify files. Do not ask the user unless blocked.",
             "Prefer existing project scripts or commands when they are clear.",
             "If a stale process owns the needed port, handle it safely.",
@@ -10150,11 +10223,13 @@ def _(rid, params: dict) -> dict:
 # ── Methods: respond ─────────────────────────────────────────────────
 
 
-def _respond(rid, params, key):
+def _respond(rid, params, key, *, allow_expired=False):
     r = params.get("request_id", "")
     with _prompt_lock:
         entry = _pending.get(r)
         if not entry:
+            if allow_expired and r:
+                return _ok(rid, {"status": "expired"})
             return _err(rid, 4009, f"no pending {key} request")
         _, ev = entry
         _answers[r] = params.get(key, "")
@@ -10175,12 +10250,12 @@ def _(rid, params: dict) -> dict:
 
 @method("sudo.respond")
 def _(rid, params: dict) -> dict:
-    return _respond(rid, params, "password")
+    return _respond(rid, params, "password", allow_expired=True)
 
 
 @method("secret.respond")
 def _(rid, params: dict) -> dict:
-    return _respond(rid, params, "value")
+    return _respond(rid, params, "value", allow_expired=True)
 
 
 @method("approval.respond")
@@ -10369,6 +10444,22 @@ def _(rid, params: dict) -> dict:
             if agent is not None:
                 agent.verbose_logging = nv == "verbose"
         return _ok(rid, {"key": key, "value": nv})
+
+    if key in {"approval_mode", "approvals.mode"}:
+        raw = str(value or "").strip().lower()
+        if raw not in _APPROVAL_MODES:
+            return _err(
+                rid,
+                4002,
+                f"unknown approval mode: {value}; pick one of manual|smart|off",
+            )
+
+        _write_config_key("approvals.mode", raw)
+        for sid, sess in list(_sessions.items()):
+            agent = sess.get("agent")
+            if agent is not None:
+                _emit("session.info", sid, _session_info(agent, sess))
+        return _ok(rid, {"key": "approvals.mode", "value": raw})
 
     if key == "yolo":
         # Approval bypass. Two scopes:
@@ -10907,6 +10998,25 @@ def _is_repo_junk(root: str) -> bool:
     return real == home or real == kopi_home or real.startswith(kopi_home + os.sep)
 
 
+def _is_session_cwd_junk(cwd: str) -> bool:
+    """A non-git cwd that should stay in flat Recents rather than auto-group.
+
+    Unlike discovered git roots, an explicitly selected descendant of
+    KOPI_HOME may be an intentional prose/data workspace. The pre-Projects
+    desktop surfaced every such cwd, so exclude only the two broad defaults
+    that would create catch-all projects.
+    """
+    if not cwd:
+        return True
+
+    from kopi_constants import get_kopi_home
+
+    real = os.path.normcase(os.path.realpath(cwd))
+    home = os.path.normcase(os.path.realpath(os.path.expanduser("~")))
+    kopi_home = os.path.normcase(os.path.realpath(str(get_kopi_home())))
+    return real == home or real == kopi_home
+
+
 def _discover_repos_payload(db, *, conn=None, backfill: bool = True) -> list[dict]:
     """Merge filesystem-scanned repos (cached) with session-derived repo roots.
 
@@ -11108,6 +11218,7 @@ def _build_project_tree(
         preview_limit=preview_limit,
         hydrate=hydrate,
         is_junk_root=_is_repo_junk,
+        is_junk_cwd=_is_session_cwd_junk,
     )
     return tree, active_id
 
@@ -11263,6 +11374,11 @@ def _(rid, params: dict) -> dict:
         )
     if key == "busy":
         return _ok(rid, {"value": _load_busy_input_mode()})
+    if key in {"approval_mode", "approvals.mode"}:
+        try:
+            return _ok(rid, {"value": _load_approval_mode()})
+        except Exception as e:
+            return _err(rid, 5001, str(e))
     if key == "details_mode":
         allowed_dm = frozenset({"hidden", "collapsed", "expanded"})
         raw = (
@@ -11361,7 +11477,7 @@ def _(rid, params: dict) -> dict:
                     "provider": provider,
                     "model": runtime.get("model"),
                     "source": source,
-                    "error": "No Hermes provider is configured.",
+                    "error": "No Kopi provider is configured.",
                 },
             )
 
@@ -11854,6 +11970,52 @@ def _(rid, params: dict) -> dict:
         pass
 
     try:
+        from agent.skill_bundles import (
+            build_bundle_invocation_message,
+            get_skill_bundles,
+            resolve_bundle_command_key,
+        )
+
+        from kopi_cli.commands import resolve_command
+
+        bundle_key = (
+            resolve_bundle_command_key(name)
+            if resolve_command(name) is None
+            else None
+        )
+    except Exception:
+        bundle_key = None
+
+    if bundle_key is not None:
+        try:
+            bundle_result = build_bundle_invocation_message(
+                bundle_key,
+                arg,
+                task_id=session.get("session_key", "") if session else "",
+                platform=_resolve_session_platform(),
+            )
+        except Exception as exc:
+            return _err(rid, 4018, f"bundle dispatch failed: {exc}")
+
+        if not bundle_result:
+            return _err(rid, 4018, f"failed to load bundle: {bundle_key}")
+
+        msg, loaded_names, missing = bundle_result
+        bundle_info = get_skill_bundles().get(bundle_key, {})
+        bundle_name = bundle_info.get("name", bundle_key.lstrip("/"))
+        notice = f"⚡ Loading bundle: {bundle_name} ({len(loaded_names)} skills)"
+        if missing:
+            notice += f"\nSkipped missing skills: {', '.join(missing)}"
+        return _ok(
+            rid,
+            {
+                "type": "send",
+                "message": msg,
+                "notice": notice,
+            },
+        )
+
+    try:
         from agent.skill_commands import (
             scan_skill_commands,
             build_skill_invocation_message,
@@ -12264,7 +12426,7 @@ def _(rid, params: dict) -> dict:
         except Exception as exc:
             return _err(rid, 5009, f"compress failed: {exc}")
 
-    return _err(rid, 4018, f"not a quick/plugin/skill command: {name}")
+    return _err(rid, 4018, f"not a quick/plugin/bundle/skill command: {name}")
 
 
 # ── Methods: paste ────────────────────────────────────────────────────
@@ -13056,10 +13218,11 @@ def _(rid, params: dict) -> dict:
     if not cmd:
         return _err(rid, 4004, "empty command")
 
-    # Skill slash commands and _pending_input commands must NOT go through the
-    # slash worker — see _PENDING_INPUT_COMMANDS definition above. Plugin
-    # commands must also avoid the worker, but unlike skills/pending-input they
-    # still return normal slash.exec output so the TUI keeps the pager path.
+    # Skill and bundle slash commands plus _pending_input commands must NOT go
+    # through the slash worker — see _PENDING_INPUT_COMMANDS definition above.
+    # Plugin commands must also avoid the worker, but unlike skills and
+    # pending-input commands they still return normal slash.exec output so the
+    # TUI keeps the pager path.
     _cmd_text = cmd.lstrip("/") if cmd.startswith("/") else cmd
     _cmd_parts = _cmd_text.split(maxsplit=1)
     _cmd_base = (_cmd_parts[0] if _cmd_parts else "").lower()
@@ -13086,6 +13249,27 @@ def _(rid, params: dict) -> dict:
                 4018,
                 "snapshot restore mutates live config/state; use command.dispatch for /snapshot restore",
             )
+
+    try:
+        from agent.skill_bundles import resolve_bundle_command_key
+        from kopi_cli.commands import resolve_command
+
+        _bundle_key = (
+            resolve_bundle_command_key(_cmd_base)
+            if resolve_command(_cmd_base) is None
+            else None
+        )
+        if _bundle_key is not None:
+            return _methods["command.dispatch"](
+                rid,
+                {
+                    "name": _bundle_key.lstrip("/"),
+                    "arg": _cmd_arg,
+                    "session_id": params.get("session_id", ""),
+                },
+            )
+    except Exception:
+        pass
 
     try:
         from agent.skill_commands import get_skill_commands

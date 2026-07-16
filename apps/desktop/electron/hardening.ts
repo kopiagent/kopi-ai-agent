@@ -40,7 +40,7 @@ function encryptDesktopSecret(value, safeStorageApi) {
 
   if (!encryptionAvailable) {
     throw new Error(
-      'Secure token storage is unavailable, so Hermes Desktop cannot save remote gateway tokens. ' +
+      'Secure token storage is unavailable, so Kopi Desktop cannot save remote gateway tokens. ' +
         'Set KOPI_DESKTOP_REMOTE_URL and KOPI_DESKTOP_REMOTE_TOKEN in your environment, or enable OS keychain access and try again.'
     )
   }
@@ -112,6 +112,7 @@ function sensitiveFileBlockReason(filePath) {
 
 function ipcPathError(code: any, message: string): Error & { code: any } {
   const error = new Error(message) as Error & { code: any }
+
   ;(error as any).code = code
 
   return error

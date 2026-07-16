@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type * as HermesApi from '@/kopi'
+import type * as KopiApi from '@/kopi'
 import { queryClient } from '@/lib/query-client'
 
 const getSkills = vi.fn()
@@ -19,7 +19,7 @@ const getUsageAnalytics = vi.fn()
 // whose import-time subscription calls setApiRequestProfile) and stub only the
 // calls we assert on.
 vi.mock('@/kopi', async importOriginal => ({
-  ...(await importOriginal<typeof HermesApi>()),
+  ...(await importOriginal<typeof KopiApi>()),
   getSkills: () => getSkills(),
   getToolsets: () => getToolsets(),
   toggleSkill: (name: string, enabled: boolean) => toggleSkill(name, enabled),
@@ -48,9 +48,11 @@ function toolset(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function renderSkills() {
-  return import('./index').then(({ SkillsView }) =>
-    render(
+async function renderSkills() {
+  const { SkillsView } = await import('./index')
+  let result: ReturnType<typeof render>
+  await act(async () => {
+    result = render(
       // SkillsView reads skills/toolsets via useQuery, so it needs a provider.
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={['/skills?tab=toolsets']}>
@@ -58,7 +60,9 @@ function renderSkills() {
         </MemoryRouter>
       </QueryClientProvider>
     )
-  )
+  })
+
+  return result!
 }
 
 beforeEach(() => {
@@ -83,7 +87,9 @@ describe('SkillsView toolset management', () => {
     const sw = await screen.findByRole('switch', { name: 'Toggle Web Search toolset' })
     expect(sw.getAttribute('aria-checked')).toBe('true')
 
-    fireEvent.click(sw)
+    await act(async () => {
+      fireEvent.click(sw)
+    })
 
     await waitFor(() => expect(toggleToolset).toHaveBeenCalledWith('web', false))
   })

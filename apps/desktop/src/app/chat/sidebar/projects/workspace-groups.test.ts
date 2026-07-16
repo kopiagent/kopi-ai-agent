@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { HermesGitWorktree } from '@/global'
+import type { KopiGitWorktree } from '@/global'
 import type { ProjectInfo, SessionInfo } from '@/types/kopi'
 
 import {
@@ -111,7 +111,7 @@ describe('mergeRepoWorktreeGroups (visual enhancer)', () => {
       groups: [lane({ id: '/repo::branch::main', label: 'main', isMain: true, path: '/repo' })]
     }
 
-    const discovered: HermesGitWorktree[] = [
+    const discovered: KopiGitWorktree[] = [
       { branch: 'feature', detached: false, isMain: false, locked: false, path: '/repo-wt-feature' }
     ]
 
@@ -129,7 +129,7 @@ describe('mergeRepoWorktreeGroups (visual enhancer)', () => {
       groups: [lane({ id: '/repo::branch::main', label: 'main', isMain: true, path: '/repo' })]
     }
 
-    const discovered: HermesGitWorktree[] = [
+    const discovered: KopiGitWorktree[] = [
       { branch: 'wt/t_aaaaaaaa', detached: false, isMain: false, locked: false, path: '/repo/.worktrees/t_aaaaaaaa' },
       { branch: 'wt/t_bbbbbbbb', detached: false, isMain: false, locked: false, path: '/repo/.worktrees/t_bbbbbbbb' }
     ]
@@ -152,7 +152,7 @@ describe('mergeRepoWorktreeGroups (visual enhancer)', () => {
       ]
     }
 
-    const discovered: HermesGitWorktree[] = [
+    const discovered: KopiGitWorktree[] = [
       { branch: 'main', detached: false, isMain: true, locked: false, path: '/repo' }
     ]
 
@@ -176,7 +176,7 @@ describe('mergeRepoWorktreeGroups (visual enhancer)', () => {
       lane({ id: '/repo::branch::main', label: 'main', isMain: true, path: '/repo', sessions: [makeSession('/repo')] })
     ]
 
-    const discovered: HermesGitWorktree[] = [
+    const discovered: KopiGitWorktree[] = [
       { branch: 'main', detached: false, isMain: false, locked: false, path: '/repo/.worktrees/main-mirror' }
     ]
 
@@ -186,7 +186,7 @@ describe('mergeRepoWorktreeGroups (visual enhancer)', () => {
   })
 
   it('surfaces a user-named "New worktree" under .worktrees/ as its own lane', () => {
-    const discovered: HermesGitWorktree[] = [
+    const discovered: KopiGitWorktree[] = [
       {
         branch: 'kopi/test-gui-stuff',
         detached: false,
@@ -225,7 +225,7 @@ describe('mergeRepoWorktreeGroups (visual enhancer)', () => {
       ]
     }
 
-    const discovered: HermesGitWorktree[] = [
+    const discovered: KopiGitWorktree[] = [
       { branch: 'main', detached: false, isMain: true, locked: false, path: '/repo' },
       { branch: 'bb/ci-affected-only', detached: false, isMain: false, locked: false, path: '/repo-ci' }
     ]
@@ -259,7 +259,7 @@ describe('mergeRepoWorktreeGroups (visual enhancer)', () => {
     }
 
     // git now has `bb/attempts` at a sibling dir, not the stale `.worktrees` one.
-    const discovered: HermesGitWorktree[] = [
+    const discovered: KopiGitWorktree[] = [
       { branch: 'bb/attempts', detached: false, isMain: false, locked: false, path: '/repo-pr-attempts' }
     ]
 
@@ -293,7 +293,7 @@ describe('mergeRepoWorktreeGroups (visual enhancer)', () => {
       ]
     }
 
-    const discovered: HermesGitWorktree[] = [
+    const discovered: KopiGitWorktree[] = [
       { branch: 'bb/feature', detached: false, isMain: false, locked: false, path: '/repo-feature' }
     ]
 
@@ -314,7 +314,7 @@ describe('mergeRepoWorktreeGroups (visual enhancer)', () => {
       ]
     }
 
-    const discovered: HermesGitWorktree[] = [
+    const discovered: KopiGitWorktree[] = [
       { branch: null, detached: true, isMain: false, locked: false, path: '/repo-ci' }
     ]
 
@@ -339,7 +339,7 @@ describe('mergeRepoWorktreeGroups (visual enhancer)', () => {
     // The repo root is switched to a feature branch. The historical "main"
     // sessions fold into ONE home lane labeled by the live branch — no stale
     // "main" lane lingering beside it.
-    const discovered: HermesGitWorktree[] = [
+    const discovered: KopiGitWorktree[] = [
       { branch: 'some-feature', detached: false, isMain: true, locked: false, path: '/repo' }
     ]
 
@@ -368,7 +368,7 @@ describe('mergeRepoWorktreeGroups (visual enhancer)', () => {
       ]
     }
 
-    const discovered: HermesGitWorktree[] = [
+    const discovered: KopiGitWorktree[] = [
       { branch: 'main', detached: false, isMain: true, locked: false, path: '/repo' }
     ]
 
@@ -400,7 +400,7 @@ describe('mergeRepoWorktreeGroups (visual enhancer)', () => {
       ]
     }
 
-    const discovered: HermesGitWorktree[] = [
+    const discovered: KopiGitWorktree[] = [
       { branch: 'bb/live', detached: false, isMain: true, locked: false, path: '/repo' }
     ]
 
@@ -493,6 +493,29 @@ describe('liveSessionProjectId', () => {
     ])
 
     expect(id).toBe('p_app')
+  })
+
+  it('matches a mixed-case/separator Windows cwd to its explicit project in the live overlay', () => {
+    // The bug: a fresh Windows session drops into the overlay before the next
+    // backend refresh; case-sensitive matching missed its project until then.
+    const id = liveSessionProjectId(makeSession('c:/work/notes/SUB'), [makeProject('p_notes', ['C:\\Work\\Notes'])])
+
+    expect(id).toBe('p_notes')
+  })
+
+  it('matches a root-relative WSL cwd (single backslash) case-insensitively', () => {
+    const id = liveSessionProjectId(makeSession('//wsl.localhost/Ubuntu/home/alice/PROJ'), [
+      makeProject('p_proj', ['\\wsl.localhost\\Ubuntu\\home\\alice\\proj'])
+    ])
+
+    expect(id).toBe('p_proj')
+  })
+
+  it('keeps POSIX cwd matching case-sensitive (no false project match)', () => {
+    // Distinct case on POSIX is a distinct path → falls back to its own auto id.
+    expect(liveSessionProjectId(makeSession('/work/notes'), [makeProject('p_notes', ['/Work/Notes'])])).toBe(
+      '/work/notes'
+    )
   })
 })
 

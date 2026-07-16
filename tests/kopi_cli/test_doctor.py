@@ -858,10 +858,24 @@ def test_run_doctor_opencode_go_skips_invalid_models_probe(monkeypatch, tmp_path
 class TestGitHubTokenCheck:
     """Tests for GitHub token / gh auth detection in doctor."""
 
+    @staticmethod
+    def _isolate_home(monkeypatch, home):
+        """Point doctor at the temp KOPI_HOME.
+
+        ``run_doctor`` reads the module-level ``KOPI_HOME`` constant (cached
+        at import time), NOT the env var — so ``setenv("KOPI_HOME")`` alone
+        leaves doctor probing the REAL ~/.kopi. On a dev machine with a
+        large state.db that meant a multi-minute ``PRAGMA integrity_check``
+        that blew the 300s per-file budget and killed the whole file.
+        """
+        monkeypatch.setattr(doctor_mod, "KOPI_HOME", home)
+        monkeypatch.setattr(doctor_mod, "_DHH", str(home))
+        monkeypatch.setenv("KOPI_HOME", str(home))
+
     def test_no_token_and_not_gh_authenticated_shows_warn(self, monkeypatch, tmp_path):
         home = tmp_path / ".kopi"
         home.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setenv("KOPI_HOME", str(home))
+        self._isolate_home(monkeypatch, home)
         monkeypatch.setenv("PATH", "/nonexistent")  # gh not found
 
         from kopi_cli.doctor import run_doctor
@@ -878,7 +892,7 @@ class TestGitHubTokenCheck:
     def test_token_env_present_shows_ok(self, monkeypatch, tmp_path):
         home = tmp_path / ".kopi"
         home.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setenv("KOPI_HOME", str(home))
+        self._isolate_home(monkeypatch, home)
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_test123")
         monkeypatch.setenv("PATH", "/nonexistent")  # gh not found
 
@@ -895,7 +909,7 @@ class TestGitHubTokenCheck:
     def test_gh_authenticated_without_env_token_shows_ok(self, monkeypatch, tmp_path):
         home = tmp_path / ".kopi"
         home.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setenv("KOPI_HOME", str(home))
+        self._isolate_home(monkeypatch, home)
         # No GITHUB_TOKEN or GH_TOKEN
         monkeypatch.delenv("GITHUB_TOKEN", raising=False)
         monkeypatch.delenv("GH_TOKEN", raising=False)
@@ -1470,7 +1484,7 @@ def test_npm_audit_fix_hint_avoids_crashing_workspace_flag(monkeypatch, tmp_path
     assert "npm audit fix" not in out
     # ... and explains the workspace advisories are build-time tooling whose
     # manual remediation may hit a known npm arborist crash, so the user isn't
-    # left thinking a crashing command means a broken Hermes install.
+    # left thinking a crashing command means a broken Kopi install.
     assert "build-time tooling" in out
     assert "known npm bug" in out
     assert "lockfile bump" in out

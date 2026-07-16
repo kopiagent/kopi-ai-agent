@@ -472,7 +472,7 @@ def _register_service(scandir: Path, profile: str, *, start: bool) -> None:
         # BEFORE we publish the slot. Mirrors the same pre-creation
         # step in S6ServiceManager.register_profile_gateway — when
         # s6-svscan picks the published slot up, the s6-supervise it
-        # spawns will EEXIST our dirs/FIFOs and inherit hermes
+        # spawns will EEXIST our dirs/FIFOs and inherit kopi
         # ownership, so runtime s6-svc / s6-svstat / s6-svwait calls
         # (all dispatched as the kopi user) won't hit EACCES. See
         # ``_seed_supervise_skeleton`` in service_manager.py for the

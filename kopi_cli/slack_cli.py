@@ -27,25 +27,33 @@ def _build_full_manifest(
     bot_name: str,
     bot_description: str,
     include_assistant: bool = True,
+    messaging_experience: str | None = None,
 ) -> dict:
     """Build a full Slack manifest merging display info + our slash list.
 
     The slash-command list is always generated from ``COMMAND_REGISTRY`` so
-    it stays in sync with the rest of Hermes. Other manifest sections
+    it stays in sync with the rest of Kopi. Other manifest sections
     (display info, OAuth scopes, socket mode) are set to sensible defaults
-    for a Hermes deployment — users can tweak them in the Slack UI after
+    for a Kopi deployment — users can tweak them in the Slack UI after
     pasting.
 
-    When ``include_assistant`` is True (default) the manifest opts the app
-    into Slack's AI Assistant container: the ``assistant_view`` feature, the
-    ``assistant:write`` scope, and the ``assistant_thread_*`` events. Slack
-    then renders DMs as the right-hand Assistant split-pane, where every
-    exchange is a thread and bare slash commands are not delivered as normal
-    ``command`` events. Pass ``include_assistant=False`` (``--no-assistant``)
-    to omit those three pieces and get a flat DM surface where ``/help``,
-    ``/new``, etc. work inline.
+    By default, this keeps Kopi on Slack's older Assistant messaging
+    experience (``assistant_view``) for backward compatibility. Pass
+    ``messaging_experience="agent"`` (``--agent-view``) to emit Slack's Agent
+    messaging experience (``agent_view`` + ``app_home_opened``). Pass
+    ``include_assistant=False`` or ``messaging_experience="none"``
+    (``--no-assistant``) to omit Slack AI messaging features and get a flat DM
+    surface where ``/help``, ``/new``, etc. work inline.
     """
     from kopi_cli.commands import slack_app_manifest
+
+    if messaging_experience is None:
+        messaging_experience = "assistant" if include_assistant else "none"
+    messaging_experience = str(messaging_experience).strip().lower()
+    if messaging_experience not in {"assistant", "agent", "none"}:
+        raise ValueError(
+            "messaging_experience must be one of: assistant, agent, none"
+        )
 
     partial = slack_app_manifest()
     slashes = partial["features"]["slash_commands"]
@@ -89,9 +97,9 @@ def _build_full_manifest(
         "message.mpim",
     ]
 
-    if include_assistant:
+    if messaging_experience == "assistant":
         features["assistant_view"] = {
-            "assistant_description": "Chat with Hermes in threads and DMs.",
+            "assistant_description": "Chat with Kopi in threads and DMs.",
         }
         bot_scopes.append("assistant:write")
         bot_events.extend(
@@ -100,8 +108,18 @@ def _build_full_manifest(
                 "assistant_thread_started",
             ]
         )
-        bot_scopes.sort()
-        bot_events.sort()
+    elif messaging_experience == "agent":
+        features["agent_view"] = {
+            "agent_description": "Chat with Kopi in Slack Messages.",
+        }
+        bot_scopes.append("assistant:write")
+        # Slack includes current viewing context in Agent DM events only after
+        # this subscription is enabled; the adapter consumes that context to
+        # preserve the referred channel across the agent turn.
+        bot_events.extend(["app_context_changed", "app_home_opened"])
+
+    bot_scopes.sort()
+    bot_events.sort()
 
     return {
         "_metadata": {
@@ -110,7 +128,7 @@ def _build_full_manifest(
         },
         "display_information": {
             "name": bot_name[:35],
-            "description": (bot_description or "Your Hermes agent on Slack")[:140],
+            "description": (bot_description or "Your Kopi agent on Slack")[:140],
             "background_color": "#1a1a2e",
         },
         "features": features,
@@ -139,7 +157,7 @@ def slack_manifest_command(args) -> int:
     Flags (all parsed in ``kopi_cli/main.py``):
       --write [PATH]  Write to file instead of stdout (default path:
                       ``$KOPI_HOME/slack-manifest.json``)
-      --name NAME     Override the bot display name (default: "Hermes")
+      --name NAME     Override the bot display name (default: "Kopi")
       --description DESC  Override the bot description
       --slashes-only  Emit only the ``features.slash_commands`` array (for
                       merging into an existing manifest manually)
@@ -147,17 +165,29 @@ def slack_manifest_command(args) -> int:
                       assistant:write scope, assistant_thread_* events) so
                       DMs render as a flat chat where bare slash commands
                       work inline instead of the Assistant thread pane.
+      --agent-view    Use Slack's Agent messaging experience (agent_view,
+                      app_home_opened + message.im) instead of the legacy
+                      Assistant messaging experience.
     """
-    name = getattr(args, "name", None) or "Hermes"
-    description = getattr(args, "description", None) or "Your Hermes agent on Slack"
-    include_assistant = not getattr(args, "no_assistant", False)
+    name = getattr(args, "name", None) or "Kopi"
+    description = getattr(args, "description", None) or "Your Kopi agent on Slack"
+    if getattr(args, "agent_view", False):
+        messaging_experience = "agent"
+    elif getattr(args, "no_assistant", False):
+        messaging_experience = "none"
+    else:
+        messaging_experience = "assistant"
 
     if getattr(args, "slashes_only", False):
         from kopi_cli.commands import slack_app_manifest
 
         manifest = slack_app_manifest()["features"]["slash_commands"]
     else:
-        manifest = _build_full_manifest(name, description, include_assistant=include_assistant)
+        manifest = _build_full_manifest(
+            name,
+            description,
+            messaging_experience=messaging_experience,
+        )
 
     payload = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
 
@@ -178,7 +208,7 @@ def slack_manifest_command(args) -> int:
         print(f"Slack manifest written to: {target}", file=sys.stderr)
         print(
             "\nNext steps:\n"
-            "  1. Open https://api.slack.com/apps and pick your Hermes app\n"
+            "  1. Open https://api.slack.com/apps and pick your Kopi app\n"
             "     (or create a new one: Create New App → From an app manifest).\n"
             f"  2. Features → App Manifest → paste the contents of\n"
             f"     {target}\n"

@@ -1,4 +1,4 @@
-# nix/kopi-ai-agent.nix — Overridable KOPI AI AGENT package
+# nix/kopi-ai-agent.nix — Overridable Kopi Agent package
 #
 # callPackage auto-wires nixpkgs args; flake inputs are passed explicitly.
 # Users override via:
@@ -37,25 +37,25 @@
 }:
 let
   nodejs = nodejs_22;
-  mkHermesVenv =
+  mkKopiVenv =
     extraDependencyGroups:
     callPackage ./python.nix {
       inherit uv2nix pyproject-nix pyproject-build-systems;
       dependency-groups = [ "all" ] ++ extraDependencyGroups;
     };
 
-  hermesVenv = (mkHermesVenv extraDependencyGroups).venv;
+  kopiVenv = (mkKopiVenv extraDependencyGroups).venv;
 
-  hermesNpmLib = callPackage ./lib.nix {
+  kopiNpmLib = callPackage ./lib.nix {
     inherit npm-lockfile-fix nodejs;
   };
 
-  hermesTui = callPackage ./tui.nix {
-    inherit hermesNpmLib;
+  kopiTui = callPackage ./tui.nix {
+    inherit kopiNpmLib;
   };
 
-  hermesWeb = callPackage ./web.nix {
-    inherit hermesNpmLib;
+  kopiWeb = callPackage ./web.nix {
+    inherit kopiNpmLib;
   };
 
   bundledSkills = lib.cleanSourceWith {
@@ -118,7 +118,7 @@ let
 
     # Collect core venv package names
     core = set()
-    venv_sp = pathlib.Path('${hermesVenv}/${sitePackagesPath}')
+    venv_sp = pathlib.Path('${kopiVenv}/${sitePackagesPath}')
     for di in venv_sp.glob('*.dist-info'):
         meta = di / 'METADATA'
         if meta.exists():
@@ -165,35 +165,35 @@ stdenv.mkDerivation (finalAttrs: {
     cp -r ${bundledSkills} $out/share/kopi-ai-agent/skills
     cp -r ${bundledPlugins} $out/share/kopi-ai-agent/plugins
     cp -r ${bundledLocales} $out/share/kopi-ai-agent/locales
-    cp -r ${hermesWeb} $out/share/kopi-ai-agent/web_dist
+    cp -r ${kopiWeb} $out/share/kopi-ai-agent/web_dist
 
     mkdir -p $out/ui-tui
-    cp -r ${hermesTui}/lib/hermes-tui/* $out/ui-tui/
+    cp -r ${kopiTui}/lib/kopi-tui/* $out/ui-tui/
 
     ${lib.concatMapStringsSep "\n"
       (name: ''
-        makeWrapper ${hermesVenv}/bin/${name} $out/bin/${name} \
+        makeWrapper ${kopiVenv}/bin/${name} $out/bin/${name} \
           --suffix PATH : "${runtimePath}" \
           --set KOPI_BUNDLED_SKILLS $out/share/kopi-ai-agent/skills \
           --set KOPI_BUNDLED_PLUGINS $out/share/kopi-ai-agent/plugins \
           --set KOPI_BUNDLED_LOCALES $out/share/kopi-ai-agent/locales \
           --set KOPI_WEB_DIST $out/share/kopi-ai-agent/web_dist \
           --set KOPI_TUI_DIR $out/ui-tui \
-          --set KOPI_PYTHON ${hermesVenv}/bin/python3 \
+          --set KOPI_PYTHON ${kopiVenv}/bin/python3 \
           --set KOPI_NODE ${lib.getExe nodejs} \
           ${lib.optionalString (rev != null) ''--set KOPI_REVISION ${rev} \''}
           ${lib.optionalString (extraPythonPackages != [ ]) ''--suffix PYTHONPATH : "${pythonPath}"''}
       '')
       [
-        "hermes"
+        "kopi"
         "kopi-ai-agent"
-        "hermes-acp"
+        "kopi-acp"
       ]
     }
 
     ${lib.optionalString (extraPythonPackages != [ ]) ''
       echo "=== Checking for plugin/core package collisions ==="
-      ${hermesVenv}/bin/python3 -c "${checkPackageCollisions}"
+      ${kopiVenv}/bin/python3 -c "${checkPackageCollisions}"
       echo "=== No collisions ==="
     ''}
 
@@ -202,26 +202,26 @@ stdenv.mkDerivation (finalAttrs: {
 
   passthru =
     let
-      devPython = (mkHermesVenv (extraDependencyGroups ++ [ "dev" ])).editableVenv;
+      devPython = (mkKopiVenv (extraDependencyGroups ++ [ "dev" ])).editableVenv;
     in
     {
       inherit
-        hermesTui
-        hermesWeb
-        hermesNpmLib
-        hermesVenv
+        kopiTui
+        kopiWeb
+        kopiNpmLib
+        kopiVenv
         ;
 
-      # `hermesDesktop` references `finalAttrs.finalPackage` (this whole
+      # `kopiDesktop` references `finalAttrs.finalPackage` (this whole
       # derivation, after all overrides are applied) so the desktop wrapper
       # can prepend its `/bin` to PATH.  The desktop's resolver step 4
       # ("existing kopi on PATH") then picks up the fully wrapped
-      # `hermes` binary — venv with all deps, bundled skills/plugins,
+      # `kopi` binary — venv with all deps, bundled skills/plugins,
       # runtime PATH (ripgrep/git/ffmpeg/etc).  No re-implementation
       # of the agent resolution in the desktop wrapper.
-      hermesDesktop = callPackage ./desktop.nix {
-        inherit hermesNpmLib electron;
-        hermesAgent = finalAttrs.finalPackage;
+      kopiDesktop = callPackage ./desktop.nix {
+        inherit kopiNpmLib electron;
+        kopiAgent = finalAttrs.finalPackage;
       };
 
       devShellHook = ''
@@ -233,8 +233,8 @@ stdenv.mkDerivation (finalAttrs: {
 
   meta = with lib; {
     description = "AI agent with advanced tool-calling capabilities";
-    homepage = "https://github.com/LINYIQ66/kopi-ai-agent";
-    mainProgram = "hermes";
+    homepage = "https://github.com/NousResearch/kopi-ai-agent";
+    mainProgram = "kopi";
     license = licenses.mit;
     platforms = platforms.unix;
   };

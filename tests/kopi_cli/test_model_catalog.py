@@ -180,9 +180,9 @@ class TestFallbackChain:
     releases (opus 4.8, etc.) never reach the picker.
     """
 
-    PRIMARY = "https://kopiaiagent.com/docs/api/model-catalog.json"
+    PRIMARY = "https://kopi-ai-agent.nousresearch.com/docs/api/model-catalog.json"
     FALLBACK = (
-        "https://raw.githubusercontent.com/Kopi Ai Agent Pte Ltd/kopi-ai-agent"
+        "https://raw.githubusercontent.com/NousResearch/kopi-ai-agent"
         "/main/website/static/api/model-catalog.json"
     )
 

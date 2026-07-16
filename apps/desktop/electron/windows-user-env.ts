@@ -5,7 +5,7 @@
 //
 // A GUI app launched from Explorer inherits the environment block captured at
 // login, so a variable set via `setx` AFTER login is invisible in process.env
-// even though a fresh shell — and the Hermes CLI — sees it immediately. The
+// even though a fresh shell — and the Kopi CLI — sees it immediately. The
 // desktop's KOPI_HOME resolution relies on process.env, so that stale-snapshot
 // gap silently sends the backend to the default %LOCALAPPDATA%\kopi. Reading
 // the live registry value closes the gap. See #45471.
@@ -15,7 +15,7 @@ import { execFileSync } from 'node:child_process'
 // Parse the output of `reg query HKCU\Environment /v <name>`, which looks like:
 //
 //   HKEY_CURRENT_USER\Environment
-//       KOPI_HOME    REG_SZ    F:\Hermes\data
+//       KOPI_HOME    REG_SZ    F:\Kopi\data
 //
 // Returns the raw value string (spaces inside the value preserved), or null when
 // the requested value line isn't present.
@@ -23,6 +23,7 @@ function parseRegQueryValue(stdout, name) {
   if (!stdout || !name) {
     return null
   }
+
   const typePattern = /^(\S+)\s+(?:REG_SZ|REG_EXPAND_SZ|REG_MULTI_SZ|REG_DWORD|REG_QWORD|REG_BINARY|REG_NONE)\s+(.*)$/
 
   for (const rawLine of String(stdout).split(/\r?\n/)) {
@@ -70,6 +71,7 @@ function readWindowsUserEnvVar(
   if (platform !== 'win32' || !name) {
     return null
   }
+
   let stdout
 
   try {
@@ -88,6 +90,7 @@ function readWindowsUserEnvVar(
   if (raw == null) {
     return null
   }
+
   const expanded = expandWindowsEnvRefs(raw, env).trim()
 
   return expanded || null

@@ -2,11 +2,11 @@
 name: github-repo-management
 description: "Clone/create/fork repos; manage remotes, releases."
 version: 1.1.0
-author: KOPI AI AGENT
+author: Kopi Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
-  hermes:
+  kopi:
     tags: [GitHub, Repositories, Git, Releases, Secrets, Configuration]
     related_skills: [github-auth, github-pr-workflow, github-issues]
 ---

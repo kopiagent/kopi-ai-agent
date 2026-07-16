@@ -1,13 +1,13 @@
 """Tests for subprocess HOME handling in profile mode.
 
-Hermes state stays profile-scoped through KOPI_HOME. Host subprocesses should
+Kopi state stays profile-scoped through KOPI_HOME. Host subprocesses should
 keep the user's real HOME by default so external CLIs find existing credentials.
 Containers still use the profile home for persistence, and users can explicitly
 opt into profile HOME isolation on the host.
 
-See: https://github.com/LINYIQ66/kopi-ai-agent/issues/25114
-See: https://github.com/LINYIQ66/kopi-ai-agent/issues/36144
-See: https://github.com/LINYIQ66/kopi-ai-agent/issues/29015
+See: https://github.com/NousResearch/kopi-ai-agent/issues/25114
+See: https://github.com/NousResearch/kopi-ai-agent/issues/36144
+See: https://github.com/NousResearch/kopi-ai-agent/issues/29015
 """
 
 import os

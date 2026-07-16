@@ -11,8 +11,8 @@
 #
 services:
   gateway:
-    image: nousresearch/kopi-ai-agent:latest
-    container_name: hermes
+    image: nousresearch/kopi-agent:latest
+    container_name: kopi
     restart: unless-stopped
     volumes:
       - ${USERPROFILE}/.kopi:/opt/data
@@ -22,7 +22,7 @@ services:
     command: ["gateway", "run"]
 
   dashboard:
-    image: nousresearch/kopi-ai-agent:latest
+    image: nousresearch/kopi-agent:latest
     container_name: kopi-dashboard
     restart: unless-stopped
     depends_on:

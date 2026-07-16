@@ -156,7 +156,7 @@ class TestScanCronSkillAssembled:
     def test_descriptive_attack_command_prose_allowed(self):
         """Security postmortems and runbooks routinely describe attack
         commands in prose — that's not a payload, it's documentation.
-        Real example: the `kopi-ai-agent-dev` skill contains a postmortem
+        Real example: the `kopi-agent-dev` skill contains a postmortem
         section saying 'the attacker could just cat ~/.kopi/.env'.
         """
         assert _scan_cron_skill_assembled(

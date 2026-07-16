@@ -39,7 +39,7 @@ def _write_manifest(root: Path, version: str) -> None:
         json.dumps(
             {
                 "id": "kopi-ai-agent",
-                "name": "KOPI AI AGENT",
+                "name": "Kopi Agent",
                 "version": version,
                 "description": "test",
                 "distribution": {

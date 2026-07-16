@@ -5,7 +5,7 @@ exists to prevent the auth.json ownership-mismatch bug where
 `docker exec <c> kopi login` would write /opt/data/auth.json as
 root:root mode 0600, leaving the supervised gateway (UID 10000) unable
 to read its own credentials and returning "Provider authentication
-failed: Hermes is not logged into Nous Portal" on every message.
+failed: Kopi is not logged into Nous Portal" on every message.
 
 These tests verify:
 
@@ -133,7 +133,7 @@ def test_shim_drops_root_to_kopi_uid(sleep_container: str) -> None:
     )
     assert r.returncode == 0, f"config set failed: stdout={r.stdout!r} stderr={r.stderr!r}"
 
-    # The written file must be owned by hermes, not root.
+    # The written file must be owned by kopi, not root.
     r = subprocess.run(
         ["docker", "exec", sleep_container,
          "stat", "-c", "%U:%G", "/opt/data/config.yaml"],
@@ -279,7 +279,7 @@ def test_e2e_login_then_supervised_gateway_can_read_auth(
     /opt/data/auth.json as root:root 0600. The supervised gateway (UID
     10000) couldn't read it, _load_auth_store swallowed PermissionError
     as a parse failure, and resolve_nous_runtime_credentials raised
-    "Hermes is not logged into Nous Portal" on every message.
+    "Kopi is not logged into Nous Portal" on every message.
 
     We can't do a real OAuth login in a unit test, but we can stand in
     for it by writing the same file shape via `kopi config set`-style

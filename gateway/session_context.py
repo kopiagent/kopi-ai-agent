@@ -1,5 +1,5 @@
 """
-Session-scoped context variables for the Hermes gateway.
+Session-scoped context variables for the Kopi gateway.
 
 Replaces the previous ``os.environ``-based session state
 (``KOPI_SESSION_PLATFORM``, ``KOPI_SESSION_CHAT_ID``, etc.) with

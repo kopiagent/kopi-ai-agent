@@ -17,14 +17,16 @@ import { setModelPreset } from '@/store/model-presets'
 import { notifyError } from '@/store/notifications'
 import { $activeSessionId, setCurrentFastMode, setCurrentReasoningEffort } from '@/store/session'
 
-// Hermes' real reasoning levels (see VALID_REASONING_EFFORTS); `none` is owned
+// Kopi' real reasoning levels (see VALID_REASONING_EFFORTS); `none` is owned
 // by the Thinking toggle, not the radio.
 const EFFORT_OPTIONS = [
   { value: 'minimal', labelKey: 'minimal' },
   { value: 'low', labelKey: 'low' },
   { value: 'medium', labelKey: 'medium' },
   { value: 'high', labelKey: 'high' },
-  { value: 'xhigh', labelKey: 'max' }
+  { value: 'xhigh', labelKey: 'xhigh' },
+  { value: 'max', labelKey: 'max' },
+  { value: 'ultra', labelKey: 'ultra' }
 ] as const
 
 /** How "fast" is achieved for a given model — two different mechanisms:
@@ -233,7 +235,7 @@ export function ModelEditSubmenu({
 }
 
 function isThinkingEnabled(effort: string): boolean {
-  // Empty = Hermes default (medium) = on; only an explicit "none" is off.
+  // Empty = Kopi default (medium) = on; only an explicit "none" is off.
   return normalize(effort || 'medium') !== 'none'
 }
 

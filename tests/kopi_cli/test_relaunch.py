@@ -7,7 +7,7 @@ import pytest
 from kopi_cli import relaunch as relaunch_mod
 
 
-class TestResolveHermesBin:
+class TestResolveKopiBin:
     def test_prefers_absolute_argv0_when_executable(self, monkeypatch):
         fake = "/nix/store/abc/bin/kopi"
         monkeypatch.setattr(sys, "argv", [fake])
@@ -157,7 +157,7 @@ class TestRelaunch:
     def test_windows_uses_subprocess_not_execvp(self, monkeypatch):
         """On Windows, os.execvp raises OSError "Exec format error" when the
         target is a .cmd shim or console-script wrapper (both common for
-        hermes).  relaunch() must detect win32 and use subprocess.run +
+        kopi).  relaunch() must detect win32 and use subprocess.run +
         sys.exit instead."""
         monkeypatch.setattr(relaunch_mod.sys, "platform", "win32")
         monkeypatch.setattr(relaunch_mod, "resolve_kopi_bin", lambda: r"C:\Users\test\kopi.exe")
@@ -232,7 +232,7 @@ class TestRelaunch:
         assert "open a new terminal" in err.lower() or "path" in err.lower()
 
 
-class TestResolveHermesBinWindowsPyGuard:
+class TestResolveKopiBinWindowsPyGuard:
     """On Windows, resolve_kopi_bin MUST NOT return a .py path.
     os.access(x, os.X_OK) returns True for .py files on Windows because
     PATHEXT includes .py when the Python launcher is installed — but

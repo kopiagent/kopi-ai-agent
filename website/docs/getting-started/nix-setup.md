@@ -1,7 +1,7 @@
 ---
 sidebar_position: 3
 title: "Nix & NixOS Setup"
-description: "Install and deploy KOPI AI AGENT with Nix — from quick `nix run` to fully declarative NixOS module with container mode"
+description: "Install and deploy Kopi Agent with Nix — from quick `nix run` to fully declarative NixOS module with container mode"
 ---
 
 # Nix & NixOS Setup
@@ -12,7 +12,7 @@ Nix and NixOS are [Tier 2 platforms](./platform-support.md#tier-2). The flake an
 For a supported setup, use one of the standard [installation](./installation.md) paths - either Docker or an FHS environment.
 :::
 
-KOPI AI AGENT ships a Nix flake & a NixOS module.
+Kopi Agent ships a Nix flake & a NixOS module.
 
 | Level | Who it's for | What you get |
 |-------|-------------|--------------|
@@ -41,25 +41,25 @@ No clone needed. Nix fetches, builds, and runs everything:
 
 ```bash
 # Run the desktop app
-nix run github:Kopi Ai Agent Pte Ltd/kopi-ai-agent#desktop
+nix run github:NousResearch/kopi-agent#desktop
 
 # Or install persistently
-nix profile install github:Kopi Ai Agent Pte Ltd/kopi-ai-agent#desktop
+nix profile install github:NousResearch/kopi-agent#desktop
 
 # run the tui
-nix run github:Kopi Ai Agent Pte Ltd/kopi-ai-agent -- setup
-nix run github:Kopi Ai Agent Pte Ltd/kopi-ai-agent -- --tui
+nix run github:NousResearch/kopi-agent -- setup
+nix run github:NousResearch/kopi-agent -- --tui
 
 # or install it in your profile
-nix profile install github:Kopi Ai Agent Pte Ltd/kopi-ai-agent
+nix profile install github:NousResearch/kopi-agent
 kopi setup
 kopi --tui
 ```
 
-After `nix profile install`, `kopi`, `kopi-ai-agent`, and `kopi-acp` are on your PATH. From here, the workflow is identical to the [standard installation](./installation.md) — `kopi setup` walks you through provider selection, `kopi gateway install` sets up a launchd (macOS) or systemd user service, and config lives in `~/.kopi/`.
+After `nix profile install`, `kopi`, `kopi-agent`, and `kopi-acp` are on your PATH. From here, the workflow is identical to the [standard installation](./installation.md) — `kopi setup` walks you through provider selection, `kopi gateway install` sets up a launchd (macOS) or systemd user service, and config lives in `~/.kopi/`.
 
 :::warning Messaging platforms (Discord, Telegram, Slack)
-The default package includes ALL libraries kopi-ai-agent might need. if you want a smaller variant, check the other flake outputs. 
+The default package includes ALL libraries kopi-agent might need. if you want a smaller variant, check the other flake outputs. 
 
 The `default` package adds ~700 MB to the closure. If you only need messaging platforms, `#messaging` adds just ~33 MB.
 
@@ -69,8 +69,8 @@ The `default` package adds ~700 MB to the closure. If you only need messaging pl
 <summary><strong>Running from a local clone</strong></summary>
 
 ```bash
-git clone https://github.com/LINYIQ66/kopi-ai-agent.git
-cd kopi-ai-agent
+git clone https://github.com/NousResearch/kopi-agent.git
+cd kopi-agent
 nix develop
 kopi setup
 ```
@@ -94,14 +94,14 @@ This module requires NixOS. For non-NixOS systems (macOS, other Linux distros), 
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    kopi-ai-agent.url = "github:Kopi Ai Agent Pte Ltd/kopi-ai-agent";
+    kopi-agent.url = "github:NousResearch/kopi-agent";
   };
 
-  outputs = { nixpkgs, kopi-ai-agent, ... }: {
+  outputs = { nixpkgs, kopi-agent, ... }: {
     nixosConfigurations.your-host = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
-        kopi-ai-agent.nixosModules.default
+        kopi-agent.nixosModules.default
         ./configuration.nix
       ];
     };
@@ -114,7 +114,7 @@ This module requires NixOS. For non-NixOS systems (macOS, other Linux distros), 
 ```nix
 # configuration.nix
 { config, ... }: {
-  services.kopi-ai-agent = {
+  services.kopi-agent = {
     enable = true;
     settings.model.default = "anthropic/claude-sonnet-4";
     environmentFiles = [ config.sops.secrets."kopi-env".path ];
@@ -133,7 +133,7 @@ echo "OPENROUTER_API_KEY=sk-or-your-key" | sudo install -m 0600 -o kopi /dev/std
 ```
 
 ```nix
-services.kopi-ai-agent.environmentFiles = [ "/var/lib/kopi/env" ];
+services.kopi-agent.environmentFiles = [ "/var/lib/kopi/env" ];
 ```
 :::
 
@@ -154,7 +154,7 @@ When `container.enable = true` and `addToSystemPackages = true`, **every** `kopi
 Set `container.hostUsers` to create a `~/.kopi` symlink to the service state directory, so the host CLI and the container share sessions, config, and memories:
 
 ```nix
-services.kopi-ai-agent = {
+services.kopi-agent = {
   container.enable = true;
   container.hostUsers = [ "your-username" ];
   addToSystemPackages = true;
@@ -184,10 +184,10 @@ After `nixos-rebuild switch`, check that the service is running:
 
 ```bash
 # Check service status
-systemctl status kopi-ai-agent
+systemctl status kopi-agent
 
 # Watch logs (Ctrl+C to stop)
-journalctl -u kopi-ai-agent -f
+journalctl -u kopi-agent -f
 
 # If addToSystemPackages is true, test the CLI
 kopi version
@@ -210,7 +210,7 @@ To enable container mode, add one line:
 
 ```nix
 {
-  services.kopi-ai-agent = {
+  services.kopi-agent = {
     enable = true;
     container.enable = true;
     # ... rest of config is identical
@@ -232,14 +232,14 @@ The `settings` option accepts an arbitrary attrset that is rendered as `config.y
 
 ```nix
 # base.nix
-services.kopi-ai-agent.settings = {
+services.kopi-agent.settings = {
   model.default = "anthropic/claude-sonnet-4";
   toolsets = [ "all" ];
   terminal = { backend = "local"; timeout = 180; };
 };
 
 # personality.nix
-services.kopi-ai-agent.settings = {
+services.kopi-agent.settings = {
   display = { compact = false; personality = "kawaii"; };
   memory = { memory_enabled = true; user_profile_enabled = true; };
 };
@@ -248,7 +248,7 @@ services.kopi-ai-agent.settings = {
 Both are deep-merged at evaluation time. Nix-declared keys always win over keys in an existing `config.yaml` on disk, but **user-added keys that Nix doesn't touch are preserved**. This means if the agent or a manual edit adds keys like `skills.disabled` or `streaming.enabled`, they survive `nixos-rebuild switch`.
 
 :::note Model naming
-`settings.model.default` uses the model identifier your provider expects. With [OpenRouter](https://openrouter.ai) (the default), these look like `"anthropic/claude-sonnet-4"` or `"google/gemini-3-flash"`. If you're using a provider directly (Anthropic, OpenAI), set `settings.model.base_url` to point at their API and use their native model IDs (e.g., `"claude-sonnet-4-20250514"`). When no `base_url` is set, Hermes defaults to OpenRouter.
+`settings.model.default` uses the model identifier your provider expects. With [OpenRouter](https://openrouter.ai) (the default), these look like `"anthropic/claude-sonnet-4"` or `"google/gemini-3-flash"`. If you're using a provider directly (Anthropic, OpenAI), set `settings.model.base_url` to point at their API and use their native model IDs (e.g., `"claude-sonnet-4-20250514"`). When no `base_url` is set, Kopi defaults to OpenRouter.
 :::
 
 :::tip Discovering available config keys
@@ -260,7 +260,7 @@ Run `nix build .#configKeys && cat result` to see every leaf config key extracte
 
 ```nix
 { config, ... }: {
-  services.kopi-ai-agent = {
+  services.kopi-agent = {
     enable = true;
     container.enable = true;
 
@@ -322,7 +322,7 @@ Run `nix build .#configKeys && cat result` to see every leaf config key extracte
 If you'd rather manage `config.yaml` entirely outside Nix, use `configFile`:
 
 ```nix
-services.kopi-ai-agent.configFile = /etc/kopi/config.yaml;
+services.kopi-agent.configFile = /etc/kopi/config.yaml;
 ```
 
 This bypasses `settings` entirely — no merge, no generation. The file is copied as-is to `$KOPI_HOME/config.yaml` on each activation.
@@ -336,7 +336,7 @@ Quick reference for the most common things Nix users want to customize:
 | Change the LLM model | `settings.model.default` | `"anthropic/claude-sonnet-4"` |
 | Use a different provider endpoint | `settings.model.base_url` | `"https://openrouter.ai/api/v1"` |
 | Add API keys | `environmentFiles` | `[ config.sops.secrets."kopi-env".path ]` |
-| Give the agent a personality | `${services.kopi-ai-agent.stateDir}/.kopi/SOUL.md` | manage the file directly |
+| Give the agent a personality | `${services.kopi-agent.stateDir}/.kopi/SOUL.md` | manage the file directly |
 | Add MCP tool servers | `mcpServers.<name>` | See [MCP Servers](#mcp-servers) |
 | Enable Discord/Telegram/Slack | `extraDependencyGroups` | `[ "messaging" ]` |
 | Mount host directories into container | `container.extraVolumes` | `[ "/data:/data:rw" ]` |
@@ -345,7 +345,7 @@ Quick reference for the most common things Nix users want to customize:
 | Share state between host CLI and container | `container.hostUsers` | `[ "sidbin" ]` |
 | Make extra tools available to the agent | `extraPackages` | `[ pkgs.pandoc pkgs.imagemagick ]` |
 | Use a custom base image | `container.image` | `"ubuntu:24.04"` |
-| Override the kopi package | `package` | `inputs.kopi-ai-agent.packages.${system}.default.override { ... }` |
+| Override the kopi package | `package` | `inputs.kopi-agent.packages.${system}.default.override { ... }` |
 | Change state directory | `stateDir` | `"/opt/kopi"` |
 | Set the agent's working directory | `workingDirectory` | `"/home/user/projects"` |
 
@@ -357,7 +357,7 @@ Quick reference for the most common things Nix users want to customize:
 Values in Nix expressions end up in `/nix/store`, which is world-readable. Always use `environmentFiles` with a secrets manager.
 :::
 
-Both `environment` (non-secret vars) and `environmentFiles` (secret files) are merged into `$KOPI_HOME/.env` at activation time (`nixos-rebuild switch`). Hermes reads this file on every startup, so changes take effect with a `systemctl restart kopi-ai-agent` — no container recreation needed.
+Both `environment` (non-secret vars) and `environmentFiles` (secret files) are merged into `$KOPI_HOME/.env` at activation time (`nixos-rebuild switch`). Kopi reads this file on every startup, so changes take effect with a `systemctl restart kopi-agent` — no container recreation needed.
 
 ### sops-nix
 
@@ -369,7 +369,7 @@ Both `environment` (non-secret vars) and `environmentFiles` (secret files) are m
     secrets."kopi-env" = { format = "yaml"; };
   };
 
-  services.kopi-ai-agent.environmentFiles = [
+  services.kopi-agent.environmentFiles = [
     config.sops.secrets."kopi-env".path
   ];
 }
@@ -391,7 +391,7 @@ kopi-env: |
 {
   age.secrets.kopi-env.file = ./secrets/kopi-env.age;
 
-  services.kopi-ai-agent.environmentFiles = [
+  services.kopi-agent.environmentFiles = [
     config.age.secrets.kopi-env.path
   ];
 }
@@ -403,7 +403,7 @@ For platforms requiring OAuth (e.g., Discord), use `authFile` to seed credential
 
 ```nix
 {
-  services.kopi-ai-agent = {
+  services.kopi-agent = {
     authFile = config.sops.secrets."kopi/auth.json".path;
     # authFileForceOverwrite = true;  # overwrite on every activation
   };
@@ -416,16 +416,16 @@ The file is only copied if `auth.json` doesn't already exist (unless `authFileFo
 
 ## Documents
 
-The `documents` option installs files into the agent's working directory (the `workingDirectory`, which the agent reads as its workspace). Hermes looks for specific filenames by convention:
+The `documents` option installs files into the agent's working directory (the `workingDirectory`, which the agent reads as its workspace). Kopi looks for specific filenames by convention:
 
 - **`USER.md`** — context about the user the agent is interacting with.
 - Any other files you place here are visible to the agent as workspace files.
 
-The agent identity file is separate: Hermes loads its primary `SOUL.md` from `$KOPI_HOME/SOUL.md`, which in the NixOS module is `${services.kopi-ai-agent.stateDir}/.kopi/SOUL.md`. Putting `SOUL.md` in `documents` only creates a workspace file and will not replace the main persona file.
+The agent identity file is separate: Kopi loads its primary `SOUL.md` from `$KOPI_HOME/SOUL.md`, which in the NixOS module is `${services.kopi-agent.stateDir}/.kopi/SOUL.md`. Putting `SOUL.md` in `documents` only creates a workspace file and will not replace the main persona file.
 
 ```nix
 {
-  services.kopi-ai-agent.documents = {
+  services.kopi-agent.documents = {
     "USER.md" = ./documents/USER.md;  # path reference, copied from Nix store
   };
 }
@@ -443,7 +443,7 @@ The `mcpServers` option declaratively configures [MCP (Model Context Protocol)](
 
 ```nix
 {
-  services.kopi-ai-agent.mcpServers = {
+  services.kopi-agent.mcpServers = {
     filesystem = {
       command = "npx";
       args = [ "-y" "@modelcontextprotocol/server-filesystem" "/data/workspace" ];
@@ -465,7 +465,7 @@ Environment variables in `env` values are resolved from `$KOPI_HOME/.env` at run
 
 ```nix
 {
-  services.kopi-ai-agent.mcpServers.remote-api = {
+  services.kopi-agent.mcpServers.remote-api = {
     url = "https://mcp.example.com/v1/mcp";
     headers.Authorization = "Bearer \${MCP_REMOTE_API_KEY}";
     timeout = 180;
@@ -475,11 +475,11 @@ Environment variables in `env` values are resolved from `$KOPI_HOME/.env` at run
 
 ### HTTP Transport with OAuth
 
-Set `auth = "oauth"` for servers using OAuth 2.1. Hermes implements the full PKCE flow — metadata discovery, dynamic client registration, token exchange, and automatic refresh.
+Set `auth = "oauth"` for servers using OAuth 2.1. Kopi implements the full PKCE flow — metadata discovery, dynamic client registration, token exchange, and automatic refresh.
 
 ```nix
 {
-  services.kopi-ai-agent.mcpServers.my-oauth-server = {
+  services.kopi-agent.mcpServers.my-oauth-server = {
     url = "https://mcp.example.com/mcp";
     auth = "oauth";
   };
@@ -491,13 +491,13 @@ Tokens are stored in `$KOPI_HOME/mcp-tokens/<server-name>.json` and persist acro
 <details>
 <summary><strong>Initial OAuth authorization on headless servers</strong></summary>
 
-The first OAuth authorization requires a browser-based consent flow. In a headless deployment, Hermes prints the authorization URL to stdout/logs instead of opening a browser.
+The first OAuth authorization requires a browser-based consent flow. In a headless deployment, Kopi prints the authorization URL to stdout/logs instead of opening a browser.
 
-**Option A: Interactive bootstrap** — run the flow once via `docker exec` (container) or `sudo -u hermes` (native):
+**Option A: Interactive bootstrap** — run the flow once via `docker exec` (container) or `sudo -u kopi` (native):
 
 ```bash
 # Container mode
-docker exec -it kopi-ai-agent \
+docker exec -it kopi-agent \
   kopi mcp add my-oauth-server --url https://mcp.example.com/mcp --auth oauth
 
 # Native mode
@@ -524,7 +524,7 @@ Some MCP servers can request LLM completions from the agent:
 
 ```nix
 {
-  services.kopi-ai-agent.mcpServers.analysis = {
+  services.kopi-agent.mcpServers.analysis = {
     command = "npx";
     args = [ "-y" "analysis-server" ];
     sampling = {
@@ -555,7 +555,7 @@ When kopi runs via the NixOS module, the following CLI commands are **blocked** 
 This prevents drift between what Nix declares and what's on disk. Detection uses two signals:
 
 1. **`KOPI_MANAGED=true`** environment variable — set by the systemd service, visible to the gateway process
-2. **`.managed` marker file** in `KOPI_HOME` — set by the activation script, visible to interactive shells (e.g., `docker exec -it kopi-ai-agent kopi config set ...` is also blocked)
+2. **`.managed` marker file** in `KOPI_HOME` — set by the activation script, visible to interactive shells (e.g., `docker exec -it kopi-agent kopi config set ...` is also blocked)
 
 To change configuration, edit your Nix config and run `sudo nixos-rebuild switch`.
 
@@ -572,7 +572,7 @@ When container mode is enabled, kopi runs inside a persistent Ubuntu container w
 ```
 Host                                    Container
 ────                                    ─────────
-/nix/store/...-kopi-ai-agent-0.1.0  ──►  /nix/store/... (ro)
+/nix/store/...-kopi-agent-0.1.0  ──►  /nix/store/... (ro)
 ~/.kopi -> /var/lib/kopi/.kopi       (symlink bridge, per hostUsers)
 /var/lib/kopi/                    ──►  /data/          (rw)
   ├── current-package -> /nix/store/...    (symlink, updated each rebuild)
@@ -599,7 +599,7 @@ The Nix-built binary works inside the Ubuntu container because `/nix/store` is b
 
 | Event | Container recreated? | `/data` (state) | `/home/kopi` | Writable layer (`apt`/`pip`/`npm`) |
 |---|---|---|---|---|
-| `systemctl restart kopi-ai-agent` | No | Persists | Persists | Persists |
+| `systemctl restart kopi-agent` | No | Persists | Persists | Persists |
 | `nixos-rebuild switch` (code change) | No (symlink updated) | Persists | Persists | Persists |
 | Host reboot | No | Persists | Persists | Persists |
 | `nix-collect-garbage` | No (GC root) | Persists | Persists | Persists |
@@ -630,7 +630,7 @@ The NixOS module supports declarative plugin installation — no imperative `kop
 For plugins that are just a source tree with `plugin.yaml` + `__init__.py` (e.g., [kopi-lcm](https://github.com/stephenschoettler/kopi-lcm)):
 
 ```nix
-services.kopi-ai-agent.extraPlugins = [
+services.kopi-agent.extraPlugins = [
   (pkgs.fetchFromGitHub {
     owner = "stephenschoettler";
     repo = "kopi-lcm";
@@ -640,20 +640,20 @@ services.kopi-ai-agent.extraPlugins = [
 ];
 ```
 
-Plugins are symlinked into `$KOPI_HOME/plugins/` at activation time. Hermes discovers them via its normal directory scan. Removing a plugin from the list and running `nixos-rebuild switch` removes the symlink.
+Plugins are symlinked into `$KOPI_HOME/plugins/` at activation time. Kopi discovers them via its normal directory scan. Removing a plugin from the list and running `nixos-rebuild switch` removes the symlink.
 
 ### Entry-Point Plugins (`extraPythonPackages`)
 
-For pip-packaged plugins that register via `[project.entry-points."kopi_agent.plugins"]` (e.g., [rtk-hermes](https://github.com/ogallotti/rtk-hermes)):
+For pip-packaged plugins that register via `[project.entry-points."kopi_agent.plugins"]` (e.g., [rtk-kopi](https://github.com/ogallotti/rtk-kopi)):
 
 ```nix
-services.kopi-ai-agent.extraPythonPackages = [
+services.kopi-agent.extraPythonPackages = [
   (pkgs.python312Packages.buildPythonPackage {
-    pname = "rtk-hermes";
+    pname = "rtk-kopi";
     version = "1.0.0";
     src = pkgs.fetchFromGitHub {
       owner = "ogallotti";
-      repo = "rtk-hermes";
+      repo = "rtk-kopi";
       rev = "v1.0.0";
       hash = "sha256-...";
     };
@@ -667,16 +667,16 @@ The package's `site-packages` is added to PYTHONPATH in the kopi wrapper. `impor
 
 ### Optional Dependency Groups (`extraDependencyGroups`)
 
-For optional extras declared in kopi-ai-agent's `pyproject.toml`, use `extraDependencyGroups` to include them in the sealed venv at build time. This is required for any extra not in the default `[all]` set — on Nix, runtime installation into the read-only store is not possible.
+For optional extras declared in kopi-agent's `pyproject.toml`, use `extraDependencyGroups` to include them in the sealed venv at build time. This is required for any extra not in the default `[all]` set — on Nix, runtime installation into the read-only store is not possible.
 
 ```nix
 # Enable Discord, Telegram, Slack
-services.kopi-ai-agent.extraDependencyGroups = [ "messaging" ];
+services.kopi-agent.extraDependencyGroups = [ "messaging" ];
 ```
 
 ```nix
 # Enable a memory provider
-services.kopi-ai-agent = {
+services.kopi-agent = {
   extraDependencyGroups = [ "hindsight" ];
   settings.memory.provider = "hindsight";
 };
@@ -720,7 +720,7 @@ Or use the pre-built `#messaging` or `#full` flake packages instead of per-extra
 A directory plugin with third-party Python dependencies needs both options:
 
 ```nix
-services.kopi-ai-agent = {
+services.kopi-agent = {
   extraPlugins = [ my-plugin-src ];          # plugin source
   extraPythonPackages = [ pkgs.python312Packages.redis ];  # its Python dep
   extraPackages = [ pkgs.redis ];            # system binary it needs
@@ -733,12 +733,12 @@ External flakes can override the package directly:
 
 ```nix
 {
-  inputs.kopi-ai-agent.url = "github:Kopi Ai Agent Pte Ltd/kopi-ai-agent";
-  outputs = { kopi-ai-agent, nixpkgs, ... }: {
-    nixpkgs.overlays = [ kopi-ai-agent.overlays.default ];
+  inputs.kopi-agent.url = "github:NousResearch/kopi-agent";
+  outputs = { kopi-agent, nixpkgs, ... }: {
+    nixpkgs.overlays = [ kopi-agent.overlays.default ];
     # Then:
-    #   pkgs.kopi-ai-agent.override { extraPythonPackages = [...]; }
-    #   pkgs.kopi-ai-agent.override { extraDependencyGroups = [ "hindsight" ]; }
+    #   pkgs.kopi-agent.override { extraPythonPackages = [...]; }
+    #   pkgs.kopi-agent.override { extraDependencyGroups = [ "hindsight" ]; }
   };
 }
 ```
@@ -748,7 +748,7 @@ External flakes can override the package directly:
 Plugins still need to be enabled in `config.yaml`. Add them via the declarative settings:
 
 ```nix
-services.kopi-ai-agent.settings.plugins.enabled = [
+services.kopi-agent.settings.plugins.enabled = [
   "kopi-lcm"
   "rtk-rewrite"
 ];
@@ -767,7 +767,7 @@ A build-time collision check prevents plugin packages from shadowing core kopi d
 The flake provides a development shell with Python 3.12, uv, Node.js, and all runtime tools:
 
 ```bash
-cd kopi-ai-agent
+cd kopi-agent
 nix develop
 
 # Shell provides:
@@ -784,7 +784,7 @@ kopi chat
 The included `.envrc` activates the dev shell automatically:
 
 ```bash
-cd kopi-ai-agent
+cd kopi-agent
 direnv allow    # one-time
 # Subsequent entries are near-instant (stamp file skips dep install)
 ```
@@ -811,7 +811,7 @@ nix build .#checks.x86_64-linux.config-roundtrip    # merge script preserves use
 
 | Check | What it tests |
 |---|---|
-| `package-contents` | `kopi` and `kopi-ai-agent` binaries exist and `kopi version` runs |
+| `package-contents` | `kopi` and `kopi-agent` binaries exist and `kopi version` runs |
 | `entry-points-sync` | Every `[project.scripts]` entry in `pyproject.toml` has a wrapped binary in the Nix package |
 | `cli-commands` | `kopi --help` exposes `gateway` and `config` subcommands |
 | `managed-guard` | `KOPI_MANAGED=true kopi config set ...` prints the NixOS error |
@@ -828,10 +828,10 @@ nix build .#checks.x86_64-linux.config-roundtrip    # merge script preserves use
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `enable` | `bool` | `false` | Enable the kopi-ai-agent service |
-| `package` | `package` | `kopi-ai-agent` | The kopi-ai-agent package to use |
-| `user` | `str` | `"hermes"` | System user |
-| `group` | `str` | `"hermes"` | System group |
+| `enable` | `bool` | `false` | Enable the kopi-agent service |
+| `package` | `package` | `kopi-agent` | The kopi-agent package to use |
+| `user` | `str` | `"kopi"` | System user |
+| `group` | `str` | `"kopi"` | System group |
 | `createUser` | `bool` | `true` | Auto-create user/group |
 | `stateDir` | `str` | `"/var/lib/kopi"` | State directory (`KOPI_HOME` parent) |
 | `workingDirectory` | `str` | `"${stateDir}/workspace"` | Agent working directory |
@@ -932,7 +932,7 @@ Same layout, mounted into the container:
 
 | Container path | Host path | Mode | Notes |
 |---|---|---|---|
-| `/nix/store` | `/nix/store` | `ro` | Hermes binary + all Nix deps |
+| `/nix/store` | `/nix/store` | `ro` | Kopi binary + all Nix deps |
 | `/data` | `/var/lib/kopi` | `rw` | All state, config, workspace |
 | `/home/kopi` | `${stateDir}/home` | `rw` | Persistent agent home — `pip install --user`, tool caches |
 | `/usr`, `/usr/local`, `/tmp` | (writable layer) | `rw` | `apt`/`pip`/`npm` installs — persists across restarts, lost on recreation |
@@ -943,7 +943,7 @@ Same layout, mounted into the container:
 
 ```bash
 # Update the flake input (run from the directory containing flake.nix)
-cd /etc/nixos && nix flake update kopi-ai-agent
+cd /etc/nixos && nix flake update kopi-agent
 
 # Rebuild
 sudo nixos-rebuild switch
@@ -963,21 +963,21 @@ All `docker` commands below work the same with `podman`. Substitute accordingly 
 
 ```bash
 # Both modes use the same systemd unit
-journalctl -u kopi-ai-agent -f
+journalctl -u kopi-agent -f
 
 # Container mode: also available directly
-docker logs -f kopi-ai-agent
+docker logs -f kopi-agent
 ```
 
 ### Container Inspection
 
 ```bash
-systemctl status kopi-ai-agent
-docker ps -a --filter name=kopi-ai-agent
-docker inspect kopi-ai-agent --format='{{.State.Status}}'
-docker exec -it kopi-ai-agent bash
-docker exec kopi-ai-agent readlink /data/current-package
-docker exec kopi-ai-agent cat /data/.container-identity
+systemctl status kopi-agent
+docker ps -a --filter name=kopi-agent
+docker inspect kopi-agent --format='{{.State.Status}}'
+docker exec -it kopi-agent bash
+docker exec kopi-agent readlink /data/current-package
+docker exec kopi-agent cat /data/.container-identity
 ```
 
 ### Force Container Recreation
@@ -985,10 +985,10 @@ docker exec kopi-ai-agent cat /data/.container-identity
 If you need to reset the writable layer (fresh Ubuntu):
 
 ```bash
-sudo systemctl stop kopi-ai-agent
-docker rm -f kopi-ai-agent
+sudo systemctl stop kopi-agent
+docker rm -f kopi-agent
 sudo rm /var/lib/kopi/.container-identity
-sudo systemctl start kopi-ai-agent
+sudo systemctl start kopi-agent
 ```
 
 ### Verify Secrets Are Loaded
@@ -1000,13 +1000,13 @@ If the agent starts but can't authenticate with the LLM provider, check that the
 sudo -u kopi cat /var/lib/kopi/.kopi/.env
 
 # Container mode
-docker exec kopi-ai-agent cat /data/.kopi/.env
+docker exec kopi-agent cat /data/.kopi/.env
 ```
 
 ### GC Root Verification
 
 ```bash
-nix-store --query --roots $(docker exec kopi-ai-agent readlink /data/current-package)
+nix-store --query --roots $(docker exec kopi-agent readlink /data/current-package)
 ```
 
 ### Common Issues
@@ -1014,11 +1014,11 @@ nix-store --query --roots $(docker exec kopi-ai-agent readlink /data/current-pac
 | Symptom | Cause | Fix |
 |---|---|---|
 | `Cannot save configuration: managed by NixOS` | CLI guards active | Edit `configuration.nix` and `nixos-rebuild switch` |
-| `No adapter available for discord` (or telegram/slack) | Messaging deps missing from the sealed Nix venv | Install `#messaging` variant: `nix profile install ...#messaging`. For NixOS module: `extraDependencyGroups = [ "messaging" ]`. Check `journalctl -u kopi-ai-agent` for `FeatureUnavailable` or `requirements not met` for the underlying error. |
+| `No adapter available for discord` (or telegram/slack) | Messaging deps missing from the sealed Nix venv | Install `#messaging` variant: `nix profile install ...#messaging`. For NixOS module: `extraDependencyGroups = [ "messaging" ]`. Check `journalctl -u kopi-agent` for `FeatureUnavailable` or `requirements not met` for the underlying error. |
 | Container recreated unexpectedly | `extraVolumes`, `extraOptions`, or `image` changed | Expected — writable layer resets. Reinstall packages or use a custom image |
-| `kopi version` shows old version | Container not restarted | `systemctl restart kopi-ai-agent` |
-| Permission denied on `/var/lib/kopi` | State dir is `0750 kopi:kopi` | Use `docker exec` or `sudo -u hermes` |
+| `kopi version` shows old version | Container not restarted | `systemctl restart kopi-agent` |
+| Permission denied on `/var/lib/kopi` | State dir is `0750 kopi:kopi` | Use `docker exec` or `sudo -u kopi` |
 | `nix-collect-garbage` removed kopi | GC root missing | Restart the service (preStart recreates the GC root) |
-| `no container with name or ID "kopi-ai-agent"` (Podman) | Podman rootful container not visible to regular user | Add passwordless sudo for podman (see [Container Mode](#container-mode) section) |
-| `unable to find user hermes` | Container still starting (entrypoint hasn't created user yet) | Wait a few seconds and retry — the CLI retries automatically |
-| Tool added via `extraPackages` not found in terminal | Requires `nixos-rebuild switch` to update the per-user profile | Rebuild and restart: `nixos-rebuild switch && systemctl restart kopi-ai-agent` |
+| `no container with name or ID "kopi-agent"` (Podman) | Podman rootful container not visible to regular user | Add passwordless sudo for podman (see [Container Mode](#container-mode) section) |
+| `unable to find user kopi` | Container still starting (entrypoint hasn't created user yet) | Wait a few seconds and retry — the CLI retries automatically |
+| Tool added via `extraPackages` not found in terminal | Requires `nixos-rebuild switch` to update the per-user profile | Rebuild and restart: `nixos-rebuild switch && systemctl restart kopi-agent` |

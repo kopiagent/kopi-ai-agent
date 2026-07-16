@@ -70,16 +70,16 @@ def get_env_value(name: str, default=None):
 
 
 def kopi_xai_user_agent() -> str:
-    """Return a stable Hermes-specific User-Agent for xAI HTTP calls."""
+    """Return a stable Kopi-specific User-Agent for xAI HTTP calls."""
     try:
         from kopi_cli import __version__
     except Exception:
         __version__ = "unknown"
-    return f"Hermes-Agent/{__version__}"
+    return f"Kopi-Agent/{__version__}"
 
 
 def _load_config_section(section_name: str) -> Dict[str, Any]:
-    """Return a top-level Hermes config section as a dict, or empty."""
+    """Return a top-level Kopi config section as a dict, or empty."""
     try:
         from kopi_cli.config import load_config
 
@@ -203,7 +203,7 @@ def xai_storage_notice_text(section_name: str) -> str:
 
 
 def maybe_mark_xai_storage_notice_seen(section_name: str) -> Optional[str]:
-    """Return the storage notice once per Hermes home, then mark it seen."""
+    """Return the storage notice once per Kopi home, then mark it seen."""
     notice = xai_storage_notice_text(section_name)
     if not notice:
         return None
@@ -224,9 +224,9 @@ def maybe_mark_xai_storage_notice_seen(section_name: str) -> Optional[str]:
 def resolve_xai_http_credentials(*, force_refresh: bool = False) -> Dict[str, str]:
     """Resolve bearer credentials for direct xAI HTTP endpoints.
 
-    Prefers Hermes-managed xAI OAuth credentials when available, then falls back
+    Prefers Kopi-managed xAI OAuth credentials when available, then falls back
     to ``XAI_API_KEY`` resolved via ``kopi_cli.config.get_env_value`` so keys
-    stored in ``~/.kopi/.env`` (the standard Hermes location) are honored —
+    stored in ``~/.kopi/.env`` (the standard Kopi location) are honored —
     not just ones already exported into ``os.environ``. This keeps direct xAI
     endpoints (images, TTS, STT, etc.) aligned with the main runtime auth model
     and preserves the regression contract from PR #17140 / #17163.

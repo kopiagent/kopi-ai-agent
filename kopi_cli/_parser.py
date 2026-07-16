@@ -60,7 +60,7 @@ Examples:
     kopi config edit            Edit config in $EDITOR
     kopi config set model gpt-4 Set a config value
     kopi gateway                Run messaging gateway
-    kopi -s kopi-ai-agent-dev,github-auth
+    kopi -s kopi-agent-dev,github-auth
     kopi -w                     Start in isolated git worktree
     kopi gateway install        Install gateway background service
     kopi sessions list          List past sessions
@@ -71,7 +71,7 @@ Examples:
     kopi logs errors            View errors.log
     kopi logs --since 1h        Lines from the last hour
     kopi debug share             Upload debug report for support
-    kopi console                Open the safe Hermes command console
+    kopi console                Open the safe Kopi command console
     kopi update                 Update to latest version
     kopi dashboard              Start web UI dashboard (port 9119)
     kopi dashboard --stop       Stop running dashboard processes
@@ -91,7 +91,7 @@ def build_top_level_parser():
     """
     parser = argparse.ArgumentParser(
         prog="kopi",
-        description="KOPI AI AGENT - AI assistant with tool-calling capabilities",
+        description="Kopi Agent - AI assistant with tool-calling capabilities",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=_EPILOGUE,
     )
@@ -159,6 +159,12 @@ def build_top_level_parser():
         metavar="SESSION",
         default=None,
         help="Resume a previous session by ID or title",
+    )
+    parser.add_argument(
+        "--no-restore-cwd",
+        action="store_true",
+        default=False,
+        help="Don't cd into a resumed session's recorded working directory.",
     )
     parser.add_argument(
         "--continue",
@@ -263,7 +269,7 @@ def build_top_level_parser():
     chat_parser = subparsers.add_parser(
         "chat",
         help="Interactive chat with the agent",
-        description="Start an interactive chat session with KOPI AI AGENT",
+        description="Start an interactive chat session with Kopi Agent",
     )
     chat_parser.add_argument(
         "-q", "--query", help="Single query (non-interactive mode)"
@@ -271,12 +277,27 @@ def build_top_level_parser():
     chat_parser.add_argument(
         "--image", help="Optional local image path to attach to a single query"
     )
+    # `default=argparse.SUPPRESS` on flags that are ALSO declared on the
+    # top-level parser: when the user writes `kopi -m foo chat`, argparse
+    # first sets `args.model = "foo"` from the top-level parser, then
+    # dispatches to the chat subparser. Without SUPPRESS the chat subparser's
+    # own default (`None`) would silently clobber the top-level value because
+    # the subparser shares the same namespace and `dest`. SUPPRESS keeps the
+    # subparser action a no-op unless the user actually passes the flag after
+    # the subcommand. Matches the pattern already used for `-s/--skills` and
+    # the relaunch-inherited flags `-r/--resume`, `-c/--continue`,
+    # `-w/--worktree`, `--yolo`, etc. (see tests/kopi_cli/
+    # test_argparse_flag_propagation.py).
     _inherited_flag(
         chat_parser,
-        "-m", "--model", help="Model to use (e.g., anthropic/claude-sonnet-4)",
+        "-m", "--model",
+        default=argparse.SUPPRESS,
+        help="Model to use (e.g., anthropic/claude-sonnet-4)",
     )
     chat_parser.add_argument(
-        "-t", "--toolsets", help="Comma-separated toolsets to enable"
+        "-t", "--toolsets",
+        default=argparse.SUPPRESS,
+        help="Comma-separated toolsets to enable",
     )
     _inherited_flag(
         chat_parser,
@@ -293,7 +314,7 @@ def build_top_level_parser():
         # are also valid values, and runtime resolution (resolve_runtime_provider)
         # handles validation/error reporting consistently with the top-level
         # `--provider` flag.
-        default=None,
+        default=argparse.SUPPRESS,
         help="Inference provider (default: auto). Built-in or a user-defined name from `providers:` in config.yaml.",
     )
     chat_parser.add_argument(
@@ -315,6 +336,12 @@ def build_top_level_parser():
         metavar="SESSION_ID",
         default=argparse.SUPPRESS,
         help="Resume a previous session by ID (shown on exit)",
+    )
+    chat_parser.add_argument(
+        "--no-restore-cwd",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Don't cd into a resumed session's recorded working directory.",
     )
     chat_parser.add_argument(
         "--continue",
@@ -390,7 +417,7 @@ def build_top_level_parser():
         "--safe-mode",
         action="store_true",
         default=argparse.SUPPRESS,
-        help="Troubleshooting mode: disable ALL customizations — user config, AGENTS.md/memory injection, plugins, and MCP servers (implies --ignore-user-config and --ignore-rules). Use to isolate whether a problem comes from your setup or from Hermes itself.",
+        help="Troubleshooting mode: disable ALL customizations — user config, AGENTS.md/memory injection, plugins, and MCP servers (implies --ignore-user-config and --ignore-rules). Use to isolate whether a problem comes from your setup or from Kopi itself.",
     )
     chat_parser.add_argument(
         "--source",
@@ -401,14 +428,14 @@ def build_top_level_parser():
         chat_parser,
         "--tui",
         action="store_true",
-        default=False,
+        default=argparse.SUPPRESS,
         help="Launch the modern TUI instead of the classic REPL",
     )
     _inherited_flag(
         chat_parser,
         "--cli",
         action="store_true",
-        default=False,
+        default=argparse.SUPPRESS,
         help="Force the classic prompt_toolkit REPL (overrides display.interface=tui)",
     )
     _inherited_flag(
@@ -416,7 +443,7 @@ def build_top_level_parser():
         "--dev",
         dest="tui_dev",
         action="store_true",
-        default=False,
+        default=argparse.SUPPRESS,
         help="With --tui: run TypeScript sources via tsx (skip dist build)",
     )
 

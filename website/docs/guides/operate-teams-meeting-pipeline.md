@@ -52,9 +52,9 @@ kopi teams-pipeline maintain-subscriptions --dry-run
 
 You MUST run `maintain-subscriptions` on a schedule. Pick one of these three options:
 
-#### Option 1: Hermes cron (recommended if you already run the Hermes gateway)
+#### Option 1: Kopi cron (recommended if you already run the Kopi gateway)
 
-Hermes ships a built-in cron scheduler. The `--no-agent` mode runs a script as the job (rather than using an LLM), and `--script` must point at a file under `~/.kopi/scripts/`. First create the script:
+Kopi ships a built-in cron scheduler. The `--no-agent` mode runs a script as the job (rather than using an LLM), and `--script` must point at a file under `~/.kopi/scripts/`. First create the script:
 
 ```bash
 mkdir -p ~/.kopi/scripts
@@ -88,12 +88,12 @@ Create `/etc/systemd/system/kopi-teams-pipeline-maintain.service`:
 
 ```ini
 [Unit]
-Description=Hermes Teams pipeline subscription maintenance
+Description=Kopi Teams pipeline subscription maintenance
 After=network-online.target
 
 [Service]
 Type=oneshot
-User=hermes
+User=kopi
 EnvironmentFile=/etc/kopi/env
 ExecStart=/usr/local/bin/kopi teams-pipeline maintain-subscriptions
 ```
@@ -102,7 +102,7 @@ And `/etc/systemd/system/kopi-teams-pipeline-maintain.timer`:
 
 ```ini
 [Unit]
-Description=Run Hermes Teams pipeline subscription maintenance every 12 hours
+Description=Run Kopi Teams pipeline subscription maintenance every 12 hours
 
 [Timer]
 OnBootSec=5min
@@ -239,7 +239,7 @@ Check:
 - [ ] Notion and Linear sinks are configured only if actually needed
 - [ ] `kopi teams-pipeline validate` returns an OK snapshot
 - [ ] `kopi teams-pipeline token-health --force-refresh` succeeds
-- [ ] **`maintain-subscriptions` is scheduled** (Hermes cron, systemd timer, or crontab — see [Automating subscription renewal](#automating-subscription-renewal-required-for-production)). Without this, Graph subscriptions silently expire within 72 hours.
+- [ ] **`maintain-subscriptions` is scheduled** (Kopi cron, systemd timer, or crontab — see [Automating subscription renewal](#automating-subscription-renewal-required-for-production)). Without this, Graph subscriptions silently expire within 72 hours.
 - [ ] a real end-to-end meeting event has produced a stored job
 - [ ] at least one summary has reached the intended delivery sink
 

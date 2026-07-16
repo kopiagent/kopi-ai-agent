@@ -148,11 +148,11 @@ export interface Translations {
     starting: string;
     startedInBackground: string;
     stopped: string;
-    updateHermes: string;
-    updateHermesConfirmMessage?: string;
-    updateHermesConfirmNow?: string;
-    updateHermesConfirmTitle?: string;
-    updatingHermes: string;
+    updateKopi: string;
+    updateKopiConfirmMessage?: string;
+    updateKopiConfirmNow?: string;
+    updateKopiConfirmTitle?: string;
+    updatingKopi: string;
     waitingForOutput: string;
   };
 
@@ -530,6 +530,8 @@ export interface Translations {
     disconnect: string;
     managedExternally: string;
     copied: string;
+    copyCode: string;
+    copyFailed: string;
     cli: string;
     copyCliCommand: string;
     connect: string;

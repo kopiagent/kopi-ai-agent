@@ -1,4 +1,4 @@
-"""Regression test for the ``HermesMCPOAuthProvider.async_auth_flow`` bidirectional
+"""Regression test for the ``KopiMCPOAuthProvider.async_auth_flow`` bidirectional
 generator bridge.
 
 PR #11383 introduced a subclass method that wrapped the SDK's ``auth_flow`` with::
@@ -47,7 +47,7 @@ async def test_kopi_provider_forwards_asend_values(tmp_path, monkeypatch):
     from mcp.shared.auth import OAuthClientMetadata, OAuthToken
     from pydantic import AnyUrl
 
-    from tools.mcp_oauth import HermesTokenStorage
+    from tools.mcp_oauth import KopiTokenStorage
     from tools.mcp_oauth_manager import _KOPI_PROVIDER_CLS, reset_manager_for_tests
 
     assert _KOPI_PROVIDER_CLS is not None, "SDK OAuth types must be available"
@@ -58,7 +58,7 @@ async def test_kopi_provider_forwards_asend_values(tmp_path, monkeypatch):
     # Seed a valid-looking token so the SDK's _initialize loads something and
     # can_refresh_token() is True (though we don't exercise refresh here — we
     # go straight through the 200 path).
-    storage = HermesTokenStorage("srv")
+    storage = KopiTokenStorage("srv")
     await storage.set_tokens(
         OAuthToken(
             access_token="old_access",
@@ -82,7 +82,7 @@ async def test_kopi_provider_forwards_asend_values(tmp_path, monkeypatch):
 
     metadata = OAuthClientMetadata(
         redirect_uris=[AnyUrl("http://127.0.0.1:12345/callback")],
-        client_name="KOPI AI AGENT",
+        client_name="Kopi Agent",
     )
     provider = _KOPI_PROVIDER_CLS(
         server_name="srv",
@@ -129,7 +129,7 @@ async def test_kopi_provider_forwards_401_triggers_refresh(tmp_path, monkeypatch
     from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
     from pydantic import AnyUrl
 
-    from tools.mcp_oauth import HermesTokenStorage
+    from tools.mcp_oauth import KopiTokenStorage
     from tools.mcp_oauth_manager import _KOPI_PROVIDER_CLS, reset_manager_for_tests
 
     assert _KOPI_PROVIDER_CLS is not None
@@ -137,7 +137,7 @@ async def test_kopi_provider_forwards_401_triggers_refresh(tmp_path, monkeypatch
     monkeypatch.setenv("KOPI_HOME", str(tmp_path))
     reset_manager_for_tests()
 
-    storage = HermesTokenStorage("srv")
+    storage = KopiTokenStorage("srv")
     await storage.set_tokens(
         OAuthToken(
             access_token="old_access",
@@ -158,7 +158,7 @@ async def test_kopi_provider_forwards_401_triggers_refresh(tmp_path, monkeypatch
 
     metadata = OAuthClientMetadata(
         redirect_uris=[AnyUrl("http://127.0.0.1:12345/callback")],
-        client_name="KOPI AI AGENT",
+        client_name="Kopi Agent",
     )
     provider = _KOPI_PROVIDER_CLS(
         server_name="srv",

@@ -2,11 +2,11 @@
 name: stocks
 description: Stock quotes, history, search, compare, crypto via Yahoo.
 version: 0.1.0
-author: Mibay (Mibayy), KOPI AI AGENT
+author: Mibay (Mibayy), Kopi Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
-  hermes:
+  kopi:
     tags: [Stocks, Finance, Market, Crypto, Investing]
     category: finance
     related_skills: [dcf-model, comps-analysis, lbo-model]

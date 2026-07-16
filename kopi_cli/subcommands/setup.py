@@ -17,7 +17,7 @@ def build_setup_parser(subparsers, *, cmd_setup: Callable) -> None:
     setup_parser = subparsers.add_parser(
         "setup",
         help="Interactive setup wizard",
-        description="Configure KOPI AI AGENT with an interactive wizard. "
+        description="Configure Kopi Agent with an interactive wizard. "
         "Run a specific section: kopi setup model|tts|terminal|gateway|tools|agent",
     )
     setup_parser.add_argument(

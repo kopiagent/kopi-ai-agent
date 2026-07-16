@@ -3,7 +3,7 @@
 **Target:** {target_url}
 **Date:** {date}
 **Scope:** {scope_description}
-**Tester:** KOPI AI AGENT (automated exploratory QA)
+**Tester:** Kopi Agent (automated exploratory QA)
 
 ---
 

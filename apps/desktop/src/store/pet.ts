@@ -32,7 +32,7 @@ export interface PetInfo {
   // would animate into the transparent padding of ragged sheets (blank flash).
   framesByState?: Record<string, number>
   // Concrete Codex row counts (e.g. running-right may have 8 frames even though
-  // the Hermes "run" activity state uses the in-place running row).
+  // the Kopi "run" activity state uses the in-place running row).
   framesByRow?: Record<string, number>
   loopMs?: number
   scale?: number
@@ -91,6 +91,9 @@ export function derivePetState(activity: PetActivity): PetState {
 
 export const $petInfo = atom<PetInfo>({ enabled: false })
 export const $petActivity = atom<PetActivity>({})
+
+/** Pet installed + enabled with a loaded spritesheet (ready to show/react). */
+export const $petActive = computed($petInfo, info => info.enabled && Boolean(info.spritesheetBase64))
 
 /**
  * Profile the pet RPCs should resolve against. Pets are per-profile — the active
@@ -164,7 +167,7 @@ function deriveLivePetState(activity: PetActivity, busy: boolean): PetState {
  * idle. Pure desktop-client behavior (no agent/config dependency), so it lives
  * in localStorage like the pet's drag position — per-device, not per-profile.
  */
-const ROAM_KEY = 'hermes.desktop.pet-roam.v1'
+const ROAM_KEY = 'kopi.desktop.pet-roam.v1'
 export const $petRoam = atom<boolean>(storedBoolean(ROAM_KEY, false))
 
 export const setPetRoam = (on: boolean) => {

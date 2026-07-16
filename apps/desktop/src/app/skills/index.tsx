@@ -15,7 +15,7 @@ import {
   getSkills,
   getToolsets,
   getUsageAnalytics,
-  type HermesGateway,
+  type KopiGateway,
   toggleSkill,
   toggleToolset
 } from '@/kopi'
@@ -180,7 +180,7 @@ interface SkillsViewProps extends React.ComponentProps<'section'> {
 
 export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: SkillsViewProps) {
   const { t } = useI18n()
-  const gateway = useStore($gateway) as HermesGateway | null
+  const gateway = useStore($gateway) as KopiGateway | null
   const [mode, setMode] = useRouteEnumParam('tab', SKILLS_MODES, 'skills')
 
   const [query, setQuery] = useState('')

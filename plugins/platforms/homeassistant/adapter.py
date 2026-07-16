@@ -401,7 +401,7 @@ class HomeAssistantAdapter(BasePlatformAdapter):
             "Content-Type": "application/json",
         }
         payload = {
-            "title": "KOPI AI AGENT",
+            "title": "Kopi Agent",
             "message": content[:self.MAX_MESSAGE_LENGTH],
         }
 
@@ -554,7 +554,7 @@ def _build_adapter(config):
 
 
 def register(ctx) -> None:
-    """Plugin entry point — called by the Hermes plugin system."""
+    """Plugin entry point — called by the Kopi plugin system."""
     ctx.register_platform(
         name="homeassistant",
         label="Home Assistant",

@@ -162,7 +162,7 @@ class TestReloadEnv:
         os.environ.pop("TEST_RELOAD_VAR", None)
 
     def test_removes_deleted_known_vars(self, tmp_path):
-        """reload_env() removes known Hermes vars not present in .env."""
+        """reload_env() removes known Kopi vars not present in .env."""
         env_file = tmp_path / ".env"
         env_file.write_text("")  # empty .env
         # Pick a known key from OPTIONAL_ENV_VARS
@@ -174,7 +174,7 @@ class TestReloadEnv:
             assert count >= 1
 
     def test_does_not_remove_unknown_vars(self, tmp_path):
-        """reload_env() preserves non-Hermes env vars even when absent from .env."""
+        """reload_env() preserves non-Kopi env vars even when absent from .env."""
         env_file = tmp_path / ".env"
         env_file.write_text("")
         with patch.dict(reload_env.__globals__, {"get_env_path": lambda: env_file}):
@@ -265,7 +265,7 @@ class TestWebServerEndpoints:
         assert "version" in data
         assert "kopi_home" in data
         assert "active_sessions" in data
-        assert data["can_update_hermes"] is True
+        assert data["can_update_kopi"] is True
 
     def test_status_active_session_count_uses_read_only_db(self, monkeypatch, tmp_path):
         import kopi_cli.web_server as web_server
@@ -421,7 +421,7 @@ class TestWebServerEndpoints:
 
         resp = self.client.get("/api/status")
         assert resp.status_code == 200
-        assert resp.json()["can_update_hermes"] is False
+        assert resp.json()["can_update_kopi"] is False
 
     def test_dashboard_update_capability_detects_generic_container(self, monkeypatch):
         import kopi_constants
@@ -490,6 +490,55 @@ class TestWebServerEndpoints:
         assert fields["api_key"]["kind"] == "secret"
         assert fields["api_key"]["url"] == "https://app.honcho.dev"
         assert fields["baseUrl"]["kind"] == "text"
+
+    def test_declared_surface_serves_curated_hindsight_schema(self):
+        resp = self.client.get("/api/memory/providers/hindsight/config?surface=declared")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        fields = self._provider_field_map(data)
+        assert set(fields) == {"mode", "api_key", "api_url", "bank_id", "recall_budget"}
+        assert fields["mode"]["kind"] == "select"
+        assert fields["api_key"]["kind"] == "secret"
+
+    def test_declared_surface_hides_undeclared_providers(self):
+        resp = self.client.get("/api/memory/providers/honcho/config?surface=declared")
+
+        assert resp.status_code == 200
+        assert resp.json()["fields"] == []
+
+    def test_declared_surface_put_writes_config_and_secret(self):
+        from kopi_constants import get_kopi_home
+        from kopi_cli.config import load_env
+
+        resp = self.client.put(
+            "/api/memory/providers/hindsight/config?surface=declared",
+            json={
+                "values": {
+                    "mode": "local_external",
+                    "api_url": "http://localhost:8888",
+                    "api_key": "hs-declared-key",
+                }
+            },
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True}
+        assert load_env()["HINDSIGHT_API_KEY"] == "hs-declared-key"
+
+        config_path = get_kopi_home() / "hindsight" / "config.json"
+        provider_config = json.loads(config_path.read_text(encoding="utf-8"))
+        assert provider_config["mode"] == "local_external"
+        assert provider_config["api_url"] == "http://localhost:8888"
+        assert "api_key" not in provider_config
+
+    def test_declared_surface_put_rejects_undeclared_provider(self):
+        resp = self.client.put(
+            "/api/memory/providers/honcho/config?surface=declared",
+            json={"values": {"api_key": "x"}},
+        )
+
+        assert resp.status_code == 404
 
     def test_all_listed_memory_provider_configs_fetch(self):
         resp = self.client.get("/api/memory")
@@ -863,6 +912,107 @@ class TestWebServerEndpoints:
         )
         assert resp.status_code == 401
 
+    # ── POST /api/chat/image-upload (browser clipboard/drop images) ─────
+
+    def test_chat_image_upload_writes_to_default_profile_images(self):
+        from kopi_constants import get_kopi_home
+
+        data_url = (
+            "data:image/png;base64,"
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
+            "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
+
+        resp = self.client.post(
+            "/api/chat/image-upload",
+            json={"data_url": data_url, "filename": "../../clip.png"},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        target = Path(data["path"])
+        assert data["ok"] is True
+        assert data["mime_type"] == "image/png"
+        assert target.parent == get_kopi_home() / "images"
+        assert target.name.startswith("dashboard_")
+        assert target.name.endswith("_clip.png")
+        assert target.is_file()
+        assert target.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+    def test_chat_image_upload_writes_to_requested_profile_images(self):
+        from kopi_cli import profiles as profiles_mod
+
+        worker_home = profiles_mod.get_profile_dir("worker")
+        worker_home.mkdir(parents=True)
+
+        resp = self.client.post(
+            "/api/chat/image-upload?profile=worker",
+            json={
+                "data_url": "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=",
+                "filename": "drop.gif",
+            },
+        )
+
+        assert resp.status_code == 200
+        target = Path(resp.json()["path"])
+        assert target.parent == worker_home / "images"
+        assert target.is_file()
+        assert target.read_bytes().startswith(b"GIF89a")
+
+    def test_chat_image_upload_rejects_non_image_payload(self):
+        resp = self.client.post(
+            "/api/chat/image-upload",
+            json={"data_url": "data:text/plain;base64,aGVsbG8="},
+        )
+
+        assert resp.status_code == 400
+        assert "image" in resp.json()["detail"].lower()
+
+    def test_chat_image_upload_rejects_spoofed_image_payload(self):
+        resp = self.client.post(
+            "/api/chat/image-upload",
+            json={"data_url": "data:image/png;base64,aGVsbG8=", "filename": "fake.png"},
+        )
+
+        assert resp.status_code == 400
+        assert "unsupported image type" in resp.json()["detail"].lower()
+
+    def test_chat_image_upload_rejects_unknown_profile(self):
+        resp = self.client.post(
+            "/api/chat/image-upload?profile=missing-profile",
+            json={"data_url": "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA="},
+        )
+
+        assert resp.status_code == 404
+        assert "does not exist" in resp.json()["detail"]
+
+    def test_chat_image_upload_enforces_image_size_cap(self, monkeypatch):
+        import kopi_cli.web_server as web_server
+
+        monkeypatch.setattr(web_server, "_CHAT_IMAGE_UPLOAD_MAX_BYTES", 4)
+
+        resp = self.client.post(
+            "/api/chat/image-upload",
+            json={
+                "data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAE=",
+                "filename": "large.png",
+            },
+        )
+
+        assert resp.status_code == 413
+        assert "too large" in resp.json()["detail"].lower()
+
+    def test_chat_image_upload_requires_auth(self):
+        from kopi_cli.web_server import _SESSION_HEADER_NAME
+
+        resp = self.client.post(
+            "/api/chat/image-upload",
+            json={"data_url": "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA="},
+            headers={_SESSION_HEADER_NAME: "wrong-token"},
+        )
+
+        assert resp.status_code == 401
+
     # ── Dashboard font override ─────────────────────────────────────────
 
     def test_get_dashboard_font_defaults_to_theme(self):
@@ -1087,6 +1237,112 @@ class TestWebServerEndpoints:
     def test_rename_session_not_found(self):
         resp = self.client.patch("/api/sessions/does-not-exist", json={"title": "x"})
         assert resp.status_code == 404
+
+    def test_import_sessions_endpoint_imports_exported_json(self):
+        from kopi_state import SessionDB
+
+        payload = {
+            "id": "imported-web-session",
+            "source": "cli",
+            "title": "Imported from dashboard",
+            "started_at": 100.0,
+            "ended_at": 110.0,
+            "end_reason": "complete",
+            "messages": [
+                {"role": "user", "content": "hello", "timestamp": 101.0},
+                {"role": "assistant", "content": "hi", "timestamp": 102.0},
+            ],
+        }
+
+        resp = self.client.post("/api/sessions/import", json={"sessions": [payload]})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["imported"] == 1
+        assert data["skipped"] == 0
+
+        db = SessionDB()
+        try:
+            session = db.get_session("imported-web-session")
+            assert session["title"] == "Imported from dashboard"
+            assert session["message_count"] == 2
+            assert [m["content"] for m in db.get_messages("imported-web-session")] == [
+                "hello",
+                "hi",
+            ]
+        finally:
+            db.close()
+
+        duplicate = self.client.post("/api/sessions/import", json={"sessions": [payload]})
+        assert duplicate.status_code == 200
+        assert duplicate.json()["skipped_ids"] == ["imported-web-session"]
+
+        invalid = self.client.post(
+            "/api/sessions/import",
+            json={"sessions": [{"source": "cli", "messages": []}]},
+        )
+        assert invalid.status_code == 400
+        assert invalid.json()["detail"]["errors"] == [
+            {"index": 0, "error": "session id is required"}
+        ]
+
+    def test_import_sessions_endpoint_rejects_oversized_stream(self):
+        import kopi_cli.web_server as web_server
+
+        payload = b'{"sessions":[]}' + b" " * web_server._SESSION_IMPORT_MAX_BYTES
+        response = self.client.post(
+            "/api/sessions/import",
+            content=payload,
+            headers={"content-type": "application/json"},
+        )
+
+        assert response.status_code == 413
+        assert response.json() == {"detail": "Session import payload is too large"}
+
+    def test_import_sessions_endpoint_rejects_metadata_that_would_break_session_list(self):
+        invalid = self.client.post(
+            "/api/sessions/import",
+            json={
+                "sessions": [
+                    {
+                        "id": "bad-model-config",
+                        "source": "cli",
+                        "model_config": "{not-json",
+                        "messages": [],
+                    }
+                ]
+            },
+        )
+
+        assert invalid.status_code == 400
+        assert invalid.json()["detail"]["errors"] == [
+            {
+                "index": 0,
+                "session_id": "bad-model-config",
+                "error": "model_config must be valid JSON",
+            }
+        ]
+        listed = self.client.get("/api/sessions")
+        assert listed.status_code == 200
+
+    @pytest.mark.parametrize(
+        "message",
+        [{"content": "missing role"}, {"role": None, "content": "null role"}],
+    )
+    def test_import_sessions_endpoint_rejects_missing_or_null_message_role(self, message):
+        response = self.client.post(
+            "/api/sessions/import",
+            json={"sessions": [{"id": "bad-message-role", "messages": [message]}]},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["errors"] == [
+            {
+                "index": 0,
+                "session_id": "bad-message-role",
+                "error": "messages[0].role must be a non-empty string",
+            }
+        ]
+        assert self.client.get("/api/sessions").status_code == 200
 
     def test_archive_session_via_patch(self):
         """PATCH archived=true soft-hides a session; archived=false restores it."""
@@ -2029,7 +2285,7 @@ class TestWebServerEndpoints:
 
     def test_model_set_maps_unknown_vendor_to_aggregator(self, monkeypatch):
         """A bare vendor name from analytics rows (no billing_provider) is not
-        a Hermes provider — keep the user's aggregator instead of writing a
+        a Kopi provider — keep the user's aggregator instead of writing a
         provider that can never resolve credentials."""
         monkeypatch.setattr(
             "kopi_cli.model_cost_guard.expensive_model_warning",
@@ -2129,7 +2385,7 @@ class TestWebServerEndpoints:
 
         assert data["name"] == "backup"
         assert captured["name"] == "backup"
-        assert captured["args"] == ["backup", str(archive)]
+        assert captured["args"] == ["backup", "-o", str(archive)]
         assert archive.parent == get_kopi_home() / "backups"
         assert archive.name.startswith("kopi-backup-")
         assert archive.suffix == ".zip"
@@ -2156,7 +2412,7 @@ class TestWebServerEndpoints:
         archive = Path(resp.json()["archive"])
 
         assert archive.parent == hosted_home / "backups"
-        assert captured["args"] == ["backup", str(archive)]
+        assert captured["args"] == ["backup", "-o", str(archive)]
         assert archive.parent.is_dir()
 
     def test_ops_backup_download_streams_dashboard_backup(self, tmp_path):
@@ -2373,7 +2629,7 @@ class TestWebServerEndpoints:
         assert "personal WeChat" in weixin["description"]
         assert "Official Account" not in f"{weixin['name']} {weixin['description']}"
         assert weixin["docs_url"] == (
-            "https://kopiaiagent.com/docs/user-guide/messaging/weixin/"
+            "https://kopi-ai-agent.nousresearch.com/docs/user-guide/messaging/weixin/"
         )
 
         fields = {field["key"]: field for field in weixin["env_vars"]}
@@ -2391,7 +2647,7 @@ class TestWebServerEndpoints:
 
         teams = _build_catalog_entry("teams")
         assert teams["docs_url"] == (
-            "https://kopiaiagent.com/docs/user-guide/messaging/teams"
+            "https://kopi-ai-agent.nousresearch.com/docs/user-guide/messaging/teams"
         )
 
     def test_google_chat_messaging_metadata_links_setup_guide(self):
@@ -2404,7 +2660,7 @@ class TestWebServerEndpoints:
         google_chat = _build_catalog_entry("google_chat")
         assert google_chat["name"] == "Google Chat"
         assert google_chat["docs_url"] == (
-            "https://kopiaiagent.com/docs/user-guide/messaging/google_chat"
+            "https://kopi-ai-agent.nousresearch.com/docs/user-guide/messaging/google_chat"
         )
 
     def test_messaging_catalog_covers_gateway_platforms(self):
@@ -2571,7 +2827,7 @@ class TestWebServerEndpoints:
         payload = ws._telegram_onboarding_request_sync(
             "POST",
             "/v1/telegram/pairings",
-            body={"bot_name": "KOPI AI AGENT"},
+            body={"bot_name": "Kopi Agent"},
             bearer_token="poll-secret",
         )
 
@@ -2579,11 +2835,11 @@ class TestWebServerEndpoints:
         method, url, kwargs = calls["request"]
         assert method == "POST"
         assert url == "https://worker.example/v1/telegram/pairings"
-        assert kwargs["json"] == {"bot_name": "KOPI AI AGENT"}
+        assert kwargs["json"] == {"bot_name": "Kopi Agent"}
         assert kwargs["headers"]["Accept"] == "application/json"
         assert kwargs["headers"]["Authorization"] == "Bearer poll-secret"
         assert kwargs["headers"]["Content-Type"] == "application/json"
-        assert kwargs["headers"]["User-Agent"].startswith("HermesDashboard/")
+        assert kwargs["headers"]["User-Agent"].startswith("KopiDashboard/")
 
     def test_telegram_onboarding_worker_request_maps_unexpected_errors(
         self, monkeypatch
@@ -2596,7 +2852,7 @@ class TestWebServerEndpoints:
             ws._telegram_onboarding_request_sync(
                 "POST",
                 "/v1/telegram/pairings",
-                body={"bot_name": "KOPI AI AGENT"},
+                body={"bot_name": "Kopi Agent"},
             )
 
         assert exc.value.status_code == 502
@@ -2619,8 +2875,8 @@ class TestWebServerEndpoints:
                 "pairing_id": "pair123",
                 "poll_token": "poll-secret",
                 "suggested_username": "kopi_pair123_bot",
-                "deep_link": "https://t.me/newbot/HermesSetupBot/kopi_pair123_bot",
-                "qr_payload": "https://t.me/newbot/HermesSetupBot/kopi_pair123_bot",
+                "deep_link": "https://t.me/newbot/KopiSetupBot/kopi_pair123_bot",
+                "qr_payload": "https://t.me/newbot/KopiSetupBot/kopi_pair123_bot",
                 "expires_at": "2027-05-18T00:00:00.000Z",
             }
 
@@ -2628,7 +2884,7 @@ class TestWebServerEndpoints:
 
         resp = self.client.post(
             "/api/messaging/telegram/onboarding/start",
-            json={"bot_name": "Hosted Hermes"},
+            json={"bot_name": "Hosted Kopi"},
         )
 
         assert resp.status_code == 200
@@ -2639,7 +2895,7 @@ class TestWebServerEndpoints:
             (
                 "POST",
                 "/v1/telegram/pairings",
-                {"bot_name": "Hosted Hermes"},
+                {"bot_name": "Hosted Kopi"},
                 None,
             )
         ]
@@ -2657,8 +2913,8 @@ class TestWebServerEndpoints:
                     "pairing_id": "pair-ready",
                     "poll_token": "poll-secret",
                     "suggested_username": "kopi_pair_ready_bot",
-                    "deep_link": "https://t.me/newbot/HermesSetupBot/kopi_pair_ready_bot",
-                    "qr_payload": "https://t.me/newbot/HermesSetupBot/kopi_pair_ready_bot",
+                    "deep_link": "https://t.me/newbot/KopiSetupBot/kopi_pair_ready_bot",
+                    "qr_payload": "https://t.me/newbot/KopiSetupBot/kopi_pair_ready_bot",
                     "expires_at": "2027-05-18T00:00:00.000Z",
                 }
             assert method == "GET"
@@ -2730,8 +2986,8 @@ class TestWebServerEndpoints:
                     "pairing_id": "pair-restart-fails",
                     "poll_token": "poll-secret",
                     "suggested_username": "kopi_pair_restart_fails_bot",
-                    "deep_link": "https://t.me/newbot/HermesSetupBot/kopi_pair_restart_fails_bot",
-                    "qr_payload": "https://t.me/newbot/HermesSetupBot/kopi_pair_restart_fails_bot",
+                    "deep_link": "https://t.me/newbot/KopiSetupBot/kopi_pair_restart_fails_bot",
+                    "qr_payload": "https://t.me/newbot/KopiSetupBot/kopi_pair_restart_fails_bot",
                     "expires_at": "2027-05-18T00:00:00.000Z",
                 }
             assert method == "GET"
@@ -2794,8 +3050,8 @@ class TestWebServerEndpoints:
                     "pairing_id": "pair-reuse",
                     "poll_token": "poll-secret",
                     "suggested_username": "kopi_pair_reuse_bot",
-                    "deep_link": "https://t.me/newbot/HermesSetupBot/kopi_pair_reuse_bot",
-                    "qr_payload": "https://t.me/newbot/HermesSetupBot/kopi_pair_reuse_bot",
+                    "deep_link": "https://t.me/newbot/KopiSetupBot/kopi_pair_reuse_bot",
+                    "qr_payload": "https://t.me/newbot/KopiSetupBot/kopi_pair_reuse_bot",
                     "expires_at": "2027-05-18T00:00:00.000Z",
                 }
             return {
@@ -2847,8 +3103,8 @@ class TestWebServerEndpoints:
                 "pairing_id": "pair-waiting",
                 "poll_token": "poll-secret",
                 "suggested_username": "kopi_pair_waiting_bot",
-                "deep_link": "https://t.me/newbot/HermesSetupBot/kopi_pair_waiting_bot",
-                "qr_payload": "https://t.me/newbot/HermesSetupBot/kopi_pair_waiting_bot",
+                "deep_link": "https://t.me/newbot/KopiSetupBot/kopi_pair_waiting_bot",
+                "qr_payload": "https://t.me/newbot/KopiSetupBot/kopi_pair_waiting_bot",
                 "expires_at": "2027-05-18T00:00:00.000Z",
             }
 
@@ -2876,8 +3132,8 @@ class TestWebServerEndpoints:
                 "pairing_id": "pair-cancel",
                 "poll_token": "poll-secret",
                 "suggested_username": "kopi_pair_cancel_bot",
-                "deep_link": "https://t.me/newbot/HermesSetupBot/kopi_pair_cancel_bot",
-                "qr_payload": "https://t.me/newbot/HermesSetupBot/kopi_pair_cancel_bot",
+                "deep_link": "https://t.me/newbot/KopiSetupBot/kopi_pair_cancel_bot",
+                "qr_payload": "https://t.me/newbot/KopiSetupBot/kopi_pair_cancel_bot",
                 "expires_at": "2027-05-18T00:00:00.000Z",
             }
 
@@ -3438,6 +3694,54 @@ class TestBuildSchemaFromConfig:
             assert "options" in entry
             assert "local" in entry["options"]
 
+    def test_memory_provider_field_present_as_select(self):
+        """memory.provider must stay in the config schema.
+
+        Desktop's settings page builds its field list from /api/config/schema —
+        a key excluded here silently vanishes from Desktop's Memory section
+        (regression: the dashboard's dedicated memory-provider UI excluded the
+        key server-side, breaking Desktop's dropdown). The dashboard hides the
+        field client-side instead.
+        """
+        from kopi_cli.web_server import CONFIG_SCHEMA
+        entry = CONFIG_SCHEMA["memory.provider"]
+        assert entry["type"] == "select"
+        assert entry["category"] == "memory"
+        options = entry["options"]
+        # Built-in sentinel first, plus at least one discovered provider.
+        assert options[0] == ""
+        assert "builtin" in options
+        assert len(options) >= 3
+
+    def test_memory_provider_options_cover_discovered_providers(self):
+        """Every provider the /api/memory endpoint can activate is selectable."""
+        from kopi_cli.web_server import CONFIG_SCHEMA
+        from plugins.memory import list_memory_provider_names
+
+        options = set(CONFIG_SCHEMA["memory.provider"]["options"])
+        missing = set(list_memory_provider_names()) - options
+        assert missing == set(), f"discovered providers missing from schema options: {missing}"
+
+    def test_approvals_mode_options_match_config_values(self):
+        """approvals.mode select options must match the values accepted by config.py.
+
+        Previously the dashboard showed ['ask', 'yolo', 'deny'] which are stale
+        names that don't correspond to any real config value. The correct values
+        are 'manual', 'smart', and 'off' (see kopi_cli/config.py).
+        'smart' was missing entirely, making it unreachable from the UI.
+        """
+        from kopi_cli.web_server import CONFIG_SCHEMA
+        entry = CONFIG_SCHEMA["approvals.mode"]
+        assert entry["type"] == "select"
+        options = entry["options"]
+        assert "manual" in options, "'manual' missing from approvals.mode options"
+        assert "smart" in options, "'smart' missing from approvals.mode options"
+        assert "off" in options, "'off' missing from approvals.mode options"
+        # Stale names that were previously shown but don't match config values
+        assert "ask" not in options, "stale option 'ask' should not appear"
+        assert "yolo" not in options, "stale option 'yolo' should not appear"
+        assert "deny" not in options, "stale option 'deny' should not appear"
+
     def test_empty_prefix_produces_correct_keys(self):
         from kopi_cli.web_server import _build_schema_from_config
         test_config = {"model": "test", "nested": {"key": "val"}}
@@ -3729,7 +4033,7 @@ class TestNewEndpoints:
         first = blueprints[0]
         assert "fields" in first
         assert first["command"].startswith("/blueprint")
-        assert first["appUrl"].startswith("hermes://")
+        assert first["appUrl"].startswith("kopi://")
 
     def test_blueprint_instantiate_creates_job(self):
         resp = self.client.post(

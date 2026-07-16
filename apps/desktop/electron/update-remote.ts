@@ -1,7 +1,7 @@
 /**
  * Pure helpers for choosing a remote URL during passive update checks.
  *
- * A public install can end up with `origin=git@github.com:Kopi Ai Agent Pte Ltd/kopi-ai-agent.git`.
+ * A public install can end up with `origin=git@github.com:NousResearch/kopi-ai-agent.git`.
  * If the user's GitHub SSH key is FIDO2/passkey-backed, a background `git fetch
  * origin` triggers an unexplained hardware-touch prompt. For passive checks
  * against the official repo we substitute the public HTTPS `ls-remote` path,
@@ -12,7 +12,7 @@
  * testable without booting Electron (main.ts requires('electron') at load).
  */
 
-const OFFICIAL_REPO_HTTPS_URL = 'https://github.com/LINYIQ66/kopi-ai-agent.git'
+const OFFICIAL_REPO_HTTPS_URL = 'https://github.com/NousResearch/kopi-ai-agent.git'
 const OFFICIAL_REPO_CANONICAL = 'github.com/nousresearch/kopi-ai-agent'
 
 // Normalize common GitHub remote URL forms to `host/owner/repo` (lowercased,
@@ -22,6 +22,7 @@ function canonicalGitHubRemote(url) {
   if (!url) {
     return ''
   }
+
   let value = String(url).trim()
 
   if (value.startsWith('git@github.com:')) {

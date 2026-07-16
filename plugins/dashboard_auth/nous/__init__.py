@@ -154,7 +154,7 @@ class NousDashboardAuthProvider(DashboardAuthProvider):
     """Nous Portal OAuth via authorization-code + PKCE (S256)."""
 
     name = "nous"
-    display_name = "Kopi Ai Agent Pte Ltd"
+    display_name = "Nous Research"
 
     def __init__(self, *, client_id: str, portal_url: str) -> None:
         if not client_id.startswith("agent:"):
@@ -631,7 +631,7 @@ def register(ctx) -> None:
             "KOPI_DASHBOARD_OAUTH_CLIENT_ID is not set (and "
             "dashboard.oauth.client_id in config.yaml is empty). The "
             "Nous Portal provisions this env var (shape "
-            "'agent:{instance_id}') when it deploys a KOPI AI AGENT "
+            "'agent:{instance_id}') when it deploys a Kopi Agent "
             "instance — set it to your provisioned client id (either "
             "as an env var or under dashboard.oauth.client_id in "
             "config.yaml), or pass --insecure to skip the OAuth gate "

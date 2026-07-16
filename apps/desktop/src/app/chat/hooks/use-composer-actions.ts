@@ -83,7 +83,7 @@ export const KOPI_PATHS_MIME = 'application/x-kopi-paths'
 
 /**
  * Eagerly resolve files from a drop event into [File?, path, isDirectory?]
- * triples. Internal Hermes sources (e.g. the project tree) ride on a custom
+ * triples. Internal Kopi sources (e.g. the project tree) ride on a custom
  * MIME and produce path-only entries; OS drops produce File-bearing entries.
  *
  * Must be called synchronously from inside the drop handler — `DataTransfer`

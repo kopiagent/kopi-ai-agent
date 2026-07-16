@@ -1,4 +1,4 @@
-"""Tests for HermesCLI initialization -- catches configuration bugs
+"""Tests for KopiCLI initialization -- catches configuration bugs
 that only manifest at runtime (not in mocked unit tests)."""
 
 import os
@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 def _make_cli(env_overrides=None, config_overrides=None, **kwargs):
-    """Create a HermesCLI instance with minimal mocking."""
+    """Create a KopiCLI instance with minimal mocking."""
     import importlib
 
     _clean_config = {
@@ -51,7 +51,7 @@ def _make_cli(env_overrides=None, config_overrides=None, **kwargs):
         _cli_mod = importlib.reload(_cli_mod)
         with patch.object(_cli_mod, "get_tool_definitions", return_value=[]), \
              patch.dict(_cli_mod.__dict__, {"CLI_CONFIG": _clean_config}):
-            return _cli_mod.HermesCLI(**kwargs)
+            return _cli_mod.KopiCLI(**kwargs)
 
 
 class TestMaxTurnsResolution:
@@ -108,11 +108,11 @@ class TestFallbackChainInit:
             "fallback_providers": [
                 {"provider": "openrouter", "model": "anthropic/claude-sonnet-4.6"},
             ],
-            "fallback_model": {"provider": "nous", "model": "Hermes-4"},
+            "fallback_model": {"provider": "nous", "model": "Kopi-4"},
         })
         assert cli._fallback_model == [
             {"provider": "openrouter", "model": "anthropic/claude-sonnet-4.6"},
-            {"provider": "nous", "model": "Hermes-4"},
+            {"provider": "nous", "model": "Kopi-4"},
         ]
 
 
@@ -347,11 +347,11 @@ class TestHistoryDisplay:
         output = capsys.readouterr().out
 
         assert "[You #1]" in output
-        assert "[Hermes #2]" in output
+        assert "[Kopi #2]" in output
         assert "(requested 2 tool calls)" in output
         assert "[Tools]" in output
         assert "(2 tool messages hidden)" in output
-        assert "[Hermes #3]" in output
+        assert "[Kopi #3]" in output
         assert "[You #4]" in output
         assert "[You #5]" not in output
         assert "A" * 250 in output
@@ -370,7 +370,7 @@ class TestHistoryDisplay:
             },
             {
                 "id": "20260401_201329_d85961",
-                "title": "Checking Running KOPI AI AGENT",
+                "title": "Checking Running Kopi Agent",
                 "preview": "check running gateways for kopi agent",
                 "last_active": 0,
             },
@@ -380,7 +380,7 @@ class TestHistoryDisplay:
         output = capsys.readouterr().out
 
         assert "No messages in the current chat yet" in output
-        assert "Checking Running KOPI AI AGENT" in output
+        assert "Checking Running Kopi Agent" in output
         assert "20260401_201329_d85961" in output
         assert "/resume" in output
         assert "Current preview" not in output
@@ -398,7 +398,7 @@ class TestHistoryDisplay:
             },
             {
                 "id": "20260401_201329_d85961",
-                "title": "Checking Running KOPI AI AGENT",
+                "title": "Checking Running Kopi Agent",
                 "preview": "check running gateways for kopi agent",
                 "last_active": 0,
             },
@@ -408,7 +408,7 @@ class TestHistoryDisplay:
         output = capsys.readouterr().out
 
         assert "Recent sessions" in output
-        assert "Checking Running KOPI AI AGENT" in output
+        assert "Checking Running Kopi Agent" in output
         assert "Use /resume" in output
         assert "session title" in output
 
@@ -481,7 +481,7 @@ class TestHistoryDisplay:
         cli._session_db.list_sessions_rich.return_value = [
             {
                 "id": "20260401_201329_d85961",
-                "title": "Checking Running KOPI AI AGENT",
+                "title": "Checking Running Kopi Agent",
                 "preview": "check running gateways for kopi agent",
                 "last_active": 0,
             },
@@ -494,7 +494,7 @@ class TestHistoryDisplay:
 
         assert "Unknown command" not in output
         assert "Recent sessions" in output
-        assert "Checking Running KOPI AI AGENT" in output
+        assert "Checking Running Kopi Agent" in output
         assert "20260401_201329_d85961" in output
 
     def test_sessions_list_subcommand_lists_recent_sessions(self, capsys):
@@ -505,7 +505,7 @@ class TestHistoryDisplay:
         cli._session_db.list_sessions_rich.return_value = [
             {
                 "id": "20260401_201329_d85961",
-                "title": "Checking Running KOPI AI AGENT",
+                "title": "Checking Running Kopi Agent",
                 "preview": "check running gateways for kopi agent",
                 "last_active": 0,
             },
@@ -516,7 +516,7 @@ class TestHistoryDisplay:
 
         assert "Unknown command" not in output
         assert "Recent sessions" in output
-        assert "Checking Running KOPI AI AGENT" in output
+        assert "Checking Running Kopi Agent" in output
 
     def test_sessions_with_target_delegates_to_resume(self):
         """/sessions <id_or_title> behaves identically to /resume <id_or_title>.
@@ -527,10 +527,10 @@ class TestHistoryDisplay:
         """
         cli = _make_cli()
         with patch.object(cli, "_handle_resume_command") as mock_resume:
-            cli.process_command("/sessions Checking Running KOPI AI AGENT")
+            cli.process_command("/sessions Checking Running Kopi Agent")
 
         mock_resume.assert_called_once_with(
-            "/resume Checking Running KOPI AI AGENT"
+            "/resume Checking Running Kopi Agent"
         )
 
     def test_sessions_command_is_dispatched(self):

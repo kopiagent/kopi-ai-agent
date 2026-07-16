@@ -95,7 +95,7 @@ class TestGenerateBash:
     def test_contains_completion_function_and_register(self):
         out = generate_bash(_make_parser())
         assert "_kopi_completion()" in out
-        assert "complete -F _kopi_completion hermes" in out
+        assert "complete -F _kopi_completion kopi" in out
 
     def test_top_level_commands_present(self):
         out = generate_bash(_make_parser())
@@ -127,7 +127,7 @@ class TestGenerateBash:
 class TestGenerateZsh:
     def test_contains_compdef_header(self):
         out = generate_zsh(_make_parser())
-        assert "#compdef hermes" in out
+        assert "#compdef kopi" in out
 
     def test_top_level_commands_present(self):
         out = generate_zsh(_make_parser())
@@ -142,7 +142,7 @@ class TestGenerateZsh:
 
     def test_registers_compdef_instead_of_invoking_completion_function(self):
         out = generate_zsh(_make_parser())
-        assert 'compdef _kopi hermes' in out
+        assert 'compdef _kopi kopi' in out
         assert '_kopi "$@"' not in out
 
     def test_preserves_valid_zsh_arguments_alias_syntax(self):
@@ -178,7 +178,7 @@ class TestGenerateZsh:
                 [
                     "zsh",
                     "-fc",
-                    f"autoload -Uz compinit && compinit -D; source {path}; [[ ${{_comps[hermes]}} == _kopi ]]",
+                    f"autoload -Uz compinit && compinit -D; source {path}; [[ ${{_comps[kopi]}} == _kopi ]]",
                 ],
                 capture_output=True,
                 text=True,

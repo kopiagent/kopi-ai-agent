@@ -2,9 +2,18 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import test from 'node:test'
 
-import { cachedScriptPath, installedAgentInstallScript, resolveInstallScript, runBootstrap } from './bootstrap-runner'
+import { test } from 'vitest'
+
+import {
+  buildPinArgs,
+  buildPosixPinArgs,
+  cachedScriptPath,
+  hasExistingGitCheckout,
+  installedAgentInstallScript,
+  resolveInstallScript,
+  runBootstrap
+} from './bootstrap-runner'
 
 const SCRIPT_NAME = process.platform === 'win32' ? 'install.ps1' : 'install.sh'
 
@@ -22,7 +31,7 @@ test('runBootstrap bails immediately when the signal is already aborted', async 
     installStamp: null,
     activeRoot: '/tmp/kopi-runner-test',
     sourceRepoRoot: null,
-    hermesHome: '/tmp/kopi-runner-test',
+    kopiHome: '/tmp/kopi-runner-test',
     logRoot: '/tmp/kopi-runner-test',
     onEvent: ev => events.push(ev),
     abortSignal: controller.signal
@@ -54,6 +63,58 @@ test('installedAgentInstallScript resolves the installer in the agent checkout',
   }
 })
 
+test('existing checkout detection requires git metadata', () => {
+  const home = mkTmpHome()
+
+  try {
+    const activeRoot = path.join(home, 'kopi-ai-agent')
+    assert.equal(hasExistingGitCheckout(activeRoot), false)
+
+    fs.mkdirSync(path.join(activeRoot, '.git'), { recursive: true })
+    assert.equal(hasExistingGitCheckout(activeRoot), true)
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('fresh bootstrap args include the packaged commit pin', () => {
+  const installStamp = { commit: 'a'.repeat(40), branch: 'main' }
+
+  assert.deepEqual(buildPinArgs(installStamp), ['-Commit', installStamp.commit, '-Branch', 'main'])
+  assert.deepEqual(
+    buildPosixPinArgs({
+      installStamp,
+      activeRoot: '/tmp/kopi-ai-agent',
+      kopiHome: '/tmp/kopi'
+    }),
+    [
+      '--dir',
+      '/tmp/kopi-ai-agent',
+      '--kopi-home',
+      '/tmp/kopi',
+      '--branch',
+      'main',
+      '--commit',
+      installStamp.commit
+    ]
+  )
+})
+
+test('existing-checkout bootstrap args keep branch but skip the packaged commit pin', () => {
+  const installStamp = { commit: 'a'.repeat(40), branch: 'main' }
+
+  assert.deepEqual(buildPinArgs(installStamp, { pinCommit: false }), ['-Branch', 'main'])
+  assert.deepEqual(
+    buildPosixPinArgs({
+      installStamp,
+      activeRoot: '/tmp/kopi-ai-agent',
+      kopiHome: '/tmp/kopi',
+      pinCommit: false
+    }),
+    ['--dir', '/tmp/kopi-ai-agent', '--kopi-home', '/tmp/kopi', '--branch', 'main']
+  )
+})
+
 test('resolveInstallScript prefers a cached script without touching the network', async () => {
   const home = mkTmpHome()
 
@@ -68,7 +129,7 @@ test('resolveInstallScript prefers a cached script without touching the network'
     const result = await resolveInstallScript({
       installStamp: { commit },
       sourceRepoRoot: null,
-      hermesHome: home,
+      kopiHome: home,
       emit: ev => logs.push(ev)
     })
 
@@ -95,7 +156,7 @@ test('resolveInstallScript falls back to the installed agent checkout on a 404',
     const result = await resolveInstallScript({
       installStamp: { commit },
       sourceRepoRoot: null,
-      hermesHome: home,
+      kopiHome: home,
       emit: ev => logs.push(ev),
       // Simulate GitHub returning a 404 for the pinned commit.
       _download: async () => {
@@ -126,7 +187,7 @@ test('resolveInstallScript rethrows when the 404 fallback is unavailable', async
       resolveInstallScript({
         installStamp: { commit },
         sourceRepoRoot: null,
-        hermesHome: home,
+        kopiHome: home,
         emit: () => {},
         _download: async () => {
           throw new Error('Failed to download install.sh: HTTP 404')

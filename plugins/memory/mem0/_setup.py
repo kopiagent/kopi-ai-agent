@@ -310,7 +310,7 @@ def _setup_platform(kopi_home: str, config: dict, flags: dict[str, str]) -> None
         print(
             "\n  ⚠ MEM0_HOST is set in your environment "
             f"({os.environ['MEM0_HOST']}). It overrides platform mode — "
-            "remove it from ~/.kopi/.env (or unset it) or Hermes will keep "
+            "remove it from ~/.kopi/.env (or unset it) or Kopi will keep "
             "routing to the self-hosted server."
         )
 
@@ -788,7 +788,7 @@ def _setup_oss_interactive(kopi_home: str, config: dict) -> None:
     user_id = input(f"  User ID [{os.getenv('USER', 'kopi-user')}]: ").strip()
     user_id = user_id or os.getenv("USER", "kopi-user")
 
-    agent_id = input("  Agent ID [hermes]: ").strip()
+    agent_id = input("  Agent ID [kopi]: ").strip()
     agent_id = agent_id or "kopi"
 
     flags = {

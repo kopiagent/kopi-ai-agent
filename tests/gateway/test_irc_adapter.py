@@ -236,7 +236,7 @@ class TestIRCAdapterMessageParsing:
 
         adapter._dispatch_message = capture_dispatch
 
-        await adapter._handle_line(":user!u@host PRIVMSG #test :hermes: hello there")
+        await adapter._handle_line(":user!u@host PRIVMSG #test :kopi: hello there")
         assert len(dispatched) == 1
         assert dispatched[0]["text"] == "hello there"
         assert dispatched[0]["chat_id"] == "#test"
@@ -281,7 +281,7 @@ class TestIRCAdapterMessageParsing:
         adapter._dispatch_message = capture_dispatch
         adapter._message_handler = AsyncMock()
 
-        await adapter._handle_line(":hermes!bot@host PRIVMSG #test :my own msg")
+        await adapter._handle_line(":kopi!bot@host PRIVMSG #test :my own msg")
         assert len(dispatched) == 0
 
     @pytest.mark.asyncio
@@ -328,7 +328,7 @@ class TestIRCAdapterMessageParsing:
         adapter._message_handler = AsyncMock()
 
         # "admin" matches "Admin" in allowlist
-        await adapter._handle_line(":admin!u@host PRIVMSG #test :hermes: hello")
+        await adapter._handle_line(":admin!u@host PRIVMSG #test :kopi: hello")
         assert len(dispatched) == 1
         assert dispatched[0]["text"] == "hello"
 
@@ -360,7 +360,7 @@ class TestIRCAdapterMessageParsing:
         adapter._dispatch_message = capture_dispatch
         adapter._message_handler = AsyncMock()
 
-        await adapter._handle_line(":eve!u@host PRIVMSG #test :hermes: hello")
+        await adapter._handle_line(":eve!u@host PRIVMSG #test :kopi: hello")
         assert len(dispatched) == 0
 
     @pytest.mark.asyncio
@@ -554,11 +554,11 @@ class TestIRCStandaloneSend:
 
         monkeypatch.setenv("IRC_SERVER", "irc.test.net")
         monkeypatch.setenv("IRC_CHANNEL", "#cron")
-        monkeypatch.setenv("IRC_NICKNAME", "hermesbot")
+        monkeypatch.setenv("IRC_NICKNAME", "kopibot")
         monkeypatch.setenv("IRC_USE_TLS", "false")
 
         # Server greets us with 001 RPL_WELCOME, then nothing for QUIT drain.
-        conn = _FakeIRCConnection([b":server 001 hermesbot-cron :Welcome"])
+        conn = _FakeIRCConnection([b":server 001 kopibot-cron :Welcome"])
 
         async def _fake_open(host, port, **kwargs):
             return conn, conn  # reader and writer share the same fake
@@ -577,8 +577,8 @@ class TestIRCStandaloneSend:
         sent_lines = b"".join(conn.writes).decode("utf-8").splitlines()
         # NICK uses the cron-suffixed identity to avoid colliding with the
         # long-running gateway adapter that may already hold the nickname.
-        assert any(line.startswith("NICK hermesbot-cron") for line in sent_lines)
-        assert any(line.startswith("USER hermesbot-cron 0 * :KOPI AI AGENT (cron)")
+        assert any(line.startswith("NICK kopibot-cron") for line in sent_lines)
+        assert any(line.startswith("USER kopibot-cron 0 * :Kopi Agent (cron)")
                    for line in sent_lines)
         assert any(line == "PRIVMSG #cron :hello from cron" for line in sent_lines)
         assert any(line.startswith("QUIT ") for line in sent_lines)
@@ -605,7 +605,7 @@ class TestIRCStandaloneSend:
 
         monkeypatch.setenv("IRC_SERVER", "irc.test.net")
         monkeypatch.setenv("IRC_CHANNEL", "#cron")
-        monkeypatch.setenv("IRC_NICKNAME", "hermesbot")
+        monkeypatch.setenv("IRC_NICKNAME", "kopibot")
         monkeypatch.setenv("IRC_USE_TLS", "false")
 
         # No 001 response: the readuntil call returns IncompleteReadError so
@@ -641,13 +641,13 @@ class TestIRCStandaloneSend:
 
         monkeypatch.setenv("IRC_SERVER", "irc.test.net")
         monkeypatch.setenv("IRC_CHANNEL", "#cron")
-        monkeypatch.setenv("IRC_NICKNAME", "hermesbot")
+        monkeypatch.setenv("IRC_NICKNAME", "kopibot")
         monkeypatch.setenv("IRC_USE_TLS", "false")
 
         # Attempt to inject a second IRC command via CRLF in chat_id
         result = await _standalone_send(
             PlatformConfig(enabled=True, extra={}),
-            "#cron\r\nKICK #cron hermesbot",
+            "#cron\r\nKICK #cron kopibot",
             "hi",
         )
 
@@ -660,10 +660,10 @@ class TestIRCStandaloneSend:
 
         monkeypatch.setenv("IRC_SERVER", "irc.test.net")
         monkeypatch.setenv("IRC_CHANNEL", "#cron")
-        monkeypatch.setenv("IRC_NICKNAME", "hermesbot")
+        monkeypatch.setenv("IRC_NICKNAME", "kopibot")
         monkeypatch.setenv("IRC_USE_TLS", "false")
 
-        conn = _FakeIRCConnection([b":server 001 hermesbot-cron :Welcome"])
+        conn = _FakeIRCConnection([b":server 001 kopibot-cron :Welcome"])
 
         async def _fake_open(host, port, **kwargs):
             return conn, conn
@@ -682,7 +682,7 @@ class TestIRCStandaloneSend:
         # No injected NICK command after the legitimate registration NICK
         nick_lines = [line for line in sent_lines if line.startswith("NICK ")]
         # Only the original registration NICK should be present (no injected one)
-        assert all(line.startswith("NICK hermesbot-cron") for line in nick_lines)
+        assert all(line.startswith("NICK kopibot-cron") for line in nick_lines)
         # The PRIVMSG should contain "hello NICK eviltwin" as one line (with \r blanked)
         assert any("PRIVMSG #cron :hello NICK eviltwin" in line for line in sent_lines)
 
@@ -692,13 +692,13 @@ class TestIRCStandaloneSend:
 
         monkeypatch.setenv("IRC_SERVER", "irc.test.net")
         monkeypatch.setenv("IRC_CHANNEL", "#cron")
-        monkeypatch.setenv("IRC_NICKNAME", "hermesbot")
+        monkeypatch.setenv("IRC_NICKNAME", "kopibot")
         monkeypatch.setenv("IRC_USE_TLS", "false")
 
         # Register, then accept JOIN with 366 RPL_ENDOFNAMES, then PRIVMSG.
         conn = _FakeIRCConnection([
-            b":server 001 hermesbot-cron :Welcome",
-            b":server 366 hermesbot-cron #cron :End of /NAMES list.",
+            b":server 001 kopibot-cron :Welcome",
+            b":server 366 kopibot-cron #cron :End of /NAMES list.",
         ])
 
         async def _fake_open(host, port, **kwargs):

@@ -1,13 +1,13 @@
-# nix/web.nix — Hermes Web Dashboard (Vite/React) frontend build
-{ pkgs, hermesNpmLib, ... }:
+# nix/web.nix — Kopi Web Dashboard (Vite/React) frontend build
+{ pkgs, kopiNpmLib, ... }:
 let
-  npm = hermesNpmLib.mkNpmPassthru { folder = "web"; attr = "web"; pname = "hermes-web"; };
+  npm = kopiNpmLib.mkNpmPassthru { folder = "web"; attr = "web"; pname = "kopi-web"; };
 
   packageJson = builtins.fromJSON (builtins.readFile (npm.src + "/web/package.json"));
   version = packageJson.version;
 in
 pkgs.buildNpmPackage (npm // {
-  pname = "hermes-web";
+  pname = "kopi-web";
   inherit version;
 
   doCheck = false;

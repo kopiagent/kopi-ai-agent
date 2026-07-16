@@ -18,7 +18,7 @@ from tests.docker.conftest import (
 )
 
 
-def test_install_tree_not_writable_by_hermes(
+def test_install_tree_not_writable_by_kopi(
     built_image: str, container_name: str,
 ) -> None:
     """The kopi user must not be able to modify /opt/kopi.

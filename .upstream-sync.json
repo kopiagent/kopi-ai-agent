@@ -1,0 +1,21 @@
+{
+  "upstream": "https://github.com/NousResearch/hermes-agent.git",
+  "synced_to_commit": "6997dc81c",
+  "synced_date": "2026-07-15",
+  "merge_base": "c1b46d9",
+  "sync_tag": "hermes-sync-6997dc81c",
+  "rebrand_transform": "case-preserving hermes->kopi; plus post-pass hermes-agent/kopi-agent -> kopi-ai-agent (package/repo name)",
+  "merge_method": "3-way merge with base = c1b46d9 (kopi's TRUE initial rebranded commit, the real common ancestor), theirs = T(hermes@new_HEAD), ours = kopi main. CRITICAL: base MUST be c1b46d9, not a synthetic T(fork) — a too-new base silently drops upstream code as 'ours deleted it'.",
+  "conflict_policy": "website/** + i18n kept KOPI's; README.md/install.sh kept KOPI's; .env.example kept KOPI PROXY block + upstream providers; everything else took upstream.",
+  "post_merge_checks": [
+    "restore kopi-own files the 3-way deletes (base has them, upstream doesn't): compare merge deletions vs upstream's real deletions",
+    "kopi-agent -> kopi-ai-agent naming pass (skip skills/** and -memory/-setup/-dev/-skill-authoring suffixes)",
+    "integrity scan: non-customized files should match T(upstream) modulo brand"
+  ],
+  "history": [
+    "f8361d29c approx fork tag region (byte-match, UNRELIABLE — do not use as base)",
+    "89bd0fba9 (first sync attempt, superseded)",
+    "6997dc81c (synced 2026-07-15, tag hermes-sync-6997dc81c, commit corrected with base=c1b46d9)"
+  ],
+  "notes": "For the NEXT sync: base stays c1b46d9 (or a fresh clean rebrand-snapshot if you ever re-fork); synced_to_commit (6997dc81c) is the last upstream HEAD pulled. Update this file + new hermes-sync-<hash> tag."
+}

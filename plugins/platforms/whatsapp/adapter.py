@@ -279,7 +279,7 @@ from utils import env_int
 
 def _is_allowed_bridge_path(url: str) -> bool:
     """Return True only when an absolute path from the bridge resolves inside a
-    known Hermes media cache directory.
+    known Kopi media cache directory.
 
     The Baileys bridge is a local subprocess that downloads inbound media and
     hands back absolute file paths. A compromised or buggy bridge could hand
@@ -340,7 +340,7 @@ def check_whatsapp_requirements() -> bool:
     
     WhatsApp requires a Node.js bridge for most implementations.
     """
-    # Prefer Hermes-managed Node/npm so Windows installs are not broken by a
+    # Prefer Kopi-managed Node/npm so Windows installs are not broken by a
     # bad or elevation-triggering system Node on PATH.
     _node = find_node_executable("node")
     if not _node:
@@ -537,7 +537,7 @@ class WhatsAppAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
             if not _deps_fresh:
                 print(f"[{self.name}] Installing WhatsApp bridge dependencies...")
                 # Resolve npm path so Windows uses npm.cmd from the
-                # Hermes-managed portable Node before falling back to PATH.
+                # Kopi-managed portable Node before falling back to PATH.
                 _npm_bin = find_node_executable("npm") or "npm"
                 try:
                     # Read timeout from environment variable, default to 300 seconds (5 minutes)
@@ -1569,12 +1569,18 @@ async def _standalone_send(
     thread_id=None,
     media_files=None,
     force_document=False,
+    caption=None,
 ):
     """Out-of-process WhatsApp delivery via the local bridge HTTP API.
 
     Implements the standalone_sender_fn contract so deliver=whatsapp cron jobs
     succeed when cron runs separately from the gateway. Replaces the legacy
     _send_whatsapp helper.
+
+    When ``caption`` is provided (single-file ``MEDIA:<path> caption`` send),
+    the text rides on the media bubble's native caption via the bridge
+    ``/send-media`` ``caption`` field instead of being posted as a separate
+    ``/send`` message beforehand.
     """
     extra = getattr(pconfig, "extra", {}) or {}
     try:
@@ -1586,10 +1592,14 @@ async def _standalone_send(
         normalized_chat_id = to_whatsapp_jid(chat_id)
         media = media_files or []
         text = message or ""
+        # A caption only applies to a single media file; guard defensively so
+        # a caption is never silently repeated across a multi-file send.
+        media_caption = caption if (caption and len(media) == 1) else None
         last_message_id = None
         async with aiohttp.ClientSession() as session:
-            # 1) Text first (skip the /send call when this chunk is media-only).
-            if text.strip():
+            # 1) Text first (skip the /send call when this chunk is media-only
+            #    or when the text is delivered as the media caption instead).
+            if text.strip() and not media_caption:
                 async with session.post(
                     f"http://localhost:{bridge_port}/send",
                     json={"chatId": normalized_chat_id, "message": text},
@@ -1607,6 +1617,21 @@ async def _standalone_send(
             # bubble, and ogg/opus as a voice note — not a file/document.
             for media_path, is_voice in media:
                 if not os.path.exists(media_path):
+                    # If the text was suppressed to ride as this file's caption
+                    # (caption mode), the words would otherwise be lost when the
+                    # file is missing — deliver the caption as a plain message
+                    # so nothing silently disappears.
+                    if media_caption:
+                        try:
+                            async with session.post(
+                                f"http://localhost:{bridge_port}/send",
+                                json={"chatId": normalized_chat_id, "message": media_caption},
+                                timeout=aiohttp.ClientTimeout(total=30),
+                            ) as resp:
+                                if resp.status == 200:
+                                    last_message_id = (await resp.json()).get("messageId")
+                        except Exception:
+                            logger.warning("WhatsApp caption-fallback send failed for missing media")
                     return {"error": f"WhatsApp media file not found: {media_path}"}
                 media_type = _bridge_media_type(media_path, is_voice, force_document)
                 payload: Dict[str, Any] = {
@@ -1616,6 +1641,8 @@ async def _standalone_send(
                 }
                 if media_type == "document":
                     payload["fileName"] = os.path.basename(media_path)
+                if media_caption:
+                    payload["caption"] = media_caption
                 async with session.post(
                     f"http://localhost:{bridge_port}/send-media",
                     json=payload,
@@ -1746,7 +1773,7 @@ def _build_adapter(config):
 
 
 def register(ctx) -> None:
-    """Plugin entry point — called by the Hermes plugin system."""
+    """Plugin entry point — called by the Kopi plugin system."""
     ctx.register_platform(
         name="whatsapp",
         label="WhatsApp",

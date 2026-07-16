@@ -337,8 +337,8 @@ class OpenRouterCompatImageProvider(ImageGenProvider):
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             # OpenRouter attribution headers (harmless against Nous Portal).
-            "HTTP-Referer": "https://github.com/LINYIQ66/kopi-ai-agent",
-            "X-Title": "KOPI AI AGENT",
+            "HTTP-Referer": "https://github.com/NousResearch/kopi-ai-agent",
+            "X-Title": "Kopi Agent",
         }
         last_error: Optional[Dict[str, Any]] = None
         for i, model_id in enumerate(model_chain):

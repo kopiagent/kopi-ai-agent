@@ -1,6 +1,6 @@
 /* kopi-achievements dashboard styles
  * Originally authored by @PCinkusz — https://github.com/PCinkusz/kopi-achievements (MIT).
- * Bundled into kopi-ai-agent. The in-progress scan banner rules at the bottom
+ * Bundled into kopi-agent. The in-progress scan banner rules at the bottom
  * (.ha-scan-banner*) are a small addition layered on top of the original bundle.
  */
 .ha-page { display: flex; flex-direction: column; gap: 1rem; }

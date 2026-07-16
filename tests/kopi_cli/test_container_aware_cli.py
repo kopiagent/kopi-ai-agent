@@ -34,7 +34,7 @@ def container_env(tmp_path, monkeypatch):
         "# Written by NixOS activation script. Do not edit manually.\n"
         "backend=podman\n"
         "container_name=kopi-ai-agent\n"
-        "exec_user=hermes\n"
+        "exec_user=kopi\n"
         "kopi_bin=/data/current-package/bin/kopi\n"
     )
     return kopi_home

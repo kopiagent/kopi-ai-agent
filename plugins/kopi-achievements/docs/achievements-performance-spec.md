@@ -1,4 +1,4 @@
-# Hermes Achievements Performance Spec (Post-Hackathon)
+# Kopi Achievements Performance Spec (Post-Hackathon)
 
 Status: Draft (no code changes yet)
 Owner: kopi-achievements plugin

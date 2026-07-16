@@ -6,7 +6,9 @@ const REASONING_LABELS: Record<string, string> = {
   low: 'Low',
   medium: 'Med',
   high: 'High',
-  xhigh: 'Max'
+  xhigh: 'XHigh',
+  max: 'Max',
+  ultra: 'Ultra'
 }
 
 export function reasoningEffortLabel(effort: string): string {
@@ -116,7 +118,7 @@ export function formatModelStatusLabel(
     parts.push('Fast')
   }
 
-  // Always surface the effort (empty = Hermes default of medium) so the
+  // Always surface the effort (empty = Kopi default of medium) so the
   // current reasoning level is visible at a glance, not just when non-default.
   parts.push(reasoningEffortLabel(options?.reasoningEffort ?? '') || 'Med')
 

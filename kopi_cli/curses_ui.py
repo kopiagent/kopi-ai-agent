@@ -1,4 +1,4 @@
-"""Shared curses-based UI components for Hermes CLI.
+"""Shared curses-based UI components for Kopi CLI.
 
 Used by `kopi tools` and `kopi skills` for interactive checklists.
 Provides a curses multi-select with keyboard navigation, plus a

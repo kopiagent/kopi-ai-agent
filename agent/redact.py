@@ -317,7 +317,7 @@ def mask_secret(
 ) -> str:
     """Mask a secret for display, preserving ``head`` and ``tail`` characters.
 
-    Canonical helper for display-time redaction across Hermes — used by
+    Canonical helper for display-time redaction across Kopi — used by
     ``kopi config``, ``kopi status``, ``kopi dump``, and anywhere
     a secret needs to be shown truncated for debuggability while still
     keeping the bulk hidden.

@@ -5,7 +5,7 @@ agent loads) that additionally declares an automation schedule in its
 frontmatter:
 
     metadata:
-      hermes:
+      kopi:
         blueprint:
           schedule: "0 9 * * *"     # presence of `blueprint:` marks it runnable
           deliver: origin            # optional (default "origin")

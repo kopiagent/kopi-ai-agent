@@ -1,5 +1,5 @@
 """
-Baked-in build metadata for KOPI AI AGENT.
+Baked-in build metadata for Kopi Agent.
 
 Source installs report their git revision live via ``git rev-parse`` (see
 ``kopi_cli/dump.py`` and ``kopi_cli/banner.py``).  That doesn't work inside

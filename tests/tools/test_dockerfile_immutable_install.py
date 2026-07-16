@@ -40,7 +40,7 @@ def test_dockerfile_disables_runtime_install_mutations() -> None:
     assert "KOPI_TUI_DIR=/opt/kopi/ui-tui" in text
 
 
-def test_dockerfile_does_not_chown_install_trees_to_hermes() -> None:
+def test_dockerfile_does_not_chown_install_trees_to_kopi() -> None:
     text = _dockerfile_text()
     forbidden_patterns = (
         r"chown\s+-R\s+kopi:kopi\s+/opt/kopi/\.venv",

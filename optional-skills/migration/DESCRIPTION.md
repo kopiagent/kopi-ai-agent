@@ -1,2 +1,2 @@
 Optional migration workflows for importing user state and customizations from
-other agent systems into KOPI AI AGENT.
+other agent systems into Kopi Agent.

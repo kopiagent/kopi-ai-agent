@@ -1,4 +1,4 @@
-"""Shared constants for KOPI AI AGENT.
+"""Shared constants for Kopi Agent.
 
 Import-safe module with no dependencies — can be imported from anywhere
 without risk of circular imports.
@@ -21,7 +21,7 @@ _KOPI_HOME_OVERRIDE: ContextVar[str | object] = ContextVar(
 
 
 def set_kopi_home_override(path: str | Path | None) -> Token:
-    """Set a context-local Hermes home override and return its reset token.
+    """Set a context-local Kopi home override and return its reset token.
 
     This is for in-process, per-task scoping.  It deliberately does not mutate
     ``os.environ`` because that is shared by every thread in the process.
@@ -31,12 +31,12 @@ def set_kopi_home_override(path: str | Path | None) -> Token:
 
 
 def reset_kopi_home_override(token: Token) -> None:
-    """Restore the previous context-local Hermes home override."""
+    """Restore the previous context-local Kopi home override."""
     _KOPI_HOME_OVERRIDE.reset(token)
 
 
 def get_kopi_home_override() -> str | None:
-    """Return the active context-local Hermes home override, if any."""
+    """Return the active context-local Kopi home override, if any."""
     override = _KOPI_HOME_OVERRIDE.get()
     if override is _UNSET or not override:
         return None
@@ -44,7 +44,7 @@ def get_kopi_home_override() -> str | None:
 
 
 def _get_platform_default_kopi_home() -> Path:
-    """Return the platform-native default Hermes home path."""
+    """Return the platform-native default Kopi home path."""
     if sys.platform == "win32":
         local_appdata = os.environ.get("LOCALAPPDATA", "").strip()
         base = Path(local_appdata) if local_appdata else Path.home() / "AppData" / "Local"
@@ -53,7 +53,7 @@ def _get_platform_default_kopi_home() -> Path:
 
 
 def get_kopi_home() -> Path:
-    """Return the Hermes home directory (default: platform-native path).
+    """Return the Kopi home directory (default: platform-native path).
 
     Reads KOPI_HOME env var, falls back to the platform-native default.
     This is the single source of truth — all other copies should import this.
@@ -66,7 +66,7 @@ def get_kopi_home() -> Path:
     callers that import this at load time.  Subprocess spawners are
     expected to propagate ``KOPI_HOME`` explicitly (see the systemd
     template in ``kopi_cli/gateway.py`` and the kanban dispatcher in
-    ``kopi_cli/kanban_db.py``).  See https://github.com/LINYIQ66/kopi-ai-agent/issues/18594.
+    ``kopi_cli/kanban_db.py``).  See https://github.com/NousResearch/kopi-ai-agent/issues/18594.
     """
     override = get_kopi_home_override()
     if override:
@@ -111,9 +111,9 @@ def get_kopi_home() -> Path:
 
 
 def get_default_kopi_root() -> Path:
-    """Return the root Hermes directory for profile-level operations.
+    """Return the root Kopi directory for profile-level operations.
 
-    In standard deployments this is the platform-native Hermes home
+    In standard deployments this is the platform-native Kopi home
     (``~/.kopi`` on POSIX, ``%LOCALAPPDATA%\\kopi`` on native Windows).
 
     In Docker or custom deployments where ``KOPI_HOME`` points outside
@@ -153,7 +153,7 @@ def get_default_kopi_root() -> Path:
 def _get_packaged_data_dir(name: str) -> Path | None:
     """Return an installed data-files directory if one exists.
 
-    Used to discover bundled skills/optional-skills when Hermes is installed
+    Used to discover bundled skills/optional-skills when Kopi is installed
     from a wheel that emitted them via setuptools data_files.
     """
     candidates = []
@@ -224,7 +224,7 @@ def get_bundled_skills_dir(default: Path | None = None) -> Path:
 
 
 def get_kopi_dir(new_subpath: str, old_name: str) -> Path:
-    """Resolve a Hermes subdirectory with backward compatibility.
+    """Resolve a Kopi subdirectory with backward compatibility.
 
     New installs get the consolidated layout (e.g. ``cache/images``).
     Existing installs that already have the old path (e.g. ``image_cache``)
@@ -254,7 +254,7 @@ def get_kopi_dir(new_subpath: str, old_name: str) -> Path:
 
 
 def iter_kopi_node_dirs(home: Path | None = None) -> list[Path]:
-    """Return Hermes-managed Node.js directories in preferred lookup order.
+    """Return Kopi-managed Node.js directories in preferred lookup order.
 
     Windows installs from ``scripts/install.ps1`` unpack portable Node directly
     into ``%LOCALAPPDATA%\\kopi\\node``. POSIX installs use
@@ -264,7 +264,7 @@ def iter_kopi_node_dirs(home: Path | None = None) -> list[Path]:
     root = home or get_kopi_home()
     dirs = [root / "node"]
     bin_dir = root / "node" / "bin"
-    # NOTE: keep this ordering in sync with hermesManagedNodePathEntries() in
+    # NOTE: keep this ordering in sync with kopiManagedNodePathEntries() in
     # apps/desktop/electron/main.cjs — the Electron main process is Node and
     # cannot import this module, so the platform-ordering rule is mirrored there.
     if sys.platform == "win32":
@@ -295,7 +295,7 @@ _NODE_BOOTSTRAP_SCRIPT = Path(__file__).resolve().parent / "scripts" / "lib" / "
 def node_tool_runnable(path: str | None) -> bool:
     """Return True only when *path* is a Node/npm/npx binary that actually runs.
 
-    Hermes-managed Node trees live under ``$KOPI_HOME/node`` (or a profile's
+    Kopi-managed Node trees live under ``$KOPI_HOME/node`` (or a profile's
     ``KOPI_HOME``). A partial upgrade or interrupted install can leave
     ``bin/npm`` behind while ``lib/cli.js`` is missing — the wrapper exists but
     immediately throws ``MODULE_NOT_FOUND``. ``find_kopi_node_executable``
@@ -332,7 +332,7 @@ def node_tool_runnable(path: str | None) -> bool:
 
 
 def kopi_managed_node_tree_present(home: Path | None = None) -> bool:
-    """Return True when any Hermes-managed node/npm/npx shim exists on disk."""
+    """Return True when any Kopi-managed node/npm/npx shim exists on disk."""
     names = set()
     for command in ("node", "npm", "npx"):
         names.update(_candidate_node_command_names(command))
@@ -409,7 +409,7 @@ def _heal_managed_node_windows() -> bool:
 
 
 def heal_kopi_managed_node() -> bool:
-    """Redownload Hermes-managed Node when the tree exists but is broken.
+    """Redownload Kopi-managed Node when the tree exists but is broken.
 
     Runs at most once per process. POSIX installs shell out to
     ``heal_managed_node`` in ``scripts/lib/node-bootstrap.sh``; Windows
@@ -448,7 +448,7 @@ def heal_kopi_managed_node() -> bool:
 
 
 def find_kopi_node_executable(command: str) -> str | None:
-    """Return a Hermes-managed Node/npm executable path, healing broken trees."""
+    """Return a Kopi-managed Node/npm executable path, healing broken trees."""
     names = _candidate_node_command_names(command)
     broken_present = False
     for directory in iter_kopi_node_dirs():
@@ -479,7 +479,7 @@ def find_node_executable_on_path(command: str) -> str | None:
 
     ``shutil.which("npm")`` can resolve an extensionless npm shim before the
     ``.cmd`` shim on Windows. Python's CreateProcess cannot execute that shim
-    directly, so prefer the launchable variants explicitly for Hermes-owned
+    directly, so prefer the launchable variants explicitly for Kopi-owned
     subprocesses.
     """
     if sys.platform != "win32":
@@ -503,9 +503,9 @@ def find_node_executable_on_path(command: str) -> str | None:
 
 
 def find_node_executable(command: str) -> str | None:
-    """Resolve a Node.js command, preferring healthy Hermes-managed installs.
+    """Resolve a Node.js command, preferring healthy Kopi-managed installs.
 
-    This is for Hermes-owned subprocesses that should not be broken by a bad,
+    This is for Kopi-owned subprocesses that should not be broken by a bad,
     missing, or elevation-triggering system Node/npm on PATH. When a managed
     tree exists but cannot be healed, returns ``None`` instead of falling back
     to system npm on PATH.
@@ -519,7 +519,7 @@ def find_node_executable(command: str) -> str | None:
 
 
 def with_kopi_node_path(env: dict[str, str] | None = None) -> dict[str, str]:
-    """Return *env* with Hermes-managed Node directories prepended to PATH."""
+    """Return *env* with Kopi-managed Node directories prepended to PATH."""
     merged = dict(os.environ if env is None else env)
     existing = merged.get("PATH", "")
     parts = [p for p in existing.split(os.pathsep) if p]
@@ -656,7 +656,7 @@ def secure_parent_dir(path: Path) -> None:
     prevent catastrophic host bricking when ``KOPI_HOME`` or other path
     env vars resolve to an unexpected location.
 
-    See https://github.com/LINYIQ66/kopi-ai-agent/issues/25821.
+    See https://github.com/NousResearch/kopi-ai-agent/issues/25821.
     """
     parent = path.parent.resolve()
     # Refuse root and its direct children (/usr, /home, /var, /tmp, …).
@@ -726,9 +726,9 @@ def _iter_real_home_candidates(env: dict[str, str] | None = None) -> list[str]:
 
 
 def get_real_home(env: dict[str, str] | None = None) -> str:
-    """Return the OS user's real home directory, avoiding Hermes profile HOME.
+    """Return the OS user's real home directory, avoiding Kopi profile HOME.
 
-    ``KOPI_HOME`` scopes Hermes state. ``HOME`` is reserved for the OS/user
+    ``KOPI_HOME`` scopes Kopi state. ``HOME`` is reserved for the OS/user
     account and the many external CLIs that store credentials under ``~``.
     If a parent process is already running with ``HOME={KOPI_HOME}/home``,
     this helper repairs back to the account home when possible.
@@ -782,7 +782,7 @@ def get_subprocess_home(env: dict[str, str] | None = None) -> str | None:
 
 
 def apply_subprocess_home_env(env: dict[str, str]) -> None:
-    """Apply Hermes' subprocess HOME contract to *env* in-place."""
+    """Apply Kopi' subprocess HOME contract to *env* in-place."""
     real_home = get_real_home(env)
     if real_home:
         env["KOPI_REAL_HOME"] = real_home
@@ -791,13 +791,16 @@ def apply_subprocess_home_env(env: dict[str, str]) -> None:
         env["HOME"] = home
 
 
-VALID_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
+VALID_REASONING_EFFORTS = (
+    "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+)
 
 
 def parse_reasoning_effort(effort) -> dict | None:
     """Parse a reasoning effort level into a config dict.
 
-    Valid levels: "none", "minimal", "low", "medium", "high", "xhigh", "max".
+    Valid levels: "none", "minimal", "low", "medium", "high", "xhigh", "max",
+    "ultra".
     Returns None when the input is empty or unrecognized (caller uses default).
     Returns {"enabled": False} for "none" (aliases: "false", "disabled", and
     YAML boolean False — users write ``reasoning_effort: false``/``off``/``no``
@@ -818,6 +821,192 @@ def parse_reasoning_effort(effort) -> dict | None:
     if effort in VALID_REASONING_EFFORTS:
         return {"enabled": True, "effort": effort}
     return None
+
+
+def _canonical_model_variants(model: str) -> list[str]:
+    """Generate bounded spelling variants for tolerant override matching.
+
+    Model names mix two types of separators:
+    - **Word separators**: dashes between words (``claude-opus``)
+    - **Version separators**: dots or dashes between version digits (``4.5``, ``4-5``)
+
+    The tricky case is that ``.`` appears in BOTH roles (word sep in some
+    spellings, version sep in others), so a blanket ``.replace('.', '-')``
+    is lossy — it collapses version dots into dashes and no later step
+    recovers the canonical form (``claude-opus-4.5``).
+
+    Strategy: generate a small set of base forms, then apply version-dot
+    recovery to EACH of them. This ensures symmetry:
+    ``claude-opus-4.5``, ``claude-opus-4-5``, and ``claude-opus.4.5`` all
+    produce the same variant set.
+
+    Steps:
+    1. Exact input
+    2. Dots/dashes cross-substitution on the entire string
+    3. Version-dot recovery applied to ALL derivatives
+    4. Strip provider/aggregator prefix → bare model variants
+    5. Apply version-dot recovery to bare derivatives
+    6. Prepend known provider/aggregator prefixes
+
+    Duplicates removed in insertion order (exact always wins).
+    """
+    import re
+
+    # Version-dot regexes — digit-separator-digit interconversion
+    _dash_to_dot = lambda s: re.sub(r'(\d)-(\d)', r'\1.\2', s)
+    _dot_to_dash = lambda s: re.sub(r'(\d)\.(\d)', r'\1-\2', s)
+
+    seen = set()
+    variants = []
+
+    def _add(v):
+        if v and v not in seen:
+            seen.add(v)
+            variants.append(v)
+
+    def _add_with_derivatives(s):
+        """Add s plus its dots↔dashes and version-dot derivatives."""
+        _add(s)
+        all_dashed = s.replace('.', '-')
+        _add(all_dashed)
+        all_dotted = s.replace('-', '.')
+        _add(all_dotted)
+        # Version-dot recovery on each base form
+        _add(_dash_to_dot(s))
+        _add(_dot_to_dash(s))
+        _add(_dash_to_dot(all_dashed))
+        _add(_dot_to_dash(all_dotted))
+
+    # 1-3. Base variants for the full string
+    _add_with_derivatives(model)
+
+    # Split by / to handle provider prefix
+    parts = model.split('/')
+
+    # 4. Bare model variants (strip provider/aggregator prefix)
+    if len(parts) >= 2:
+        bare = parts[-1]
+        _add_with_derivatives(bare)
+
+    # Strip aggregator only (3+ parts)
+    # e.g. "openrouter/anthropic/claude-opus-4.5" → "anthropic/claude-opus-4.5"
+    if len(parts) >= 3:
+        _add_with_derivatives('/'.join(parts[1:]))
+
+    # 5. Prepend known provider prefixes to bare variants
+    known_providers = (
+        'anthropic', 'openai', 'google', 'openrouter', 'groq', 'mistral',
+        'xai', 'cohere', 'perplexity', 'together', 'fireworks', 'deepseek',
+    )
+    bare_variants = [v for v in variants if '/' not in v]
+    for v in bare_variants:
+        for provider in known_providers:
+            _add(f"{provider}/{v}")
+
+    # Prepend aggregator to single-slash variants
+    single_slash_variants = [v for v in variants if v.count('/') == 1]
+    known_aggregators = ('openrouter', 'opencode', 'fireworks', 'groq', 'together')
+    for v in single_slash_variants:
+        for agg in known_aggregators:
+            _add(f"{agg}/{v}")
+
+    return variants
+
+
+def resolve_per_model_reasoning_effort(model: str, overrides: dict | None) -> dict | None:
+    """Lookup a per-model reasoning_effort override with spelling-tolerance.
+
+    Args:
+        model: The model string (any spelling — exact, normalized, bare,
+               with provider prefix, etc.)
+        overrides: The dict of per-model overrides from
+                   agent.reasoning_overrides in config.yaml. Keys can be
+                   any sensible spelling of the model name.
+
+    Returns:
+        The parsed reasoning_config dict if a match is found,
+        None otherwise (caller should fall back to global reasoning_effort).
+
+    Resolution order:
+    1. Exact match
+    2. Dots ↔ dashes variants
+    3. Strip provider prefix (bare model name only)
+    4. Strip aggregator prefix (middle segment only)
+    5. Prepend known aggregator prefixes to bare/single-slash variants
+
+    First non-None parse_reasoning_effort result wins.
+    """
+    if not overrides or not isinstance(overrides, dict) or not model:
+        return None
+
+    for variant in _canonical_model_variants(model):
+        if variant in overrides:
+            result = parse_reasoning_effort(overrides[variant])
+            if result is not None:
+                return result
+
+    return None
+
+
+def resolve_reasoning_config(cfg: dict | None, model: str = "") -> dict | None:
+    """Resolve the effective reasoning config for *model* from a config dict.
+
+    Single chokepoint for reasoning-effort resolution, shared by every
+    surface (CLI startup, messaging gateway, Desktop/TUI, cron, ``/model``
+    switch, fallback activation). Priority:
+
+    1. Per-model override from ``agent.reasoning_overrides``
+       (spelling-tolerant — see :func:`resolve_per_model_reasoning_effort`)
+    2. Global ``agent.reasoning_effort`` — the raw value is passed through
+       so a YAML boolean ``False`` (``reasoning_effort: false``/``off``/
+       ``no``) means "thinking disabled", never silently re-enabled.
+
+    Session-scoped overrides (gateway ``/reasoning --session``) are resolved
+    by the caller BEFORE this function — they always win.
+
+    Args:
+        cfg: A loaded config dict (any of the three loaders' shapes — only
+             the ``agent`` and ``model`` sections are read).
+        model: The effective model for this surface/session. When empty,
+               it is derived from the config's ``model`` section (string
+               form, or a dict's ``default``/``model`` keys).
+
+    Returns:
+        The parsed reasoning config dict, or None when unset/unrecognized
+        (caller uses the provider default).
+    """
+    cfg = cfg if isinstance(cfg, dict) else {}
+    agent_cfg = cfg.get("agent")
+    if not isinstance(agent_cfg, dict):
+        agent_cfg = {}
+
+    if not model:
+        model_cfg = cfg.get("model")
+        if isinstance(model_cfg, str):
+            model = model_cfg.strip()
+        elif isinstance(model_cfg, dict):
+            model = str(
+                model_cfg.get("default") or model_cfg.get("model") or ""
+            ).strip()
+        else:
+            model = ""
+
+    overrides = agent_cfg.get("reasoning_overrides") or {}
+    per_model = resolve_per_model_reasoning_effort(model, overrides)
+    if per_model is not None:
+        return per_model
+
+    # Global fallback — keep the raw value; coercing with ``or ""`` turns a
+    # YAML boolean False into "", silently re-enabling thinking for users
+    # who explicitly disabled it.
+    effort = agent_cfg.get("reasoning_effort", "")
+    result = parse_reasoning_effort(effort)
+    if effort and str(effort).strip() and result is None:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Unknown reasoning_effort '%s', using default (medium)", effort
+        )
+    return result
 
 
 def is_termux() -> bool:
@@ -851,6 +1040,48 @@ def is_wsl() -> bool:
     return _wsl_detected
 
 
+def windows_path_to_wsl(path: str) -> str | None:
+    """Convert a Windows drive path (``C:\\...``) to its ``/mnt/<drive>/...`` form."""
+    import re
+
+    match = re.match(r"^([A-Za-z]):[\\/](.*)$", str(path or "").strip())
+    if not match:
+        return None
+    drive = match.group(1).lower()
+    tail = match.group(2).replace("\\", "/")
+    return f"/mnt/{drive}/{tail}"
+
+
+def wsl_unc_path_to_posix(path: str) -> str | None:
+    """Convert a Windows WSL UNC path (``\\\\wsl.localhost\\<distro>\\...`` or the
+    legacy ``\\\\wsl$\\...``) to a POSIX path inside the distro."""
+    import re
+
+    normalized = str(path or "").strip().replace("/", "\\")
+    match = re.match(r"^\\\\wsl(?:\.localhost|\$)\\[^\\]+\\(.*)$", normalized, re.IGNORECASE)
+    if not match:
+        return None
+    tail = match.group(1).replace("\\", "/")
+    return f"/{tail}" if tail else "/"
+
+
+def translate_cwd_for_wsl_backend(cwd: str) -> str:
+    """Normalize a cross-boundary cwd when Kopi itself runs inside WSL.
+
+    A Windows-host UI (native picker / drive path / ``\\\\wsl.localhost\\`` UNC)
+    can hand the WSL backend a path it can't ``chdir`` into. Map it to the POSIX
+    equivalent so the picker, sidebar, and sessions all agree on the workspace.
+    No-op off WSL and for paths that are already POSIX.
+    """
+    if not is_wsl():
+        return cwd
+    for translator in (wsl_unc_path_to_posix, windows_path_to_wsl):
+        translated = translator(cwd)
+        if translated is not None:
+            return translated
+    return cwd
+
+
 _container_detected: bool | None = None
 
 
@@ -869,7 +1100,7 @@ def is_container() -> bool:
 
     Result is cached for the process lifetime.  Import-safe — no heavy deps.
 
-    See: Kopi Ai Agent Pte Ltd/kopi-ai-agent#47111
+    See: NousResearch/kopi-ai-agent#47111
     """
     global _container_detected
     if _container_detected is not None:

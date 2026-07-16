@@ -17,8 +17,8 @@ import type {
   DebugShareResponse,
   ElevenLabsVoicesResponse,
   EnvVarInfo,
-  HermesConfig,
-  HermesConfigRecord,
+  KopiConfig,
+  KopiConfigRecord,
   LogsResponse,
   McpCatalogResponse,
   McpServerSummary,
@@ -63,7 +63,7 @@ import type {
 // /api/profiles runs list_profiles(), which does a recursive skill-tree walk
 // per profile — so the 15s default (DEFAULT_FETCH_TIMEOUT_MS in hardening.ts)
 // times out a backend that is alive-but-busy, surfacing as a spurious
-// "Timed out connecting to Hermes backend" that hangs the UI (#48504).
+// "Timed out connecting to Kopi backend" that hangs the UI (#48504).
 //
 // Give the boot burst a generous per-call timeout instead of raising the
 // global default: interactive/runtime calls and the liveness poll (/api/status)
@@ -109,8 +109,8 @@ export type {
   ElevenLabsVoicesResponse,
   EnvVarInfo,
   GatewayReadyPayload,
-  HermesConfig,
-  HermesConfigRecord,
+  KopiConfig,
+  KopiConfigRecord,
   LogsResponse,
   McpCatalogEntry,
   McpCatalogResponse,
@@ -167,13 +167,13 @@ export type {
   ToolsetModelsResponse
 } from '@/types/kopi'
 
-export class HermesGateway extends JsonRpcGatewayClient {
+export class KopiGateway extends JsonRpcGatewayClient {
   constructor() {
     super({
-      closedErrorMessage: 'Hermes gateway connection closed',
-      connectErrorMessage: 'Could not connect to Hermes gateway',
+      closedErrorMessage: 'Kopi gateway connection closed',
+      connectErrorMessage: 'Could not connect to Kopi gateway',
       createRequestId: nextId => nextId,
-      notConnectedErrorMessage: 'Hermes gateway is not connected',
+      notConnectedErrorMessage: 'Kopi gateway is not connected',
       requestTimeoutMs: DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS
     })
   }
@@ -374,37 +374,37 @@ export function getLogs(params: {
   })
 }
 
-export function getHermesConfig(): Promise<HermesConfig> {
-  return window.kopiDesktop.api<HermesConfig>({
+export function getKopiConfig(): Promise<KopiConfig> {
+  return window.kopiDesktop.api<KopiConfig>({
     ...profileScoped(),
     path: '/api/config',
     timeoutMs: STARTUP_REQUEST_TIMEOUT_MS
   })
 }
 
-export function getHermesConfigRecord(): Promise<HermesConfigRecord> {
-  return window.kopiDesktop.api<HermesConfigRecord>({
+export function getKopiConfigRecord(): Promise<KopiConfigRecord> {
+  return window.kopiDesktop.api<KopiConfigRecord>({
     ...profileScoped(),
     path: '/api/config'
   })
 }
 
-export function getHermesConfigDefaults(): Promise<HermesConfigRecord> {
-  return window.kopiDesktop.api<HermesConfigRecord>({
+export function getKopiConfigDefaults(): Promise<KopiConfigRecord> {
+  return window.kopiDesktop.api<KopiConfigRecord>({
     ...profileScoped(),
     path: '/api/config/defaults',
     timeoutMs: STARTUP_REQUEST_TIMEOUT_MS
   })
 }
 
-export function getHermesConfigSchema(): Promise<ConfigSchemaResponse> {
+export function getKopiConfigSchema(): Promise<ConfigSchemaResponse> {
   return window.kopiDesktop.api<ConfigSchemaResponse>({
     ...profileScoped(),
     path: '/api/config/schema'
   })
 }
 
-export function saveHermesConfig(config: HermesConfigRecord): Promise<{ ok: boolean }> {
+export function saveKopiConfig(config: KopiConfigRecord): Promise<{ ok: boolean }> {
   return window.kopiDesktop.api<{ ok: boolean }>({
     ...profileScoped(),
     path: '/api/config',
@@ -413,15 +413,16 @@ export function saveHermesConfig(config: HermesConfigRecord): Promise<{ ok: bool
   })
 }
 
+// surface=declared serves the curated desktop schema; the dashboard consumes the raw plugin schema.
 export function getMemoryProviderConfig(provider: string): Promise<MemoryProviderConfig> {
   return window.kopiDesktop.api<MemoryProviderConfig>({
-    path: `/api/memory/providers/${encodeURIComponent(provider)}/config`
+    path: `/api/memory/providers/${encodeURIComponent(provider)}/config?surface=declared`
   })
 }
 
 export function saveMemoryProviderConfig(provider: string, values: Record<string, string>): Promise<{ ok: boolean }> {
   return window.kopiDesktop.api<{ ok: boolean }>({
-    path: `/api/memory/providers/${encodeURIComponent(provider)}/config`,
+    path: `/api/memory/providers/${encodeURIComponent(provider)}/config?surface=declared`,
     method: 'PUT',
     body: { values }
   })
@@ -617,7 +618,7 @@ export function testMcpServer(name: string): Promise<McpTestResult> {
 }
 
 /** Replace the whole `mcp_servers` map (the mcp.json editor's save). Unlike
- *  `saveHermesConfig`, this REPLACES rather than deep-merges, so deletes,
+ *  `saveKopiConfig`, this REPLACES rather than deep-merges, so deletes,
  *  re-enables (dropping `enabled: false`), and removed nested fields persist. */
 export function saveMcpServers(servers: Record<string, Record<string, unknown>>): Promise<{ ok: boolean }> {
   return window.kopiDesktop.api<{ ok: boolean }>({
@@ -968,7 +969,7 @@ export function restartGateway(): Promise<ActionResponse> {
   })
 }
 
-export function updateHermes(): Promise<ActionResponse> {
+export function updateKopi(): Promise<ActionResponse> {
   return window.kopiDesktop.api<ActionResponse>({
     ...profileScoped(),
     path: '/api/kopi/update',
@@ -979,7 +980,7 @@ export function updateHermes(): Promise<ActionResponse> {
 /** Query the connected backend's own update state. In remote mode this is the
  *  authoritative source for the backend's behind-count + "what's changed",
  *  distinct from the Electron client clone's git state. */
-export function checkHermesUpdate(force = false): Promise<BackendUpdateCheckResponse> {
+export function checkKopiUpdate(force = false): Promise<BackendUpdateCheckResponse> {
   return window.kopiDesktop.api<BackendUpdateCheckResponse>({
     ...profileScoped(),
     path: `/api/kopi/update/check${force ? '?force=true' : ''}`
@@ -1090,7 +1091,7 @@ export function updateSkillsFromHub(): Promise<ActionResponse> {
 // ---------------------------------------------------------------------------
 // MCP servers — structured list / test / enable toggle / catalog (parity with
 // `kopi mcp` and the dashboard MCP page). Raw JSON editing stays in
-// config.yaml via saveHermesConfig.
+// config.yaml via saveKopiConfig.
 // ---------------------------------------------------------------------------
 
 export function listMcpServers(): Promise<{ servers: McpServerSummary[] }> {

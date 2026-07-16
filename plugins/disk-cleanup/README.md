@@ -1,6 +1,6 @@
 # disk-cleanup
 
-Auto-tracks and cleans up ephemeral files created during KOPI AI AGENT
+Auto-tracks and cleans up ephemeral files created during Kopi Agent
 sessions — test scripts, temp outputs, cron logs, stale chrome profiles.
 Scoped strictly to `$KOPI_HOME` and `/tmp/kopi-*`.
 

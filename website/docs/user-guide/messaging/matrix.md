@@ -1,29 +1,29 @@
 ---
 sidebar_position: 9
 title: "Matrix"
-description: "Set up KOPI AI AGENT as a Matrix bot"
+description: "Set up Kopi Agent as a Matrix bot"
 ---
 
 # Matrix Setup
 
-KOPI AI AGENT integrates with Matrix, the open, federated messaging protocol. Matrix lets you run your own homeserver or use a public one like matrix.org — either way, you keep control of your communications. The bot connects via the `mautrix` Python SDK, processes messages through the KOPI AI AGENT pipeline (including tool use, memory, and reasoning), and responds in real time. It supports text, file attachments, images, audio, video, and optional end-to-end encryption (E2EE).
+Kopi Agent integrates with Matrix, the open, federated messaging protocol. Matrix lets you run your own homeserver or use a public one like matrix.org — either way, you keep control of your communications. The bot connects via the `mautrix` Python SDK, processes messages through the Kopi Agent pipeline (including tool use, memory, and reasoning), and responds in real time. It supports text, file attachments, images, audio, video, and optional end-to-end encryption (E2EE).
 
-Hermes works with any Matrix homeserver — Synapse, Conduit, Dendrite, or matrix.org.
+Kopi works with any Matrix homeserver — Synapse, Conduit, Dendrite, or matrix.org.
 
-Before setup, here's the part most people want to know: how Hermes behaves once it's connected.
+Before setup, here's the part most people want to know: how Kopi behaves once it's connected.
 
-## How Hermes Behaves
+## How Kopi Behaves
 
 | Context | Behavior |
 |---------|----------|
-| **DMs** | Hermes responds to every message. No `@mention` needed. Each DM has its own session. Set `MATRIX_DM_MENTION_THREADS=true` to start a thread when the bot is `@mentioned` in a DM. |
-| **Rooms** | By default, Hermes requires an `@mention` to respond. Set `MATRIX_REQUIRE_MENTION=false` or add room IDs to `MATRIX_FREE_RESPONSE_ROOMS` for free-response rooms. Room invites are auto-accepted. |
-| **Threads** | Hermes supports Matrix threads (MSC3440). If you reply in a thread, Hermes keeps the thread context isolated from the main room timeline. Threads where the bot has already participated do not require a mention. |
-| **Auto-threading** | By default, Hermes auto-creates a thread for each message it responds to in a room. This keeps conversations isolated. Set `MATRIX_AUTO_THREAD=false` to disable. Set `MATRIX_DM_AUTO_THREAD=true` (default false) to also auto-create threads for DM messages — this is distinct from `MATRIX_DM_MENTION_THREADS`, which only starts a thread when the bot is `@mentioned` in a DM. |
-| **Commands** | Hermes accepts normal `/commands` when your Matrix client sends them. If your client reserves `/` for local commands, use `!commands` instead; Hermes normalizes known `!command` aliases to `/command`. |
+| **DMs** | Kopi responds to every message. No `@mention` needed. Each DM has its own session. Set `MATRIX_DM_MENTION_THREADS=true` to start a thread when the bot is `@mentioned` in a DM. |
+| **Rooms** | By default, Kopi requires an `@mention` to respond. Set `MATRIX_REQUIRE_MENTION=false` or add room IDs to `MATRIX_FREE_RESPONSE_ROOMS` for free-response rooms. Room invites are auto-accepted. |
+| **Threads** | Kopi supports Matrix threads (MSC3440). If you reply in a thread, Kopi keeps the thread context isolated from the main room timeline. Threads where the bot has already participated do not require a mention. |
+| **Auto-threading** | By default, Kopi auto-creates a thread for each message it responds to in a room. This keeps conversations isolated. Set `MATRIX_AUTO_THREAD=false` to disable. Set `MATRIX_DM_AUTO_THREAD=true` (default false) to also auto-create threads for DM messages — this is distinct from `MATRIX_DM_MENTION_THREADS`, which only starts a thread when the bot is `@mentioned` in a DM. |
+| **Commands** | Kopi accepts normal `/commands` when your Matrix client sends them. If your client reserves `/` for local commands, use `!commands` instead; Kopi normalizes known `!command` aliases to `/command`. |
 | **Interactive controls** | Dangerous-command approval and `/model` selection can use Matrix reactions. Approval reactions can be limited to the user who requested the action. |
 | **Thinking and tool activity** | Matrix uses threaded, editable thinking/tool-activity panes when gateway progress is enabled, so updates do not flood the main room timeline. |
-| **Shared rooms with multiple users** | By default, Hermes isolates session history per user inside the room. Two people talking in the same room do not share one transcript unless you explicitly disable that. |
+| **Shared rooms with multiple users** | By default, Kopi isolates session history per user inside the room. Two people talking in the same room do not share one transcript unless you explicitly disable that. |
 
 :::tip
 The bot automatically joins rooms when invited. Just invite the bot's Matrix user to any room and it will join and start responding.
@@ -120,7 +120,7 @@ MATRIX_ALLOW_ROOM_MENTIONS=false
 :::
 
 :::tip Room-wide mentions
-Hermes sends structured Matrix user mentions for explicit Matrix IDs such as `@alice:example.org`. Room-wide `@room` notifications are disabled by default; set `MATRIX_ALLOW_ROOM_MENTIONS=true` only in rooms where the bot is allowed to notify everyone.
+Kopi sends structured Matrix user mentions for explicit Matrix IDs such as `@alice:example.org`. Room-wide `@room` notifications are disabled by default; set `MATRIX_ALLOW_ROOM_MENTIONS=true` only in rooms where the bot is allowed to notify everyone.
 :::
 
 :::note
@@ -145,7 +145,7 @@ MATRIX_AUTO_THREAD=false
 | `room` | Unthreaded room messages stay in one stable room session. Real Matrix threads still use their thread root. |
 | `thread` | Unthreaded room messages synthesize a thread/session from the triggering event ID. |
 
-Hermes now includes the current Matrix room name, room ID, topic, message ID,
+Kopi now includes the current Matrix room name, room ID, topic, message ID,
 and a Matrix room-boundary note in the agent prompt. `/status` also shows the
 current Matrix room/session scope, and `/resume` will not silently resume a
 named session from another Matrix room unless you explicitly use
@@ -174,7 +174,7 @@ If you run your own homeserver (Synapse, Conduit, Dendrite):
 register_new_matrix_user -c /etc/synapse/homeserver.yaml http://localhost:8008
 ```
 
-2. Choose a username like `kopi` — the full user ID will be `@hermes:your-server.org`.
+2. Choose a username like `kopi` — the full user ID will be `@kopi:your-server.org`.
 
 ### Option B: Use matrix.org or Another Public Homeserver
 
@@ -183,11 +183,11 @@ register_new_matrix_user -c /etc/synapse/homeserver.yaml http://localhost:8008
 
 ### Option C: Use Your Own Account
 
-You can also run Hermes as your own user. This means the bot posts as you — useful for personal assistants.
+You can also run Kopi as your own user. This means the bot posts as you — useful for personal assistants.
 
 ## Step 2: Get an Access Token
 
-Hermes needs an access token to authenticate with the homeserver. You have two options:
+Kopi needs an access token to authenticate with the homeserver. You have two options:
 
 ### Option A: Access Token (Recommended)
 
@@ -206,7 +206,7 @@ curl -X POST https://your-server/_matrix/client/v3/login \
   -H "Content-Type: application/json" \
   -d '{
     "type": "m.login.password",
-    "user": "@hermes:your-server.org",
+    "user": "@kopi:your-server.org",
     "password": "your-password"
   }'
 ```
@@ -219,16 +219,16 @@ The access token gives full access to the bot's Matrix account. Never share it p
 
 ### Option B: Password Login
 
-Instead of providing an access token, you can give Hermes the bot's user ID and password. Hermes will log in automatically on startup. This is simpler but means the password is stored in your `.env` file.
+Instead of providing an access token, you can give Kopi the bot's user ID and password. Kopi will log in automatically on startup. This is simpler but means the password is stored in your `.env` file.
 
 ```bash
-MATRIX_USER_ID=@hermes:your-server.org
+MATRIX_USER_ID=@kopi:your-server.org
 MATRIX_PASSWORD=your-password
 ```
 
 ## Step 3: Find Your Matrix User ID
 
-KOPI AI AGENT uses your Matrix User ID to control who can interact with the bot. Matrix User IDs follow the format `@username:server`.
+Kopi Agent uses your Matrix User ID to control who can interact with the bot. Matrix User IDs follow the format `@username:server`.
 
 To find yours:
 
@@ -240,7 +240,7 @@ To find yours:
 Matrix User IDs always start with `@` and contain a `:` followed by the server name. For example: `@alice:matrix.org`, `@bob:your-server.com`.
 :::
 
-## Step 4: Configure KOPI AI AGENT
+## Step 4: Configure Kopi Agent
 
 ### Option A: Interactive Setup (Recommended)
 
@@ -264,7 +264,7 @@ MATRIX_HOMESERVER=https://matrix.example.org
 MATRIX_ACCESS_TOKEN=***
 
 # Optional: user ID (auto-detected from token if omitted)
-# MATRIX_USER_ID=@hermes:matrix.example.org
+# MATRIX_USER_ID=@kopi:matrix.example.org
 
 # Security: restrict who can interact with the bot
 MATRIX_ALLOWED_USERS=@alice:matrix.example.org
@@ -281,7 +281,7 @@ MATRIX_ALLOWED_ROOMS=!abc123:matrix.example.org
 ```bash
 # Required
 MATRIX_HOMESERVER=https://matrix.example.org
-MATRIX_USER_ID=@hermes:matrix.example.org
+MATRIX_USER_ID=@kopi:matrix.example.org
 MATRIX_PASSWORD=***
 
 # Security
@@ -300,7 +300,7 @@ MATRIX_ALLOWED_USERS=@alice:matrix.example.org,@bob:matrix.example.org
 MATRIX_ALLOWED_ROOMS=!ops:matrix.example.org,!dmroom:matrix.example.org
 ```
 
-Bridge and appservice deployments need extra loop protection. Hermes always
+Bridge and appservice deployments need extra loop protection. Kopi always
 ignores its own events, Matrix appservice-style users whose localpart starts
 with `_`, duplicate event IDs, old startup events, edit replacement events, and
 `m.notice` events by default. Add deployment-specific bridge ghost patterns when
@@ -351,7 +351,7 @@ You can run `kopi gateway` in the background or as a systemd service for persist
 
 ## End-to-End Encryption (E2EE)
 
-Hermes supports Matrix end-to-end encryption, so you can chat with your bot in encrypted rooms.
+Kopi supports Matrix end-to-end encryption, so you can chat with your bot in encrypted rooms.
 
 ### Requirements
 
@@ -362,7 +362,7 @@ E2EE requires the `mautrix` library with encryption extras and the `libolm` C li
 pip install 'mautrix[encryption]'
 
 # Or install with kopi extras
-cd ~/.kopi/kopi-ai-agent && uv pip install -e ".[matrix]"
+cd ~/.kopi/kopi-agent && uv pip install -e ".[matrix]"
 ```
 
 You also need `libolm` installed on your system:
@@ -398,7 +398,7 @@ Optional mode may fall back to non-E2EE operation when crypto setup is unavailab
 
 For backwards compatibility, `MATRIX_ENCRYPTION=true` still enables required E2EE behavior.
 
-When E2EE is enabled, Hermes:
+When E2EE is enabled, Kopi:
 
 - Stores encryption keys in `~/.kopi/platforms/matrix/store/` (legacy installs: `~/.kopi/matrix/store/`)
 - Uploads device keys on first connection
@@ -407,7 +407,7 @@ When E2EE is enabled, Hermes:
 
 ### Matrix Tools and Controls
 
-In Matrix conversations, Hermes exposes Matrix-specific tools to the agent:
+In Matrix conversations, Kopi exposes Matrix-specific tools to the agent:
 
 - `matrix_send_reaction`
 - `matrix_redact_message`
@@ -430,11 +430,11 @@ Reaction controls use:
 - ❌ deny
 - number reactions for `/model` choices
 
-Set `MATRIX_APPROVAL_REQUIRE_SENDER=false` if you intentionally want any authorized Matrix user in the room to operate an approval/model picker prompt. The default is requester-bound when Hermes knows who requested the action.
+Set `MATRIX_APPROVAL_REQUIRE_SENDER=false` if you intentionally want any authorized Matrix user in the room to operate an approval/model picker prompt. The default is requester-bound when Kopi knows who requested the action.
 
 ### Media Limits
 
-Hermes uploads and downloads Matrix images, files, audio, and video through Matrix media APIs. Multiple generated images are sent as one ordered logical batch, preserving captions and thread context across the batch.
+Kopi uploads and downloads Matrix images, files, audio, and video through Matrix media APIs. Multiple generated images are sent as one ordered logical batch, preserving captions and thread context across the batch.
 
 By default, Matrix media over 100 MB is rejected before upload/download. Override with:
 
@@ -442,13 +442,13 @@ By default, Matrix media over 100 MB is rejected before upload/download. Overrid
 MATRIX_MAX_MEDIA_BYTES=104857600
 ```
 
-Inbound media must use Matrix `mxc://` content URIs. Hermes rejects arbitrary
+Inbound media must use Matrix `mxc://` content URIs. Kopi rejects arbitrary
 HTTP(S) media URLs in Matrix events to avoid turning a federated room into an
 unrestricted downloader.
 
 ## Synapse Integration Tests
 
-Hermes includes an opt-in Synapse harness for local validation:
+Kopi includes an opt-in Synapse harness for local validation:
 
 ```bash
 docker compose -f tests/e2e/matrix_synapse_gateway/docker-compose.yml up -d
@@ -474,9 +474,9 @@ MATRIX_RECOVERY_KEY=EsT... your recovery key here
 
 **Where to find it:** In Element, go to **Settings** → **Security & Privacy** → **Encryption** → your recovery key (also called the "Security Key"). This is the key you were asked to save when you first set up cross-signing.
 
-On each startup, if `MATRIX_RECOVERY_KEY` is set, Hermes imports cross-signing keys from the homeserver's secure secret storage and signs the current device. This is idempotent and safe to leave enabled permanently.
+On each startup, if `MATRIX_RECOVERY_KEY` is set, Kopi imports cross-signing keys from the homeserver's secure secret storage and signs the current device. This is idempotent and safe to leave enabled permanently.
 
-If Hermes bootstraps a new Matrix recovery key, it never logs the raw key. Set
+If Kopi bootstraps a new Matrix recovery key, it never logs the raw key. Set
 `MATRIX_RECOVERY_KEY_OUTPUT_FILE=/secure/path/matrix-recovery-key.txt` before
 startup to write a generated key once with file mode `0600`; the file is not
 overwritten if it already exists.
@@ -484,7 +484,7 @@ overwritten if it already exists.
 :::warning[Deleting the crypto store]
 If you delete `~/.kopi/platforms/matrix/store/crypto.db`, the bot loses its encryption identity. Simply restarting with the same device ID will **not** fully recover — the homeserver still holds one-time keys signed with the old identity key, and peers cannot establish new Olm sessions.
 
-Hermes detects this condition on startup and refuses to enable E2EE, logging: `device XXXX has stale one-time keys on the server signed with a previous identity key`.
+Kopi detects this condition on startup and refuses to enable E2EE, logging: `device XXXX has stale one-time keys on the server signed with a previous identity key`.
 
 **Easiest recovery: generate a new access token** (which gets a fresh device ID with no stale key history). See the "Upgrading from a previous version with E2EE" section below. This is the most reliable path and avoids touching the homeserver database.
 
@@ -494,21 +494,21 @@ Hermes detects this condition on startup and refuses to enable E2EE, logging: `d
    ```bash
    sudo systemctl stop matrix-synapse
    sudo sqlite3 /var/lib/matrix-synapse/homeserver.db "
-     DELETE FROM e2e_device_keys_json WHERE device_id = 'DEVICE_ID' AND user_id = '@hermes:your-server';
-     DELETE FROM e2e_one_time_keys_json WHERE device_id = 'DEVICE_ID' AND user_id = '@hermes:your-server';
-     DELETE FROM e2e_fallback_keys_json WHERE device_id = 'DEVICE_ID' AND user_id = '@hermes:your-server';
-     DELETE FROM devices WHERE device_id = 'DEVICE_ID' AND user_id = '@hermes:your-server';
+     DELETE FROM e2e_device_keys_json WHERE device_id = 'DEVICE_ID' AND user_id = '@kopi:your-server';
+     DELETE FROM e2e_one_time_keys_json WHERE device_id = 'DEVICE_ID' AND user_id = '@kopi:your-server';
+     DELETE FROM e2e_fallback_keys_json WHERE device_id = 'DEVICE_ID' AND user_id = '@kopi:your-server';
+     DELETE FROM devices WHERE device_id = 'DEVICE_ID' AND user_id = '@kopi:your-server';
    "
    sudo systemctl start matrix-synapse
    ```
    Or via the Synapse admin API (note the URL-encoded user ID):
    ```bash
    curl -X DELETE -H "Authorization: Bearer ADMIN_TOKEN" \
-     'https://your-server/_synapse/admin/v2/users/%40hermes%3Ayour-server/devices/DEVICE_ID'
+     'https://your-server/_synapse/admin/v2/users/%40kopi%3Ayour-server/devices/DEVICE_ID'
    ```
    Note: deleting a device via the admin API may also invalidate the associated access token. You may need to generate a new token afterward.
 
-2. Delete the local crypto store and restart Hermes:
+2. Delete the local crypto store and restart Kopi:
    ```bash
    rm -f ~/.kopi/platforms/matrix/store/crypto.db*
    # restart kopi
@@ -572,7 +572,7 @@ To find a Room ID: in Element, go to the room → **Settings** → **Advanced** 
 
 ## Commands in Matrix
 
-Hermes supports the same gateway commands in Matrix that it supports on other
+Kopi supports the same gateway commands in Matrix that it supports on other
 messaging platforms, including `/commands`, `/model`, `/stop`, `/queue`,
 `/steer`, `/goal`, `/subgoal`, `/background`, `/bg`, `/btw`, `/tasks`, and
 `/yolo`.
@@ -589,7 +589,7 @@ alias:
 !stop
 ```
 
-Hermes only normalizes `!command` when the command is known to the gateway, a
+Kopi only normalizes `!command` when the command is known to the gateway, a
 registered plugin command, or an installed skill command. Ordinary exclamations
 such as `!important` remain normal chat messages.
 
@@ -603,7 +603,7 @@ such as `!important` remain normal chat messages.
 
 ### Bot joins rooms but silently drops every message (clock skew)
 
-**Cause**: The host's system clock is set ahead of real time. The Matrix adapter applies a 5-second startup-grace filter (`event_ts < startup_ts - 5`) to ignore events replayed from initial sync. When the wall clock is ahead, every incoming event looks "older than startup" and is dropped before reaching the message handler — the bot appears connected but never replies. See [#12614](https://github.com/LINYIQ66/kopi-ai-agent/issues/12614).
+**Cause**: The host's system clock is set ahead of real time. The Matrix adapter applies a 5-second startup-grace filter (`event_ts < startup_ts - 5`) to ignore events replayed from initial sync. When the wall clock is ahead, every incoming event looks "older than startup" and is dropped before reaching the message handler — the bot appears connected but never replies. See [#12614](https://github.com/NousResearch/kopi-agent/issues/12614).
 
 **Symptom**: Gateway log shows `Matrix: dropped N live events as 'too old' more than 30s after startup`.
 
@@ -641,10 +641,10 @@ If this returns your user info, the token is valid. If it returns an error, gene
 pip install 'mautrix[encryption]'
 ```
 
-Or with Hermes extras:
+Or with Kopi extras:
 
 ```bash
-cd ~/.kopi/kopi-ai-agent && uv pip install -e ".[matrix]"
+cd ~/.kopi/kopi-agent && uv pip install -e ".[matrix]"
 ```
 
 ### Encryption errors / "could not decrypt event"
@@ -663,7 +663,7 @@ cd ~/.kopi/kopi-ai-agent && uv pip install -e ".[matrix]"
 If you also manually deleted `crypto.db`, see the "Deleting the crypto store" warning in the E2EE section above — there are additional steps to clear stale one-time keys from the homeserver.
 :::
 
-If you previously used Hermes with `MATRIX_ENCRYPTION=true` and are upgrading to
+If you previously used Kopi with `MATRIX_ENCRYPTION=true` and are upgrading to
 a version that uses the new SQLite-based crypto store, the bot's encryption
 identity has changed. Your Matrix client (Element) may cache the old device keys
 and refuse to share encryption sessions with the bot.
@@ -687,9 +687,9 @@ changed identity keys for the same device as suspicious.
      -H "Content-Type: application/json" \
      -d '{
        "type": "m.login.password",
-       "identifier": {"type": "m.id.user", "user": "@hermes:your-server.org"},
+       "identifier": {"type": "m.id.user", "user": "@kopi:your-server.org"},
        "password": "***",
-       "initial_device_display_name": "KOPI AI AGENT"
+       "initial_device_display_name": "Kopi Agent"
      }'
    ```
 
@@ -732,7 +732,7 @@ normally.
 
 :::tip
 **New installations are not affected.** This migration is only needed if you had
-a working E2EE setup with a previous version of Hermes and are upgrading.
+a working E2EE setup with a previous version of Kopi and are upgrading.
 
 **Why a new access token?** Each Matrix access token is bound to a specific device
 ID. Reusing the same device ID with new encryption keys causes other Matrix
@@ -743,7 +743,7 @@ history, so other clients trust it immediately.
 
 ## Proxy Mode (E2EE on macOS)
 
-Matrix E2EE requires `libolm`, which doesn't compile on macOS ARM64 (Apple Silicon). The `kopi-ai-agent[matrix]` extra is gated to Linux only. If you're on macOS, proxy mode lets you run E2EE in a Docker container on a Linux VM while the actual agent runs natively on macOS with full access to your local files, memory, and skills.
+Matrix E2EE requires `libolm`, which doesn't compile on macOS ARM64 (Apple Silicon). The `kopi-agent[matrix]` extra is gated to Linux only. If you're on macOS, proxy mode lets you run E2EE in a Docker container on a Linux VM while the actual agent runs natively on macOS with full access to your local files, memory, and skills.
 
 ### How It Works
 
@@ -824,9 +824,9 @@ services:
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y libolm-dev && rm -rf /var/lib/apt/lists/*
-RUN cd ~/.kopi/kopi-ai-agent && uv pip install -e ".[matrix]"
+RUN cd ~/.kopi/kopi-agent && uv pip install -e ".[matrix]"
 
-CMD ["hermes", "gateway"]
+CMD ["kopi", "gateway"]
 ```
 
 That's the entire container. No API keys for OpenRouter, Anthropic, or any inference provider.
@@ -851,7 +851,7 @@ Proxy mode is configured on the **container side** (the thin gateway):
 
 | Setting | Description |
 |---------|-------------|
-| `GATEWAY_PROXY_URL` | URL of the remote Hermes API server (e.g., `http://192.168.1.100:8642`) |
+| `GATEWAY_PROXY_URL` | URL of the remote Kopi API server (e.g., `http://192.168.1.100:8642`) |
 | `GATEWAY_PROXY_KEY` | Bearer token for authentication (must match `API_SERVER_KEY` on the host) |
 | `gateway.proxy_url` | Same as `GATEWAY_PROXY_URL` but in `config.yaml` |
 
@@ -869,7 +869,7 @@ The host side needs:
 Proxy mode is not limited to Matrix. Any platform adapter can use it — set `GATEWAY_PROXY_URL` on any gateway instance and it will forward to the remote agent instead of running one locally. This is useful for any deployment where the platform adapter needs to run in a different environment from the agent (network isolation, E2EE requirements, resource constraints).
 
 :::tip
-Session continuity is maintained via the `X-Hermes-Session-Id` header. The host's API server tracks sessions by this ID, so conversations persist across messages just like they would with a local agent.
+Session continuity is maintained via the `X-Kopi-Session-Id` header. The host's API server tracks sessions by this ID, so conversations persist across messages just like they would with a local agent.
 :::
 
 :::note
@@ -883,9 +883,9 @@ mautrix's `handle_sync()` machinery. A raw `client.sync()` poll that never calls
 `handle_sync()` can leave the adapter connected (send works) while inbound
 messages never reach `_on_room_message`.
 
-**Fix**: Hermes uses an explicit sync loop that calls `client.handle_sync()` on
+**Fix**: Kopi uses an explicit sync loop that calls `client.handle_sync()` on
 both the initial sync and every incremental sync response. This matches the
-diagnosis in upstream issue #7914 and closed PR #37807, but keeps Hermes's own
+diagnosis in upstream issue #7914 and closed PR #37807, but keeps Kopi's own
 background maintenance tasks (joined-room tracking, invite handling, E2EE key
 share) instead of delegating the full lifecycle to `client.start()`. If inbound
 messages still fail after a gateway restart, verify handlers are registered before
@@ -895,11 +895,11 @@ the first sync and check logs for `sync event dispatch error`.
 
 **Cause**: Long-running tool executions can delay the sync loop, or the homeserver is slow.
 
-**Fix**: The sync loop automatically retries every 5 seconds on error. Check the Hermes logs for sync-related warnings. If the bot consistently falls behind, ensure your homeserver has adequate resources.
+**Fix**: The sync loop automatically retries every 5 seconds on error. Check the Kopi logs for sync-related warnings. If the bot consistently falls behind, ensure your homeserver has adequate resources.
 
 ### Bot is offline
 
-**Cause**: The Hermes gateway isn't running, or it failed to connect.
+**Cause**: The Kopi gateway isn't running, or it failed to connect.
 
 **Fix**: Check that `kopi gateway` is running. Look at the terminal output for error messages. Common issues: wrong homeserver URL, expired access token, homeserver unreachable.
 
@@ -927,12 +927,12 @@ the first sync and check logs for `sync event dispatch error`.
 Always set `MATRIX_ALLOWED_USERS` and, for shared/private deployments, `MATRIX_ALLOWED_ROOMS`. Without them, anyone who can message the bot in a joined room may trigger the agent. Only authorize people and rooms you trust — authorized users have full access to the agent's capabilities, including tool use and system access.
 :::
 
-For more information on securing your KOPI AI AGENT deployment, see the [Security Guide](../security.md).
+For more information on securing your Kopi Agent deployment, see the [Security Guide](../security.md).
 
 ## Notes
 
 - **Any homeserver**: Works with Synapse, Conduit, Dendrite, matrix.org, or any spec-compliant Matrix homeserver. No specific homeserver software required.
 - **Federation**: If you're on a federated homeserver, the bot can communicate with users from other servers — just add their full `@user:server` IDs to `MATRIX_ALLOWED_USERS`.
 - **Auto-join**: The bot automatically accepts room invites and joins. It starts responding immediately after joining.
-- **Media support**: Hermes can send and receive images, audio, video, and file attachments. Media is uploaded to your homeserver using the Matrix content repository API.
+- **Media support**: Kopi can send and receive images, audio, video, and file attachments. Media is uploaded to your homeserver using the Matrix content repository API.
 - **Native voice messages (MSC3245)**: The Matrix adapter automatically tags outgoing voice messages with the `org.matrix.msc3245.voice` flag. This means TTS responses and voice audio are rendered as **native voice bubbles** in Element and other clients that support MSC3245, rather than as generic audio file attachments. Incoming voice messages with the MSC3245 flag are also correctly identified and routed to speech-to-text transcription. No configuration is needed — this works automatically.

@@ -2,11 +2,11 @@
 name: hyperliquid
 description: Hyperliquid market data, account history, trade review.
 version: 0.1.0
-author: Hugo Sequier (Hugo-SEQUIER), KOPI AI AGENT
+author: Hugo Sequier (Hugo-SEQUIER), Kopi Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
-  hermes:
+  kopi:
     tags: [Hyperliquid, Blockchain, Crypto, Trading, Perpetuals, Spot, DeFi]
     related_skills: []
 ---

@@ -15,7 +15,7 @@ import {
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { HermesGateway } from '@/kopi'
+import type { KopiGateway } from '@/kopi'
 import { useI18n } from '@/i18n'
 import { requestModelOptions } from '@/lib/model-options'
 import {
@@ -53,7 +53,7 @@ import { ModelEditSubmenu, resolveFastControl } from './model-edit-submenu'
 export const ModelMenuCloseContext = createContext<() => void>(() => {})
 
 interface ModelMenuPanelProps {
-  gateway?: HermesGateway
+  gateway?: KopiGateway
   onSelectModel: (selection: { model: string; provider: string }) => Promise<boolean> | void
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
 }
@@ -155,7 +155,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   }
 
   // Selecting a model row restores that model's remembered preset onto the
-  // session (effort/fast), gated by capability. Unset → Hermes defaults.
+  // session (effort/fast), gated by capability. Unset → Kopi defaults.
   const selectFamily = async (family: ModelFamily, provider: ModelOptionProvider) => {
     const caps = provider.capabilities?.[family.id]
     const preset = modelPresets[modelPresetKey(provider.slug, family.id)] ?? {}
@@ -180,8 +180,8 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   }
 
   // Selecting a MoA preset switches the session to it PERSISTENTLY, using the
-  // same path real provider selections use (config.set model="<preset>
-  // --provider moa" via onSelectModel → the gateway's persistent switch_model).
+  // same path real provider selections use (onSelectModel → config.set with
+  // --session for live sessions → the gateway's persistent switch_model).
   // Previously this dispatched the one-shot `/moa` command, which ran a single
   // turn through MoA and then silently reverted to the prior model (#54670) —
   // the dropdown presented presets like persistent selections but they weren't.
@@ -249,7 +249,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                 const caps = group.provider.capabilities?.[family.id]
 
                 // Effective settings for this row: live session state when it's
-                // the active model, otherwise its remembered preset (Hermes
+                // the active model, otherwise its remembered preset (Kopi
                 // defaults when unset). Row label AND submenu read from these so
                 // they never disagree.
                 const preset = modelPresets[modelPresetKey(group.provider.slug, family.id)] ?? {}

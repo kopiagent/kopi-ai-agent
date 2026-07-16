@@ -6,7 +6,7 @@ description: "How the ACP adapter works: lifecycle, sessions, event bridge, appr
 
 # ACP Internals
 
-The ACP adapter wraps Hermes' synchronous `AIAgent` in an async JSON-RPC stdio server.
+The ACP adapter wraps Kopi' synchronous `AIAgent` in an async JSON-RPC stdio server.
 
 Key implementation files:
 
@@ -27,17 +27,17 @@ kopi acp / kopi-acp / python -m acp_adapter
   -> parse --version / --check / --setup before server startup
   -> load ~/.kopi/.env
   -> configure stderr logging
-  -> construct HermesACPAgent
+  -> construct KopiACPAgent
   -> acp.run_agent(agent, use_unstable_protocol=True)
 ```
 
-The Zed ACP Registry path launches the same adapter through `uvx --from 'kopi-ai-agent[acp]==<version>' kopi-acp`, pointed at the `kopi-ai-agent` PyPI release.
+The Zed ACP Registry path launches the same adapter through `uvx --from 'kopi-agent[acp]==<version>' kopi-acp`, pointed at the `kopi-agent` PyPI release.
 
 Stdout is reserved for ACP JSON-RPC transport. Human-readable logs go to stderr.
 
 ## Major components
 
-### `HermesACPAgent`
+### `KopiACPAgent`
 
 `acp_adapter/server.py` implements the ACP agent protocol.
 
@@ -94,15 +94,15 @@ asyncio.run_coroutine_threadsafe(...)
 
 Mapping:
 
-- `allow_once` -> Hermes `once`
-- `allow_always` -> Hermes `always`
-- reject options -> Hermes `deny`
+- `allow_once` -> Kopi `once`
+- `allow_always` -> Kopi `always`
+- reject options -> Kopi `deny`
 
 Timeouts and bridge failures deny by default.
 
 ### Tool rendering helpers
 
-`acp_adapter/tools.py` maps Hermes tools to ACP tool kinds and builds editor-facing content.
+`acp_adapter/tools.py` maps Kopi tools to ACP tool kinds and builds editor-facing content.
 
 Examples:
 
@@ -144,12 +144,12 @@ prompt(..., session_id)
 
 ACP does not implement its own auth store.
 
-Instead it reuses Hermes' runtime resolver:
+Instead it reuses Kopi' runtime resolver:
 
 - `acp_adapter/auth.py`
 - `kopi_cli/runtime_provider.py`
 
-So ACP advertises and uses the currently configured Hermes provider/credentials. It also always advertises a terminal setup auth method (`kopi-setup`, args `--setup`) so first-run registry clients can open Hermes' interactive model/provider configuration before starting a normal ACP session.
+So ACP advertises and uses the currently configured Kopi provider/credentials. It also always advertises a terminal setup auth method (`kopi-setup`, args `--setup`) so first-run registry clients can open Kopi' interactive model/provider configuration before starting a normal ACP session.
 
 ## Working directory binding
 

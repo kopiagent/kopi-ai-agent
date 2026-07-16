@@ -28,9 +28,9 @@ replacements = {
     "KOPI_CONFIG": "KOPI_CONFIG",
     "KOPI_": "KOPI_",
     # === URLs ===
-    "github.com/LINYIQ66/kopi-ai-agent": "github.com/LINYIQ66/kopi-ai-agent",
+    "github.com/kopiagent/kopi-ai-agent": "github.com/kopiagent/kopi-ai-agent",
     "github.com/LINYIQ66": "github.com/LINYIQ66",
-    "nousresearch/kopi-ai-agent": "LINYIQ66/kopi-ai-agent",
+    "nousresearch/kopi-ai-agent": "kopiagent/kopi-ai-agent",
     # === Module names ===
     "from kopi": "from kopi",
     "import kopi": "import kopi",

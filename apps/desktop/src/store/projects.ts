@@ -1,7 +1,7 @@
 import { atom } from 'nanostores'
 
 import { liveSessionProjectId, type SidebarProjectTree } from '@/app/chat/sidebar/projects/workspace-groups'
-import type { HermesGitBranch } from '@/global'
+import type { KopiGitBaseBranch, KopiGitBranch } from '@/global'
 import { translateNow } from '@/i18n'
 import { desktopDefaultCwd, selectDesktopPaths, writeDesktopFileText } from '@/lib/desktop-fs'
 import { desktopGit } from '@/lib/desktop-git'
@@ -105,7 +105,7 @@ export const $reposScanning = atom(false)
 // chats land there, exactly as selecting a profile does.
 export const ALL_PROJECTS = '__all_projects__'
 
-const PROJECT_SCOPE_KEY = 'hermes.desktop.projectScope'
+const PROJECT_SCOPE_KEY = 'kopi.desktop.projectScope'
 
 export const $projectScope = persistentAtom<string>(PROJECT_SCOPE_KEY, ALL_PROJECTS, {
   decode: raw => raw || ALL_PROJECTS,
@@ -221,7 +221,7 @@ async function gatewayRequest<T>(method: string, params: Record<string, unknown>
   }
 
   if (!gateway) {
-    throw new Error('Hermes gateway is not connected')
+    throw new Error('Kopi gateway is not connected')
   }
 
   return gateway.request<T>(method, params)
@@ -679,7 +679,7 @@ export function refreshWorktrees(): void {
 }
 
 // Spin up a fresh worktree the lightest way (`git worktree add -b`) under the
-// repo, returning where Hermes should start working. Git is the source of
+// repo, returning where Kopi should start working. Git is the source of
 // truth; the caller starts a session in the returned path.
 export async function startWorkInRepo(
   repoPath: string,
@@ -699,7 +699,7 @@ export async function startWorkInRepo(
 
 // Local branches for the composer's "convert a branch into a worktree" picker.
 // Empty on a remote backend / non-repo (the Electron probe can't run).
-export async function listRepoBranches(repoPath: string): Promise<HermesGitBranch[]> {
+export async function listRepoBranches(repoPath: string): Promise<KopiGitBranch[]> {
   const git = desktopGit()
 
   if (!git?.branchList || !repoPath) {
@@ -707,6 +707,19 @@ export async function listRepoBranches(repoPath: string): Promise<HermesGitBranc
   }
 
   return git.branchList(repoPath)
+}
+
+// Local + remote-tracking branches for the base-branch picker in the
+// new-worktree dialog. The remote default (origin/HEAD) is flagged so the
+// UI can preselect it. Empty on a remote backend / non-repo.
+export async function listBaseBranches(repoPath: string): Promise<KopiGitBaseBranch[]> {
+  const git = desktopGit()
+
+  if (!git?.baseBranchList || !repoPath) {
+    return []
+  }
+
+  return git.baseBranchList(repoPath)
 }
 
 export async function switchBranchInRepo(repoPath: string, branch: string): Promise<void> {
