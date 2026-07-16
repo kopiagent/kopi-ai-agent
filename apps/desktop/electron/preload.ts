@@ -107,6 +107,7 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
   readDir: dirPath => ipcRenderer.invoke('kopi:fs:readDir', dirPath),
   gitRoot: startPath => ipcRenderer.invoke('kopi:fs:gitRoot', startPath),
   revealPath: targetPath => ipcRenderer.invoke('kopi:fs:reveal', targetPath),
+  openDir: dirPath => ipcRenderer.invoke('kopi:fs:openDir', dirPath),
   renamePath: (targetPath, newName) => ipcRenderer.invoke('kopi:fs:rename', targetPath, newName),
   writeTextFile: (filePath, content) => ipcRenderer.invoke('kopi:fs:writeText', filePath, content),
   trashPath: targetPath => ipcRenderer.invoke('kopi:fs:trash', targetPath),

@@ -217,6 +217,12 @@ kopi gateway install      # Install as a user service
 sudo kopi gateway install --system   # Linux only: boot-time system service
 ```
 
+:::tip Codex reasoning-effort safety
+For Codex-backed Slack peer-agent channels, prefer `agent.reasoning_effort: high` or lower. `xhigh`
+can spend the entire turn in hidden reasoning and never produce visible assistant text; Kopi now
+suppresses those incomplete-turn warnings from the thread and keeps the diagnostics in gateway logs.
+:::
+
 ---
 
 ## Step 9: Invite the Bot to Channels

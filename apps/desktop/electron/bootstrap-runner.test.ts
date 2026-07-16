@@ -87,16 +87,7 @@ test('fresh bootstrap args include the packaged commit pin', () => {
       activeRoot: '/tmp/kopi-ai-agent',
       kopiHome: '/tmp/kopi'
     }),
-    [
-      '--dir',
-      '/tmp/kopi-ai-agent',
-      '--kopi-home',
-      '/tmp/kopi',
-      '--branch',
-      'main',
-      '--commit',
-      installStamp.commit
-    ]
+    ['--dir', '/tmp/kopi-ai-agent', '--kopi-home', '/tmp/kopi', '--branch', 'main', '--commit', installStamp.commit]
   )
 })
 
