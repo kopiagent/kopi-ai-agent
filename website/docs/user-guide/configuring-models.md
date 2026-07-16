@@ -230,7 +230,7 @@ Then `/model fav` or `/model grok` in chat. User aliases shadow built-in short n
 kopi model            # Interactive provider + model picker (the canonical way to switch defaults)
 ```
 
-`kopi model` walks you through picking a provider, authenticating (OAuth flows open a browser; API-key providers prompt for the key), and then choosing a specific model from that provider's curated catalog. The choice is written to `model.provider` and `model.model` in `~/.kopi/config.yaml`.
+`kopi model` walks you through picking a provider, authenticating (OAuth flows open a browser; API-key providers prompt for the key), and then choosing a specific model from that provider's curated catalog. The choice is written to `model.provider` and `model.default` in `~/.kopi/config.yaml`.
 
 To list providers/models without launching the picker, use the dashboard or the REST endpoints below. To inspect what the CLI will actually use right now: `kopi config show | grep '^model\.'` and `kopi status`.
 

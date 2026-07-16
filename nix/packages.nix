@@ -58,6 +58,8 @@
         tui = full.kopiTui;
         web = full.kopiWeb;
         desktop = full.kopiDesktop;
+
+        update-npm-lockfile = full.kopiNpmLib.updateNpmLockfile;
       };
     };
 }

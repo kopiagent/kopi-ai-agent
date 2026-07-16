@@ -242,7 +242,7 @@ Registered on the `kopi-discord` platform toolset. Moderation actions require th
 
 ## `spotify` toolset
 
-Registered by the bundled `spotify` plugin. Requires an OAuth token — run `kopi spotify setup` once to authorize.
+Registered by the bundled `spotify` plugin. Requires an OAuth token — run `kopi auth spotify` once to authorize.
 
 | Tool | Description | Requires environment |
 |------|-------------|----------------------|
