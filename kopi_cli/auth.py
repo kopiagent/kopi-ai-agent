@@ -1898,6 +1898,7 @@ _NOUS_STALE_PORTAL_HOSTS: FrozenSet[str] = frozenset({
 # "localhost" / "127.0.0.1" are valid for local development and testing.
 _NOUS_PORTAL_ALLOWED_HOSTS: FrozenSet[str] = frozenset({
     "portal.nousresearch.com",
+    "kopiaiagent.com",
     "localhost",
     "127.0.0.1",
 })

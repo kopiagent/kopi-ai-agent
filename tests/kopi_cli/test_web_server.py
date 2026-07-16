@@ -7386,13 +7386,29 @@ class TestDesktopCronTicker:
     def test_ticker_runs_when_desktop(self, monkeypatch, _isolate_kopi_home):
         import threading
         import cron.scheduler as sched
+        import kopi_cli.web_server as web_server
 
         called = threading.Event()
         monkeypatch.setattr(sched, "tick", lambda *a, **k: called.set())
+        monkeypatch.setattr(web_server, "DESKTOP_CRON_STARTUP_DELAY_SECONDS", 0)
         monkeypatch.setenv("KOPI_DESKTOP", "1")
 
         with self._client():
             assert called.wait(3.0), "expected cron tick under KOPI_DESKTOP=1"
+
+    def test_ticker_defers_first_tick_when_desktop(self, monkeypatch, _isolate_kopi_home):
+        import threading
+        import cron.scheduler as sched
+        import kopi_cli.web_server as web_server
+
+        called = threading.Event()
+        monkeypatch.setattr(sched, "tick", lambda *a, **k: called.set())
+        monkeypatch.setattr(web_server, "DESKTOP_CRON_STARTUP_DELAY_SECONDS", 0.5)
+        monkeypatch.setenv("KOPI_DESKTOP", "1")
+
+        with self._client():
+            assert not called.wait(0.1), "desktop cron must not tick during API boot window"
+            assert called.wait(1.0), "desktop cron should start after the boot delay"
 
     def test_ticker_skipped_without_desktop(self, monkeypatch, _isolate_kopi_home):
         import threading
