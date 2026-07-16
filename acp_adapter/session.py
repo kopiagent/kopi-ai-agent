@@ -1,4 +1,4 @@
-"""ACP session manager — maps ACP sessions to Hermes AIAgent instances.
+"""ACP session manager — maps ACP sessions to Kopi AIAgent instances.
 
 Sessions are persisted to the shared SessionDB (``~/.kopi/state.db``) so they
 survive process restarts and appear in ``session_search``.  When the editor
@@ -26,31 +26,18 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
-def _win_path_to_wsl(path: str) -> str | None:
-    """Convert a Windows drive path to its WSL /mnt/<drive>/... equivalent."""
-    match = re.match(r"^([A-Za-z]):[\\/](.*)$", path)
-    if not match:
-        return None
-    drive = match.group(1).lower()
-    tail = match.group(2).replace("\\", "/")
-    return f"/mnt/{drive}/{tail}"
-
-
 def _translate_acp_cwd(cwd: str) -> str:
-    """Translate Windows ACP cwd values when Hermes itself is running in WSL.
+    """Translate Windows ACP cwd values when Kopi itself is running in WSL.
 
     Windows ACP clients can launch ``kopi acp`` inside WSL while still sending
-    editor workspaces as Windows drive paths such as ``E:\\Projects``. Store
-    and execute against the WSL mount path so agents, tools, and persisted ACP
-    sessions all agree on the usable workspace. Native Linux/macOS keeps the
-    original cwd unchanged.
+    editor workspaces as Windows drive paths (``E:\\Projects``) or
+    ``\\\\wsl.localhost\\`` UNC paths. Store and execute against the POSIX form so
+    agents, tools, and persisted ACP sessions all agree on the usable workspace.
+    Native Linux/macOS keeps the original cwd unchanged.
     """
-    from kopi_constants import is_wsl
+    from kopi_constants import translate_cwd_for_wsl_backend
 
-    if not is_wsl():
-        return cwd
-    translated = _win_path_to_wsl(str(cwd))
-    return translated if translated is not None else cwd
+    return translate_cwd_for_wsl_backend(str(cwd))
 
 
 def _normalize_cwd_for_compare(cwd: str | None) -> str:
@@ -61,7 +48,9 @@ def _normalize_cwd_for_compare(cwd: str | None) -> str:
 
     # Normalize Windows drive paths into the equivalent WSL mount form so
     # ACP history filters match the same workspace across Windows and WSL.
-    translated = _win_path_to_wsl(expanded)
+    from kopi_constants import windows_path_to_wsl
+
+    translated = windows_path_to_wsl(expanded)
     if translated is not None:
         expanded = translated
     elif re.match(r"^/mnt/[A-Za-z]/", expanded):
@@ -123,7 +112,7 @@ def _acp_stderr_print(*args, **kwargs) -> None:
 def _register_task_cwd(task_id: str, cwd: str) -> None:
     """Bind a task/session id to the editor's working directory for tools.
 
-    Zed can launch Hermes from a Windows workspace while the ACP process runs
+    Zed can launch Kopi from a Windows workspace while the ACP process runs
     inside WSL. In that case ACP sends cwd as e.g. ``E:\\Projects\\POTI``;
     local tools need the WSL mount equivalent or subprocess creation fails
     before the command can run.
@@ -168,7 +157,7 @@ def _clear_task_cwd(task_id: str) -> None:
 
 @dataclass
 class SessionState:
-    """Tracks per-session state for an ACP-managed Hermes agent."""
+    """Tracks per-session state for an ACP-managed Kopi agent."""
 
     session_id: str
     agent: Any  # AIAgent instance
@@ -184,7 +173,7 @@ class SessionState:
 
 
 class SessionManager:
-    """Thread-safe manager for ACP sessions backed by Hermes AIAgent instances.
+    """Thread-safe manager for ACP sessions backed by Kopi AIAgent instances.
 
     Sessions are held in-memory for fast access **and** persisted to the
     shared SessionDB so they survive process restarts and are searchable
@@ -196,7 +185,7 @@ class SessionManager:
         Args:
             agent_factory: Optional callable that creates an AIAgent-like object.
                            Used by tests. When omitted, a real AIAgent is created
-                           using the current Hermes runtime provider configuration.
+                           using the current Kopi runtime provider configuration.
             db:            Optional SessionDB instance. When omitted, the default
                            SessionDB (``~/.kopi/state.db``) is lazily created.
         """
@@ -656,7 +645,7 @@ class SessionManager:
         agent = AIAgent(**kwargs)
         # Codex app-server sessions are spawned lazily on the first turn. Stamp
         # the ACP workspace onto the agent so the Codex runtime starts from the
-        # editor/session cwd instead of the Hermes daemon's process cwd.
+        # editor/session cwd instead of the Kopi daemon's process cwd.
         agent.session_cwd = cwd
         # ACP stdio transport requires stdout to remain protocol-only JSON-RPC.
         # Route any incidental human-readable agent output to stderr instead.

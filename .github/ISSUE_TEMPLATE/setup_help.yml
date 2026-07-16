@@ -1,5 +1,5 @@
 name: "🔧 Setup / Installation Help"
-description: Having trouble installing or configuring Hermes? Ask here.
+description: Having trouble installing or configuring Kopi? Ask here.
 title: "[Setup]: "
 labels: ["setup"]
 body:
@@ -12,8 +12,8 @@ body:
         - Run `kopi debug share` and paste the links in the Debug Report section below
         - If you're in a chat session, you can use `/debug` instead — it does the same thing
         - Try `kopi update` to get the latest version
-        - Check the [README troubleshooting section](https://github.com/LINYIQ66/kopi-ai-agent#troubleshooting)
-        - For general questions, consider the [Kopi Ai Agent Pte Ltd Discord](https://discord.gg/Kopi Ai Agent Pte Ltd) for faster help
+        - Check the [README troubleshooting section](https://github.com/NousResearch/kopi-agent#troubleshooting)
+        - For general questions, consider the [Nous Research Discord](https://discord.gg/NousResearch) for faster help
 
   - type: textarea
     id: description
@@ -70,7 +70,7 @@ body:
   - type: input
     id: kopi-version
     attributes:
-      label: Hermes Version
+      label: Kopi Version
       description: Output of `kopi version` (if install got that far)
       placeholder: "2.1.0"
 

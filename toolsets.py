@@ -52,6 +52,9 @@ _KOPI_CORE_TOOLS = [
     "text_to_speech",
     # Planning & memory
     "todo", "memory",
+    # Obsidian vault — sediment memory/skills into the vault and query it with
+    # desktop-like intelligence (backlinks, dataview, BM25 search) headless.
+    "obsidian_sync", "obsidian_query",
     # NOTE: the desktop Project tools (project_list/create/switch) are
     # deliberately NOT here. They only make sense where a GUI can follow the
     # move, so they live in the `project` toolset and are enabled solely by the
@@ -306,6 +309,16 @@ TOOLSETS = {
         "includes": []
     },
 
+    "obsidian": {
+        "description": (
+            "Obsidian vault integration — sediment KOPI memory & skills into "
+            "the vault as linked notes (obsidian_sync) and query it headlessly "
+            "with search, backlinks, dataview, and graph (obsidian_query)"
+        ),
+        "tools": ["obsidian_sync", "obsidian_query"],
+        "includes": []
+    },
+
     "feishu_drive": {
         "description": "Feishu/Lark document comment operations (list, reply, add)",
         "tools": [
@@ -339,7 +352,7 @@ TOOLSETS = {
         "includes": ["web", "vision", "image_gen"]
     },
 
-    # Coding posture (base Hermes — CLI/TUI/desktop/ACP). Auto-selected in a
+    # Coding posture (base Kopi — CLI/TUI/desktop/ACP). Auto-selected in a
     # code workspace; see agent/coding_context.py. Keeps everything you reach
     # for while pairing on code and drops the rest (messaging, tts, image_gen,
     # spotify, home-assistant, cron, computer-use).
@@ -367,7 +380,7 @@ TOOLSETS = {
     },
     
     # ==========================================================================
-    # Full Hermes toolsets (CLI + messaging platforms)
+    # Full Kopi toolsets (CLI + messaging platforms)
     #
     # All platforms share the same core tools. Note: agents do NOT get an
     # agent-callable send_message tool — outbound platform messaging is handled
@@ -490,7 +503,7 @@ TOOLSETS = {
     },
 
     "kopi-email": {
-        "description": "Email bot toolset - interact with Hermes via email (IMAP/SMTP)",
+        "description": "Email bot toolset - interact with Kopi via email (IMAP/SMTP)",
         "tools": _KOPI_CORE_TOOLS,
         "includes": []
     },
@@ -563,7 +576,7 @@ TOOLSETS = {
     },
 
     "kopi-sms": {
-        "description": "SMS bot toolset - interact with Hermes via SMS (Twilio)",
+        "description": "SMS bot toolset - interact with Kopi via SMS (Twilio)",
         "tools": _KOPI_CORE_TOOLS,
         "includes": []
     },

@@ -28,11 +28,11 @@ load_dotenv()
 
 # Default datasets to sample from
 DEFAULT_DATASETS = [
-    "Kopi Ai Agent Pte Ltd/swe-terminus-agent-glm-kimi-minimax",
-    "Kopi Ai Agent Pte Ltd/kopi-ai-agent-megascience-sft1",
-    "Kopi Ai Agent Pte Ltd/Hermes-Agent-Thinking-GLM-4.7-SFT2",
-    "Kopi Ai Agent Pte Ltd/Hermes-Agent-Thinking-GLM-4.7-SFT1",
-    "Kopi Ai Agent Pte Ltd/terminal-tasks-glm-kopi-ai-agent"
+    "NousResearch/swe-terminus-agent-glm-kimi-minimax",
+    "NousResearch/kopi-ai-agent-megascience-sft1",
+    "NousResearch/Kopi-Agent-Thinking-GLM-4.7-SFT2",
+    "NousResearch/Kopi-Agent-Thinking-GLM-4.7-SFT1",
+    "NousResearch/terminal-tasks-glm-kopi-ai-agent"
 ]
 
 
@@ -41,7 +41,7 @@ def load_dataset_from_hf(dataset_name: str) -> List[Dict[str, Any]]:
     Load a dataset from HuggingFace.
     
     Args:
-        dataset_name: HuggingFace dataset name (e.g., "Kopi Ai Agent Pte Ltd/dataset-name")
+        dataset_name: HuggingFace dataset name (e.g., "NousResearch/dataset-name")
         
     Returns:
         List of trajectory entries
@@ -402,7 +402,7 @@ def main(
     print(f"📁 Compressed batches: {compressed_dir}")
     print(f"📁 Final output:       {final_output}")
     print("\nTo upload to HuggingFace:")
-    print(f"   huggingface-cli upload Kopi Ai Agent Pte Ltd/{output_name} {final_output}")
+    print(f"   huggingface-cli upload NousResearch/{output_name} {final_output}")
 
 
 if __name__ == "__main__":

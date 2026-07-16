@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import test from 'node:test'
+import { test } from 'vitest'
 
 import beforePack, { cleanStaleAppOutDir } from '../scripts/before-pack.mjs'
 
 test('cleanStaleAppOutDir removes a populated unpacked directory', () => {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-before-pack-'))
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kopi-before-pack-'))
   try {
     const appOutDir = path.join(tempRoot, 'linux-unpacked')
     fs.mkdirSync(appOutDir, { recursive: true })
@@ -28,7 +28,7 @@ test('cleanStaleAppOutDir removes a populated unpacked directory', () => {
 })
 
 test('cleanStaleAppOutDir is a no-op when the directory is absent', () => {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-before-pack-'))
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kopi-before-pack-'))
   try {
     const missing = path.join(tempRoot, 'does-not-exist')
     assert.equal(cleanStaleAppOutDir(missing), false)

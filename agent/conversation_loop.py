@@ -17,6 +17,7 @@ resolved through :func:`_ra` so those patches keep working.
 from __future__ import annotations
 
 import json
+import functools
 import logging
 import os
 import random
@@ -73,6 +74,29 @@ from utils import base_url_host_matches, env_var_enabled
 
 logger = logging.getLogger(__name__)
 
+
+def _track_office_turn(func):
+    """Keep office presence paired across every return and exception path."""
+    @functools.wraps(func)
+    def wrapped(agent, user_message, *args, **kwargs):
+        try:
+            from tools.delegate_tool import mark_main_turn_start
+            positional_persisted = args[4] if len(args) > 4 else None
+            goal = kwargs.get("persist_user_message") or positional_persisted or user_message or ""
+            mark_main_turn_start(agent, goal)
+        except Exception:
+            pass
+        try:
+            return func(agent, user_message, *args, **kwargs)
+        finally:
+            try:
+                from tools.delegate_tool import mark_main_turn_end
+                mark_main_turn_end(agent)
+            except Exception:
+                pass
+
+    return wrapped
+
 # Stable prefix of the local interrupt status string emitted when a turn is
 # cancelled while waiting on the provider. Surfaces (ACP, TUI) match on this
 # to treat it as cancellation metadata rather than assistant prose.
@@ -125,7 +149,7 @@ def _ollama_context_limit_error(agent: Any, request_tokens: int) -> Optional[str
     tool_count = len(getattr(agent, "tools", None) or [])
 
     logger.warning(
-        "Ollama runtime context too small for Hermes tool use: "
+        "Ollama runtime context too small for Kopi tool use: "
         "model=%s provider=%s base_url=%s runtime_context=%d "
         "minimum_context=%d estimated_request_tokens=%d tool_count=%d "
         "session=%s",
@@ -141,11 +165,11 @@ def _ollama_context_limit_error(agent: Any, request_tokens: int) -> Optional[str
 
     return (
         f"Ollama loaded `{model}` with only {runtime_ctx:,} tokens of runtime "
-        f"context, but Hermes needs at least {MINIMUM_CONTEXT_LENGTH:,} tokens "
+        f"context, but Kopi needs at least {MINIMUM_CONTEXT_LENGTH:,} tokens "
         "for reliable tool use.\n\n"
         "Increase the Ollama context for this model and restart/reload the "
         "model before trying again. A known-good starting point is 65,536 "
-        "tokens. In Hermes config, set `model.ollama_num_ctx: 65536` "
+        "tokens. In Kopi config, set `model.ollama_num_ctx: 65536` "
         "(and `model.context_length: 65536` if you also override the displayed "
         "model context). If you manage the model through an Ollama Modelfile, "
         "set `PARAMETER num_ctx 65536` there instead."
@@ -520,14 +544,15 @@ def _sync_failover_system_message(agent, api_messages, active_system_prompt):
     return sp
 
 
+@_track_office_turn
 def run_conversation(
     agent,
-    user_message: str,
+    user_message: Any,
     system_message: str = None,
     conversation_history: List[Dict[str, Any]] = None,
     task_id: str = None,
     stream_callback: Optional[callable] = None,
-    persist_user_message: Optional[str] = None,
+    persist_user_message: Optional[Any] = None,
     persist_user_timestamp: Optional[float] = None,
     moa_config: Optional[dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -613,6 +638,11 @@ def run_conversation(
     truncated_response_parts: List[str] = []
     compression_attempts = 0
     _turn_exit_reason = "unknown"  # Diagnostic: why the loop ended
+    # Last composed answer intentionally held back by a verification gate. If
+    # that continuation consumes the remaining budget, this is the best
+    # user-facing result available; it must not be confused with error or
+    # recovery text produced by unrelated exit paths.
+    _pending_verification_response = None
 
     # Per-turn tally of consecutive successful credential-pool token refreshes,
     # keyed by (provider, pool-entry-id). A persistent upstream 401 lets
@@ -623,7 +653,7 @@ def run_conversation(
 
     # Optional opt-in runtime: if api_mode == codex_app_server, hand the
     # turn to the codex app-server subprocess (terminal/file ops/patching
-    # all run inside Codex). Default Hermes path is bypassed entirely.
+    # all run inside Codex). Default Kopi path is bypassed entirely.
     # See agent/transports/codex_app_server_session.py for the adapter
     # and references/codex-app-server-runtime.md for the rationale.
     if agent.api_mode == "codex_app_server":
@@ -837,9 +867,9 @@ def run_conversation(
         # NOTE: Plugin context from pre_llm_call hooks is injected into the
         # user message (see injection block above), NOT the system prompt.
         # This is intentional — system prompt modifications break the prompt
-        # cache prefix.  The system prompt is reserved for Hermes internals.
+        # cache prefix.  The system prompt is reserved for Kopi internals.
         #
-        # Hermes invariant: the system prompt is built ONCE per session
+        # Kopi invariant: the system prompt is built ONCE per session
         # (cached on ``_cached_system_prompt``) and replayed verbatim on
         # every turn.  We send it as a single content string so the
         # bytes are byte-stable across turns and upstream prompt caches
@@ -852,10 +882,19 @@ def run_conversation(
 
         if moa_config:
             try:
+                from agent.message_content import flatten_message_text as _flatten_mt
                 from agent.moa_loop import _preset_temperature, aggregate_moa_context
 
                 _moa_context = aggregate_moa_context(
-                    user_prompt=original_user_message if isinstance(original_user_message, str) else str(original_user_message),
+                    user_prompt=(
+                        original_user_message
+                        if isinstance(original_user_message, str)
+                        # Multimodal / decorated content list: extract the
+                        # visible text instead of str()-ing a Python repr of
+                        # the parts (which would leak base64 image payloads
+                        # into the aggregator prompt).
+                        else _flatten_mt(original_user_message)
+                    ),
                     api_messages=api_messages,
                     reference_models=moa_config.get("reference_models") or [],
                     aggregator=moa_config.get("aggregator") or {},
@@ -869,6 +908,14 @@ def run_conversation(
                             _base = _msg.get("content", "")
                             if isinstance(_base, str):
                                 _msg["content"] = _base + "\n\n" + _moa_context
+                            elif isinstance(_base, list):
+                                # Multimodal user turn (text + image parts):
+                                # append the MoA context as a trailing text
+                                # part instead of silently dropping it.
+                                _msg["content"] = [
+                                    *_base,
+                                    {"type": "text", "text": "\n\n" + _moa_context},
+                                ]
                             break
             except Exception as _moa_exc:
                 logger.warning("MoA context aggregation failed: %s", _moa_exc)
@@ -971,7 +1018,7 @@ def run_conversation(
             failed = True
             _turn_exit_reason = "ollama_runtime_context_too_small"
             messages.append({"role": "assistant", "content": final_response})
-            agent._emit_status("❌ Ollama runtime context is too small for Hermes tool use")
+            agent._emit_status("❌ Ollama runtime context is too small for Kopi tool use")
             api_call_count -= 1
             agent._api_call_count = api_call_count
             try:
@@ -1162,7 +1209,11 @@ def run_conversation(
                 if agent._force_ascii_payload:
                     _sanitize_structure_non_ascii(api_kwargs)
                 if agent.api_mode == "codex_responses":
-                    api_kwargs = agent._get_transport().preflight_kwargs(api_kwargs, allow_stream=False)
+                    api_kwargs = agent._get_transport().preflight_kwargs(
+                        api_kwargs,
+                        allow_stream=False,
+                        is_github_responses=agent._is_copilot_url(),
+                    )
                 # Copilot x-initiator: the first API call of a user turn is
                 # marked "user" so Copilot bills a premium request; tool-loop
                 # follow-ups keep the default "agent" header (#3040).
@@ -1309,6 +1360,12 @@ def run_conversation(
                         _use_streaming = False
 
                 def _perform_api_call(next_api_kwargs):
+                    if agent.api_mode == "codex_responses":
+                        next_api_kwargs = agent._get_transport().preflight_kwargs(
+                            next_api_kwargs,
+                            allow_stream=False,
+                            is_github_responses=agent._is_copilot_url(),
+                        )
                     if _use_streaming:
                         return agent._interruptible_streaming_api_call(
                             next_api_kwargs, on_first_delta=_stop_spinner
@@ -1725,7 +1782,7 @@ def run_conversation(
                     )
                     _refusal_response = (
                         "⚠️  The model declined to respond to this request "
-                        "(safety refusal — not a Hermes/gateway failure).\n\n"
+                        "(safety refusal — not a Kopi/gateway failure).\n\n"
                         f"{_refusal_detail}\n\n"
                         f"{_CONTENT_POLICY_RECOVERY_HINT}"
                     )
@@ -2104,7 +2161,19 @@ def run_conversation(
                         "reasoning_tokens": canonical_usage.reasoning_tokens,
                     }
                     agent.context_compressor.update_from_response(usage_dict)
+                elif getattr(
+                    agent.context_compressor,
+                    "awaiting_real_usage_after_compression",
+                    False,
+                ):
+                    # A response with no usage cannot adjudicate whether the
+                    # prior compaction cleared the threshold. Consume the pending
+                    # verdict now so a much later, unrelated reading is not
+                    # charged to that old compaction, and so preflight deferral
+                    # does not remain latched indefinitely.
+                    agent.context_compressor.update_from_response({})
 
+                if hasattr(response, 'usage') and response.usage:
                     # Cache discovered context length after successful call.
                     # Only persist limits confirmed by the provider (parsed
                     # from the error message), not guessed probe tiers.
@@ -2799,7 +2868,7 @@ def run_conversation(
                     print(f"{agent.log_prefix}   Troubleshooting:")
                     from kopi_constants import display_kopi_home as _dhh_fn
                     _dhh = _dhh_fn()
-                    print(f"{agent.log_prefix}     • Check ANTHROPIC_TOKEN in {_dhh}/.env for Hermes-managed OAuth/setup tokens")
+                    print(f"{agent.log_prefix}     • Check ANTHROPIC_TOKEN in {_dhh}/.env for Kopi-managed OAuth/setup tokens")
                     print(f"{agent.log_prefix}     • Check ANTHROPIC_API_KEY in {_dhh}/.env for API keys or legacy token values")
                     print(f"{agent.log_prefix}     • For API keys: verify at https://platform.claude.com/settings/keys")
                     print(f"{agent.log_prefix}     • For Claude Code: run 'claude /login' to refresh, then retry")
@@ -3034,14 +3103,24 @@ def run_conversation(
                 # (``/new``), switch to a larger-context model, or reduce
                 # attachments.  Forced compaction via ``/compress``
                 # (``force=True``) is unaffected — it never reaches this loop.
+                #
+                # Output-cap errors (max_tokens too large) are NOT input
+                # overflow — the recovery is a max_tokens-only retry that
+                # does not require compression.  Exempt them from this guard
+                # so the retry still fires even when compression is disabled.
                 _overflow_reasons = {
                     FailoverReason.long_context_tier,
                     FailoverReason.payload_too_large,
                     FailoverReason.context_overflow,
                 }
+                _is_output_cap_error = (
+                    is_output_cap_error(error_msg)
+                    or parse_available_output_tokens_from_error(error_msg) is not None
+                )
                 if (
                     classified.reason in _overflow_reasons
                     and not getattr(agent, "compression_enabled", True)
+                    and not _is_output_cap_error
                 ):
                     agent._flush_status_buffer()
                     agent._vprint(
@@ -3249,7 +3328,7 @@ def run_conversation(
                 # this on the next pass and try fallback or bail.
                 #
                 # IMPORTANT: Nous Portal multiplexes multiple upstream
-                # providers (DeepSeek, Kimi, MiMo, Hermes).  A 429 can
+                # providers (DeepSeek, Kimi, MiMo, Kopi).  A 429 can
                 # also mean an UPSTREAM provider is out of capacity
                 # for one specific model -- transient, clears in
                 # seconds, nothing to do with the caller's quota.
@@ -3313,7 +3392,7 @@ def run_conversation(
 
                 # Actionable hint for GitHub Models (Azure) 413 errors.
                 # The free tier enforces a hard 8K token cap per request,
-                # which Hermes' system prompt + tool schemas alone exceed.
+                # which Kopi' system prompt + tool schemas alone exceed.
                 # Compression can't help — the floor is the system prompt
                 # itself, not the conversation — so surface a clear "not
                 # compatible" message instead of looping into three futile
@@ -3328,7 +3407,7 @@ def run_conversation(
                         force=True,
                     )
                     agent._vprint(
-                        f"{agent.log_prefix}      request at ~8K tokens. Hermes' system prompt + tool schemas baseline",
+                        f"{agent.log_prefix}      request at ~8K tokens. Kopi' system prompt + tool schemas baseline",
                         force=True,
                     )
                     agent._vprint(
@@ -3336,7 +3415,7 @@ def run_conversation(
                         force=True,
                     )
                     agent._vprint(
-                        f"{agent.log_prefix}      Use the `copilot` provider with a Copilot subscription token (`hermes",
+                        f"{agent.log_prefix}      Use the `copilot` provider with a Copilot subscription token (`kopi",
                         force=True,
                     )
                     agent._vprint(
@@ -3445,15 +3524,33 @@ def run_conversation(
                     #       context_length = total window (input + output combined).
                     available_out = parse_available_output_tokens_from_error(error_msg)
                     if available_out is not None:
-                        # Error is purely about the output cap being too large.
-                        # Cap output to the available space and retry without
-                        # touching context_length or triggering compression.
-                        safe_out = max(1, available_out - 64)  # small safety margin
+                        # This is an output-cap error, not input overflow.
+                        # The provider's available_tokens is the authoritative
+                        # cap for the failed request, so keep it as an upper
+                        # bound.  Also estimate the current API request shape
+                        # (system prompt, injected context, tool schemas) because
+                        # Kopi may add API-only content not present in persisted
+                        # messages.  Use the smaller budget and apply a small
+                        # safety margin.  Do not alter context_length.
+                        request_input_estimate = estimate_request_tokens_rough(
+                            api_messages, tools=agent.tools or None,
+                        )
+                        local_available_out = old_ctx - request_input_estimate
+                        if local_available_out > 0:
+                            safe_out = max(1, min(available_out, local_available_out) - 64)
+                        else:
+                            # The rough local estimate can overshoot the real
+                            # request size.  Fall back to the provider-reported
+                            # budget, which is authoritative for the failed
+                            # request.
+                            safe_out = max(1, available_out - 64)
                         agent._ephemeral_max_output_tokens = safe_out
                         agent._buffer_vprint(
                             f"⚠️  Output cap too large for current prompt — "
                             f"retrying with max_tokens={safe_out:,} "
-                            f"(available_tokens={available_out:,}; context_length unchanged at {old_ctx:,})"
+                            f"(provider_available={available_out:,}, "
+                            f"estimated_request_tokens={request_input_estimate:,}; "
+                            f"context_length unchanged at {old_ctx:,})"
                         )
                         # Still count against compression_attempts so we don't
                         # loop forever if the error keeps recurring.
@@ -3876,7 +3973,7 @@ def run_conversation(
                     if classified.reason == FailoverReason.content_policy_blocked:
                         _policy_response = (
                             "⚠️  The model provider's safety filter blocked this request "
-                            "(not a Hermes/gateway failure).\n\n"
+                            "(not a Kopi/gateway failure).\n\n"
                             f"Provider message: {_nonretryable_summary}\n\n"
                             f"{_CONTENT_POLICY_RECOVERY_HINT}"
                         )
@@ -4020,7 +4117,7 @@ def run_conversation(
                             f"{agent.log_prefix}      1. Set "
                             f"`providers.{_provider}.models.{_model}.stale_timeout_seconds: 900` "
                             f"in `~/.kopi/config.yaml` to extend the per-call "
-                            f"timeout. (Hermes's built-in floor is 600s for "
+                            f"timeout. (Kopi's built-in floor is 600s for "
                             f"known reasoning models — if you still see this "
                             f"after raising, the upstream cap is even shorter.)",
                             force=True,
@@ -4604,11 +4701,37 @@ def run_conversation(
 
                 assistant_msg = agent._build_assistant_message(assistant_message, finish_reason)
                 
+                turn_content = assistant_message.content or ""
+
+                # Classify tools in this turn to determine if they are all housekeeping.
+                # This classification is needed regardless of whether the turn has visible content,
+                # because a substantive tool-only turn must invalidate any older housekeeping fallback.
+                _HOUSEKEEPING_TOOLS = frozenset({
+                    "memory", "todo", "skill_manage", "session_search",
+                })
+                _all_housekeeping = all(
+                    tc.function.name in _HOUSEKEEPING_TOOLS
+                    for tc in assistant_message.tool_calls
+                )
+
+                # If this turn has substantive tools (non-housekeeping), clear any older fallback.
+                # Prevents a two-turn-old housekeeping narration from being treated as if it belonged
+                # to the immediately preceding substantive tool turn.
+                if assistant_message.tool_calls and not _all_housekeeping:
+                    agent._last_content_with_tools = None
+                    agent._last_content_tools_all_housekeeping = False
+                    # Also clear the mute flag: a prior housekeeping turn may
+                    # have set _mute_post_response (line ~4667), and the
+                    # substantive tools in THIS turn should produce visible
+                    # progress output. Without this reset, _vprint suppresses
+                    # tool progress until the no-tool-call branch clears it at
+                    # line ~4834 — after all tools have finished.
+                    agent._mute_post_response = False
+
                 # If this turn has both content AND tool_calls, capture the content
                 # as a fallback final response. Common pattern: model delivers its
                 # answer and calls memory/skill tools as a side-effect in the same
                 # turn. If the follow-up turn after tools is empty, we use this.
-                turn_content = assistant_message.content or ""
                 if turn_content and agent._has_content_after_think_block(turn_content):
                     agent._last_content_with_tools = turn_content
                     # Only mute subsequent output when EVERY tool call in
@@ -4616,13 +4739,6 @@ def run_conversation(
                     # skill_manage, etc.).  If any substantive tool is present
                     # (search_files, read_file, write_file, terminal, ...),
                     # keep output visible so the user sees progress.
-                    _HOUSEKEEPING_TOOLS = frozenset({
-                        "memory", "todo", "skill_manage", "session_search",
-                    })
-                    _all_housekeeping = all(
-                        tc.function.name in _HOUSEKEEPING_TOOLS
-                        for tc in assistant_message.tool_calls
-                    )
                     agent._last_content_tools_all_housekeeping = _all_housekeeping
                     if _all_housekeeping and agent._has_stream_consumers():
                         agent._mute_post_response = True
@@ -4662,7 +4778,7 @@ def run_conversation(
                 try:
                     # Persist the assistant tool-call turn before any tool
                     # side effects run. If a destructive tool restarts or
-                    # terminates Hermes mid-turn, resume logic still sees the
+                    # terminates Kopi mid-turn, resume logic still sees the
                     # exact tool-call block that already executed.
                     agent._flush_messages_to_session_db(messages, conversation_history)
                 except Exception as exc:
@@ -5062,8 +5178,11 @@ def run_conversation(
                 # Reset retry counter/signature on successful content
                 agent._empty_content_retries = 0
                 agent._thinking_prefill_retries = 0
-                # Successful content reached — drop any buffered retry
-                # status from earlier failed attempts in this turn.
+                # Successful content reached — surface the one-shot fallback
+                # switch notice (if a fallback activated this turn) before
+                # dropping the noisy retry buffer, so a provider/model switch
+                # stays visible even when the fallback succeeds.
+                agent._emit_pending_fallback_notice()
                 agent._clear_status_buffer()
 
                 from agent.agent_runtime_helpers import (
@@ -5096,6 +5215,10 @@ def run_conversation(
                     }
                     messages.append(continue_msg)
                     agent._session_messages = messages
+                    # An acknowledgment is explicitly non-final. Do not let its
+                    # text suppress iteration-limit summarization if this
+                    # continuation consumes the remaining budget.
+                    final_response = None
                     continue
 
                 codex_ack_continuations = 0
@@ -5170,6 +5293,12 @@ def run_conversation(
                     # terminal. Keep a debug breadcrumb in agent.log for tracing.
                     logger.debug("verification stop-loop nudge issued (attempt %d)",
                                  agent._verification_stop_nudges)
+                    # Keep the attempted answer only as an explicit fallback for
+                    # continuation-budget exhaustion.  ``final_response`` itself
+                    # must be cleared so the finalizer can distinguish this gate
+                    # from unrelated error/recovery exits. (#61631)
+                    _pending_verification_response = final_response
+                    final_response = None
                     continue
 
                 # User verification-loop gate: when the agent edited code this
@@ -5221,6 +5350,55 @@ def run_conversation(
                     agent._session_messages = messages
                     logger.debug("pre_verify nudge issued (attempt %d)",
                                  agent._pre_verify_nudges)
+                    _pending_verification_response = final_response
+                    final_response = None
+                    continue
+
+                # ── Kanban worker terminal-tool stop guard ─────────────
+                # Workers must end with kanban_complete / kanban_block.
+                # Models sometimes narrate the next step ("Let me write the
+                # report") and stop with finish_reason=stop — a clean exit
+                # that the dispatcher records as protocol_violation. Nudge
+                # once or twice before allowing that exit.
+                try:
+                    from agent.kanban_stop import build_kanban_stop_nudge
+
+                    _kanban_nudge = build_kanban_stop_nudge(
+                        messages=messages,
+                        attempts=getattr(agent, "_kanban_stop_nudges", 0),
+                    )
+                except Exception:
+                    logger.debug("kanban stop-loop check failed", exc_info=True)
+                    _kanban_nudge = None
+
+                if _kanban_nudge:
+                    agent._kanban_stop_nudges = (
+                        getattr(agent, "_kanban_stop_nudges", 0) + 1
+                    )
+                    final_msg["finish_reason"] = "kanban_terminal_required"
+                    final_msg["_kanban_stop_synthetic"] = True
+                    messages.append(final_msg)
+                    messages.append({
+                        "role": "user",
+                        "content": _kanban_nudge,
+                        "_kanban_stop_synthetic": True,
+                    })
+                    agent._session_messages = messages
+                    logger.info(
+                        "kanban stop-loop nudge issued (attempt %d) task=%s",
+                        agent._kanban_stop_nudges,
+                        os.environ.get("KOPI_KANBAN_TASK", ""),
+                    )
+                    agent._emit_status(
+                        "⚠️ Kanban worker tried to exit without "
+                        "kanban_complete/kanban_block — nudging to finish"
+                    )
+                    # Same finalizer contract as verify-on-stop: clear
+                    # final_response while continuing so a later budget
+                    # exhaustion path does not treat the narrated stop as
+                    # a completed answer.
+                    _pending_verification_response = final_response
+                    final_response = None
                     continue
 
                 messages.append(final_msg)
@@ -5305,6 +5483,7 @@ def run_conversation(
         original_user_message=original_user_message,
         _should_review_memory=_should_review_memory,
         _turn_exit_reason=_turn_exit_reason,
+        _pending_verification_response=_pending_verification_response,
     )
 
 

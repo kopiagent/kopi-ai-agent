@@ -30,7 +30,7 @@ class TestGatewayLifecyclePattern:
         "kopi gateway stop",
         "kopi  gateway  restart",         # double spaces
         "Hermez Gateway Restart".lower().replace("z", "s"),  # case handled
-        "HERMES GATEWAY RESTART",           # uppercase
+        "KOPI GATEWAY RESTART",           # uppercase
     ])
     def test_kopi_gateway_commands(self, text):
         assert _contains_gateway_lifecycle_command(text), f"Should match: {text!r}"
@@ -49,7 +49,7 @@ class TestGatewayLifecyclePattern:
     @pytest.mark.parametrize("text", [
         "kill kopi gateway process",
         "pkill -f kopi.*gateway",
-        "pkill -f gateway.*hermes",          # inverse token order
+        "pkill -f gateway.*kopi",          # inverse token order
     ])
     def test_kill_commands(self, text):
         assert _contains_gateway_lifecycle_command(text), f"Should match: {text!r}"
@@ -68,8 +68,8 @@ class TestGatewayLifecyclePattern:
         # foot-gun (#30719 lists only those).
         "kopi gateway start",
         "kopi gateway start --all",
-        # Tightened launchctl/systemctl branches: ops on NON-gateway hermes
-        # services must not be falsely blocked (the old `.*hermes` matched any
+        # Tightened launchctl/systemctl branches: ops on NON-gateway kopi
+        # services must not be falsely blocked (the old `.*kopi` matched any
         # kopi token).
         "launchctl unload ai.kopi.update-checker.plist",
         "launchctl restart ai.kopi.daemon",

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { Switch } from '@/components/ui/switch'
-import type { HermesGateway } from '@/kopi'
+import type { KopiGateway } from '@/kopi'
 import { getGlobalModelOptions } from '@/kopi'
 import { useI18n } from '@/i18n'
 import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
@@ -22,7 +22,7 @@ import {
 import type { ModelOptionProvider, ModelOptionsResponse } from '@/types/kopi'
 
 interface ModelVisibilityDialogProps {
-  gw?: HermesGateway
+  gw?: KopiGateway
   onOpenChange: (open: boolean) => void
   onOpenProviders: () => void
   open: boolean

@@ -26,9 +26,9 @@ import webbrowser
 from kopi_cli.colors import Colors, color
 from kopi_cli.config import load_config
 
-DEFAULT_PORTAL_URL = "https://kopiaiagent.com/portal"
-SUBSCRIPTION_URL = "https://kopiaiagent.com/portal/manage-subscription"
-DOCS_URL = "https://kopiaiagent.com/docs/user-guide/features/tool-gateway"
+DEFAULT_PORTAL_URL = "https://portal.nousresearch.com"
+SUBSCRIPTION_URL = "https://portal.nousresearch.com/manage-subscription"
+DOCS_URL = "https://kopi-ai-agent.nousresearch.com/docs/user-guide/features/tool-gateway"
 
 
 def _cmd_status(args) -> int:

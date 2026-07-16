@@ -1,6 +1,6 @@
 # Session Storage
 
-KOPI AI AGENT uses a SQLite database (`~/.kopi/state.db`) to persist session
+Kopi Agent uses a SQLite database (`~/.kopi/state.db`) to persist session
 metadata, full message history, and model configuration across CLI and gateway
 sessions. This replaces the earlier per-session JSONL file approach.
 

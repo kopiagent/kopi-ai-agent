@@ -12,11 +12,12 @@ import { useLocation } from 'react-router-dom'
 
 import { Thread } from '@/components/assistant-ui/thread'
 import { Backdrop } from '@/components/Backdrop'
+import { COMPOSER_HEART_CONFIG, HeartField } from '@/components/chat/vibe-hearts'
 import { PromptOverlays } from '@/components/prompt-overlays'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { ErrorState } from '@/components/ui/error-state'
-import { getGlobalModelOptions, type HermesGateway } from '@/kopi'
+import { getGlobalModelOptions, type KopiGateway } from '@/kopi'
 import { useI18n } from '@/i18n'
 import type { ChatMessage } from '@/lib/chat-messages'
 import {
@@ -30,6 +31,8 @@ import { useIncrementalExternalStoreRuntime } from '@/lib/incremental-external-s
 import { cn } from '@/lib/utils'
 import type { ComposerAttachment } from '@/store/composer'
 import { $pinnedSessionIds } from '@/store/layout'
+import { $petActive } from '@/store/pet'
+import { $petOverlayActive } from '@/store/pet-overlay'
 import { $gatewaySwapTarget } from '@/store/profile'
 import {
   $activeSessionId,
@@ -70,7 +73,7 @@ import { SessionActionsMenu } from './sidebar/session-actions-menu'
 import { threadLoadingState } from './thread-loading'
 
 interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
-  gateway: HermesGateway | null
+  gateway: KopiGateway | null
   modelMenuContent?: React.ReactNode
   onToggleSelectedPin: () => void
   onDeleteSelectedSession: () => void
@@ -297,6 +300,10 @@ export function ChatView({
   const currentCwd = useStore($currentCwd)
   const currentModel = useStore($currentModel)
   const currentProvider = useStore($currentProvider)
+  // A pet anywhere (in-window or popped out) owns the hearts; composer only when none.
+  const petActive = useStore($petActive)
+  const petOverlayActive = useStore($petOverlayActive)
+  const petPresent = petActive || petOverlayActive
   const freshDraftReady = useStore($freshDraftReady)
   const gatewayState = useStore($gatewayState)
   const gatewaySwapTarget = useStore($gatewaySwapTarget)
@@ -362,7 +369,7 @@ export function ChatView({
       }
 
       if (!gateway) {
-        throw new Error('Hermes gateway unavailable')
+        throw new Error('Kopi gateway unavailable')
       }
 
       return gateway.request<ModelOptionsResponse>('model.options', {
@@ -491,6 +498,18 @@ export function ChatView({
             </div>
           )}
           {showChatBar && <ScrollToBottomButton />}
+          {/* Vibe hearts rise from the composer only when no pet is out (else
+              they play on the pet). Fired by the core `reaction` event. */}
+          {!petPresent && (
+            <HeartField
+              className="absolute inset-x-0 z-30"
+              config={COMPOSER_HEART_CONFIG}
+              style={{
+                top: 0,
+                bottom: 'calc(var(--composer-measured-height) + var(--status-stack-measured-height) + 0.25rem)'
+              }}
+            />
+          )}
           <ChatDropOverlay kind={dragKind} />
           <ChatSwapOverlay profile={gatewaySwapTarget} />
         </div>

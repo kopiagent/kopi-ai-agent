@@ -1,4 +1,4 @@
-"""ACP permission bridging for Hermes dangerous-command approvals."""
+"""ACP permission bridging for Kopi dangerous-command approvals."""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ from acp.schema import (
 
 logger = logging.getLogger(__name__)
 
-# Maps ACP permission option ids to Hermes approval result strings.
+# Maps ACP permission option ids to Kopi approval result strings.
 # Option ids are stable across both the ``allow_permanent=True`` and
 # ``allow_permanent=False`` paths even though the option list differs.
-_OPTION_ID_TO_HERMES = {
+_OPTION_ID_TO_KOPI = {
     "allow_once": "once",
     "allow_session": "session",
     "allow_always": "always",
@@ -38,19 +38,22 @@ def _permission_option_supports_kind(kind: str) -> bool:
     return True
 
 
-def _build_permission_options(*, allow_permanent: bool) -> list[PermissionOption]:
-    """Return ACP options that match Hermes approval semantics."""
-    options = [
-        PermissionOption(option_id="allow_once", kind="allow_once", name="Allow once"),
-        PermissionOption(
+def _build_permission_options(
+    *, allow_permanent: bool, smart_denied: bool = False,
+) -> list[PermissionOption]:
+    """Return ACP options that match Kopi approval semantics."""
+    options = [PermissionOption(
+        option_id="allow_once", kind="allow_once", name="Allow once",
+    )]
+    if not smart_denied:
+        options.append(PermissionOption(
             option_id="allow_session",
             # ACP has no session-scoped kind, so use the closest persistent
-            # hint while keeping Hermes semantics in the option id.
+            # hint while keeping Kopi semantics in the option id.
             kind="allow_always",
             name="Allow for session",
-        ),
-    ]
-    if allow_permanent:
+        ))
+    if allow_permanent and not smart_denied:
         options.append(
             PermissionOption(
                 option_id="allow_always",
@@ -59,7 +62,7 @@ def _build_permission_options(*, allow_permanent: bool) -> list[PermissionOption
             ),
         )
     options.append(PermissionOption(option_id="deny", kind="reject_once", name="Deny"))
-    if _permission_option_supports_kind("reject_always"):
+    if not smart_denied and _permission_option_supports_kind("reject_always"):
         options.append(
             PermissionOption(
                 option_id="deny_always",
@@ -92,8 +95,8 @@ def _build_permission_tool_call(command: str, description: str):
     )
 
 
-def _map_outcome_to_hermes(outcome: object, *, allowed_option_ids: set[str]) -> str:
-    """Map an ACP permission outcome into Hermes approval strings."""
+def _map_outcome_to_kopi(outcome: object, *, allowed_option_ids: set[str]) -> str:
+    """Map an ACP permission outcome into Kopi approval strings."""
     if not isinstance(outcome, AllowedOutcome):
         return "deny"
 
@@ -101,7 +104,7 @@ def _map_outcome_to_hermes(outcome: object, *, allowed_option_ids: set[str]) -> 
     if option_id not in allowed_option_ids:
         logger.warning("Permission request returned unknown option_id: %s", option_id)
         return "deny"
-    return _OPTION_ID_TO_HERMES.get(option_id, "deny")
+    return _OPTION_ID_TO_KOPI.get(option_id, "deny")
 
 
 def make_approval_callback(
@@ -111,7 +114,7 @@ def make_approval_callback(
     timeout: float = 60.0,
 ) -> Callable[..., str]:
     """
-    Return a Hermes-compatible approval callback that bridges to ACP.
+    Return a Kopi-compatible approval callback that bridges to ACP.
 
     The callback accepts ``command`` and ``description`` plus optional
     keyword arguments such as ``allow_permanent`` used by
@@ -129,11 +132,15 @@ def make_approval_callback(
         description: str,
         *,
         allow_permanent: bool = True,
+        smart_denied: bool = False,
         **_: object,
     ) -> str:
         from agent.async_utils import safe_schedule_threadsafe
 
-        options = _build_permission_options(allow_permanent=allow_permanent)
+        options = _build_permission_options(
+            allow_permanent=allow_permanent,
+            smart_denied=smart_denied,
+        )
 
         tool_call = _build_permission_tool_call(command, description)
         coro = request_permission_fn(
@@ -160,7 +167,7 @@ def make_approval_callback(
             return "deny"
 
         allowed_option_ids = {option.option_id for option in options}
-        return _map_outcome_to_hermes(
+        return _map_outcome_to_kopi(
             response.outcome,
             allowed_option_ids=allowed_option_ids,
         )

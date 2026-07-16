@@ -1,15 +1,15 @@
 ---
 sidebar_position: 3
 title: 'Learning Path'
-description: 'Choose your learning path through the KOPI AI AGENT documentation based on your experience level and goals.'
+description: 'Choose your learning path through the Kopi Agent documentation based on your experience level and goals.'
 ---
 
 # Learning Path
 
-KOPI AI AGENT can do a lot — CLI assistant, Telegram/Discord bot, task automation, RL training, and more. This page helps you figure out where to start and what to read based on your experience level and what you're trying to accomplish.
+Kopi Agent can do a lot — CLI assistant, Telegram/Discord bot, task automation, RL training, and more. This page helps you figure out where to start and what to read based on your experience level and what you're trying to accomplish.
 
 :::tip Start Here
-If you haven't installed KOPI AI AGENT yet, begin with the [Installation guide](/getting-started/installation) and then run through the [Quickstart](/getting-started/quickstart). Everything below assumes you have a working installation.
+If you haven't installed Kopi Agent yet, begin with the [Installation guide](/getting-started/installation) and then run through the [Quickstart](/getting-started/quickstart). Everything below assumes you have a working installation.
 :::
 
 :::tip First-time provider setup
@@ -20,7 +20,7 @@ First-time users almost always want `kopi setup --portal` — one OAuth covers a
 
 - **Know your level?** Jump to the [experience-level table](#by-experience-level) and follow the reading order for your tier.
 - **Have a specific goal?** Skip to [By Use Case](#by-use-case) and find the scenario that matches.
-- **Just browsing?** Check the [Key Features](#key-features-at-a-glance) table for a quick overview of everything KOPI AI AGENT can do.
+- **Just browsing?** Check the [Key Features](#key-features-at-a-glance) table for a quick overview of everything Kopi Agent can do.
 
 ## By Experience Level
 
@@ -36,7 +36,7 @@ Pick the scenario that matches what you want to do. Each one links you to the re
 
 ### "I want a CLI coding assistant"
 
-Use KOPI AI AGENT as an interactive terminal assistant for writing, reviewing, and running code.
+Use Kopi Agent as an interactive terminal assistant for writing, reviewing, and running code.
 
 1. [Installation](/getting-started/installation)
 2. [Quickstart](/getting-started/quickstart)
@@ -46,12 +46,12 @@ Use KOPI AI AGENT as an interactive terminal assistant for writing, reviewing, a
 6. [Tips & Tricks](/guides/tips)
 
 :::tip
-Pass files directly into your conversation with context files. KOPI AI AGENT can read, edit, and run code in your projects.
+Pass files directly into your conversation with context files. Kopi Agent can read, edit, and run code in your projects.
 :::
 
 ### "I want a Telegram/Discord bot"
 
-Deploy KOPI AI AGENT as a bot on your favorite messaging platform.
+Deploy Kopi Agent as a bot on your favorite messaging platform.
 
 1. [Installation](/getting-started/installation)
 2. [Configuration](/user-guide/configuration)
@@ -59,7 +59,7 @@ Deploy KOPI AI AGENT as a bot on your favorite messaging platform.
 4. [Telegram Setup](/user-guide/messaging/telegram)
 5. [Discord Setup](/user-guide/messaging/discord)
 6. [Voice Mode](/user-guide/features/voice-mode)
-7. [Use Voice Mode with Hermes](/guides/use-voice-mode-with-hermes)
+7. [Use Voice Mode with Kopi](/guides/use-voice-mode-with-kopi)
 8. [Security](/user-guide/security)
 
 For full project examples, see:
@@ -77,15 +77,15 @@ Schedule recurring tasks, run batch jobs, or chain agent actions together.
 5. [Hooks](/user-guide/features/hooks)
 
 :::tip
-Cron jobs let KOPI AI AGENT run tasks on a schedule — daily summaries, periodic checks, automated reports — without you being present.
+Cron jobs let Kopi Agent run tasks on a schedule — daily summaries, periodic checks, automated reports — without you being present.
 :::
 
 ### "I want to build custom tools/skills"
 
-Extend KOPI AI AGENT with your own tools and reusable skill packages.
+Extend Kopi Agent with your own tools and reusable skill packages.
 
 1. [Plugins](/user-guide/features/plugins)
-2. [Build a Hermes Plugin](/developer-guide/plugins)
+2. [Build a Kopi Plugin](/developer-guide/plugins)
 3. [Tools Overview](/user-guide/features/tools)
 4. [Skills Overview](/user-guide/features/skills)
 5. [MCP (Model Context Protocol)](/user-guide/features/mcp)
@@ -95,26 +95,26 @@ Extend KOPI AI AGENT with your own tools and reusable skill packages.
 
 :::tip
 For most custom tool creation, start with plugins. The [Adding Tools](/developer-guide/adding-tools)
-page is for built-in Hermes core development, not the usual user/custom-tool path.
+page is for built-in Kopi core development, not the usual user/custom-tool path.
 :::
 
 ### "I want to train models"
 
-Use reinforcement learning to fine-tune model behavior with KOPI AI AGENT's RL training pipeline (powered by [Atropos](https://github.com/LINYIQ66/atropos)).
+Use reinforcement learning to fine-tune model behavior with Kopi Agent's RL training pipeline (powered by [Atropos](https://github.com/NousResearch/atropos)).
 
 1. [Quickstart](/getting-started/quickstart)
 2. [Configuration](/user-guide/configuration)
-3. [Atropos RL Environments](https://github.com/LINYIQ66/atropos) (external)
+3. [Atropos RL Environments](https://github.com/NousResearch/atropos) (external)
 4. [Provider Routing](/user-guide/features/provider-routing)
 5. [Architecture](/developer-guide/architecture)
 
 :::tip
-RL training works best when you already understand the basics of how KOPI AI AGENT handles conversations and tool calls. Run through the Beginner path first if you're new.
+RL training works best when you already understand the basics of how Kopi Agent handles conversations and tool calls. Run through the Beginner path first if you're new.
 :::
 
 ### "I want to use it as a Python library"
 
-Integrate KOPI AI AGENT into your own Python applications programmatically.
+Integrate Kopi Agent into your own Python applications programmatically.
 
 1. [Installation](/getting-started/installation)
 2. [Quickstart](/getting-started/quickstart)
@@ -136,7 +136,7 @@ Not sure what's available? Here's a quick directory of major features:
 | **MCP** | Connect to external tool servers via Model Context Protocol | [MCP](/user-guide/features/mcp) |
 | **Cron** | Schedule recurring agent tasks | [Cron](/user-guide/features/cron) |
 | **Delegation** | Spawn sub-agents for parallel work | [Delegation](/user-guide/features/delegation) |
-| **Code Execution** | Run Python scripts that call Hermes tools programmatically | [Code Execution](/user-guide/features/code-execution) |
+| **Code Execution** | Run Python scripts that call Kopi tools programmatically | [Code Execution](/user-guide/features/code-execution) |
 | **Browser** | Web browsing and scraping | [Browser](/user-guide/features/browser) |
 | **Hooks** | Event-driven callbacks and middleware | [Hooks](/user-guide/features/hooks) |
 | **Batch Processing** | Process multiple inputs in bulk | [Batch Processing](/user-guide/features/batch-processing) |

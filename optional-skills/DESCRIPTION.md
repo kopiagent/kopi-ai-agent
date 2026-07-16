@@ -1,8 +1,8 @@
 # Optional Skills
 
-Official skills maintained by Kopi Ai Agent Pte Ltd that are **not activated by default**.
+Official skills maintained by Nous Research that are **not activated by default**.
 
-These skills ship with the kopi-ai-agent repository but are not copied to
+These skills ship with the kopi-agent repository but are not copied to
 `~/.kopi/skills/` during setup. They are discoverable via the Skills Hub:
 
 ```bash

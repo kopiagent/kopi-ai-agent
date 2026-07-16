@@ -1,7 +1,7 @@
 ---
 sidebar_position: 3
 title: "Updating & Uninstalling"
-description: "How to update KOPI AI AGENT to the latest version or uninstall it"
+description: "How to update Kopi Agent to the latest version or uninstall it"
 ---
 
 # Updating & Uninstalling
@@ -24,12 +24,12 @@ This pulls the latest code from `main`, updates dependencies, and prompts you to
 
 When you run `kopi update`, the following steps occur:
 
-1. **Pairing-data snapshot** — a lightweight pre-update state snapshot is saved (covers `~/.kopi/pairing/`, Feishu comment rules, and other state files that get modified at runtime). Recoverable via the snapshot restore flow described under [Snapshots and rollback](../user-guide/checkpoints-and-rollback.md), or by extracting the most recent quick-snapshot zip Hermes wrote next to your `~/.kopi/` directory.
+1. **Pairing-data snapshot** — a lightweight pre-update state snapshot is saved (covers `~/.kopi/pairing/`, Feishu comment rules, and other state files that get modified at runtime). Recoverable via the snapshot restore flow described under [Snapshots and rollback](../user-guide/checkpoints-and-rollback.md), or by extracting the most recent quick-snapshot zip Kopi wrote next to your `~/.kopi/` directory.
 2. **Git pull** — pulls the latest code from the `main` branch and updates submodules
-3. **Post-pull syntax validation + auto-rollback** — after the pull, Hermes compiles the eight critical files every `kopi` invocation imports at startup. If any fails to parse (e.g. an orphan merge-conflict marker, an accidentally truncated file), Hermes runs `git reset --hard <pre-pull-sha>` to roll the install back so your shell stays bootable. Re-run `kopi update` once the upstream fix lands.
+3. **Post-pull syntax validation + auto-rollback** — after the pull, Kopi compiles the eight critical files every `kopi` invocation imports at startup. If any fails to parse (e.g. an orphan merge-conflict marker, an accidentally truncated file), Kopi runs `git reset --hard <pre-pull-sha>` to roll the install back so your shell stays bootable. Re-run `kopi update` once the upstream fix lands.
 4. **Dependency install** — runs `uv pip install -e ".[all]"` to pick up new or changed dependencies
 5. **Config migration** — detects new config options added since your version and prompts you to set them
-6. **Gateway auto-restart** — running gateways are refreshed after the update completes so the new code takes effect immediately. Service-managed gateways (systemd on Linux, launchd on macOS) are restarted through the service manager. Manual gateways are relaunched automatically when Hermes can map the running PID back to a profile.
+6. **Gateway auto-restart** — running gateways are refreshed after the update completes so the new code takes effect immediately. Service-managed gateways (systemd on Linux, launchd on macOS) are restarted through the service manager. Manual gateways are relaunched automatically when Kopi can map the running PID back to a profile.
 
 ### Updating against a non-default branch: `--branch`
 
@@ -40,11 +40,11 @@ kopi update --branch release-candidate
 kopi update --check --branch experimental   # preview behindness only
 ```
 
-If your local checkout is on a different branch, Hermes auto-stashes any uncommitted work, switches HEAD to the target branch, and then pulls. Branches that don't exist locally are auto-tracked from `origin/<name>` (`git checkout -B <name> origin/<name>`). Branches that don't exist anywhere fail cleanly — your stashed changes are restored before exit so you're never stranded in a weird state. The `main`-only fork-upstream sync logic is automatically skipped on non-`main` branches.
+If your local checkout is on a different branch, Kopi auto-stashes any uncommitted work, switches HEAD to the target branch, and then pulls. Branches that don't exist locally are auto-tracked from `origin/<name>` (`git checkout -B <name> origin/<name>`). Branches that don't exist anywhere fail cleanly — your stashed changes are restored before exit so you're never stranded in a weird state. The `main`-only fork-upstream sync logic is automatically skipped on non-`main` branches.
 
 ### Local changes on non-interactive updates
 
-When you run `kopi update` in a terminal, Hermes stashes any uncommitted source-tree changes, pulls, then **asks** whether to restore them — exactly as it always has. Nothing changes for interactive updates.
+When you run `kopi update` in a terminal, Kopi stashes any uncommitted source-tree changes, pulls, then **asks** whether to restore them — exactly as it always has. Nothing changes for interactive updates.
 
 When the update runs **without a terminal** — from the desktop/chat app's "Update" button or a gateway-triggered update — there's no prompt to answer. The `updates.non_interactive_local_changes` setting decides what happens to your stashed changes:
 
@@ -56,7 +56,7 @@ updates:
 ```
 
 - `stash` (default) — auto-stash, pull, then auto-restore your changes on top of the updated code. Nothing is lost; if a restore hits conflicts they're preserved in a git stash for manual recovery.
-- `discard` — auto-stash and drop the stash after the pull, so the update always lands on a clean tree. Use this only on machines where you never intend to keep local edits to the Hermes source. It stash-drops (not `git reset --hard` + `git clean -fd`), so ignored paths like `node_modules`, `venv`, and build outputs are never touched.
+- `discard` — auto-stash and drop the stash after the pull, so the update always lands on a clean tree. Use this only on machines where you never intend to keep local edits to the Kopi source. It stash-drops (not `git reset --hard` + `git clean -fd`), so ignored paths like `node_modules`, `venv`, and build outputs are never touched.
 
 In the desktop app this is **Settings → Advanced → In-App Update Local Changes**.
 
@@ -82,19 +82,19 @@ updates:
 
 `--backup` was the always-on behavior in earlier builds, but it was adding minutes to every update on large homes, so it's now opt-in. The lightweight pairing-data snapshot above still runs unconditionally.
 
-### Windows: another `hermes.exe` is running
+### Windows: another `kopi.exe` is running
 
-On Windows, `kopi update` will refuse to run if it detects another `hermes.exe` process holding the venv's entry-point executable open — most commonly the Hermes Desktop app's spawned backend, an open `kopi` REPL in another terminal, or a running gateway:
+On Windows, `kopi update` will refuse to run if it detects another `kopi.exe` process holding the venv's entry-point executable open — most commonly the Kopi Desktop app's spawned backend, an open `kopi` REPL in another terminal, or a running gateway:
 
 ```
 $ kopi update
-✗ Another hermes.exe is running:
-    PID 12345  hermes.exe
+✗ Another kopi.exe is running:
+    PID 12345  kopi.exe
 
-  Updating now would fail to overwrite ...\venv\Scripts\hermes.exe because
+  Updating now would fail to overwrite ...\venv\Scripts\kopi.exe because
   Windows blocks REPLACE on a running executable.
 
-  Close Hermes Desktop, exit any open `kopi` REPLs, and
+  Close Kopi Desktop, exit any open `kopi` REPLs, and
   stop the gateway (`kopi gateway stop`) before retrying.
   Override with `kopi update --force` if you've already
   confirmed those processes will not write to the venv.
@@ -108,7 +108,7 @@ Expected output looks like:
 
 ```
 $ kopi update
-Updating KOPI AI AGENT...
+Updating Kopi Agent...
 📥 Pulling latest code...
 Already up to date.  (or: Updating abc1234..def5678)
 📦 Updating dependencies...
@@ -117,7 +117,7 @@ Already up to date.  (or: Updating abc1234..def5678)
 ✅ Config is up to date  (or: Found 2 new options — running migration...)
 🔄 Restarting gateways...
 ✅ Gateway restarted
-✅ KOPI AI AGENT updated successfully!
+✅ Kopi Agent updated successfully!
 ```
 
 ### Recommended Post-Update Validation
@@ -155,7 +155,7 @@ You no longer need to wrap `kopi update` in `screen` or `tmux` to survive a term
 kopi version
 ```
 
-Compare against the latest release at the [GitHub releases page](https://github.com/LINYIQ66/kopi-ai-agent/releases).
+Compare against the latest release at the [GitHub releases page](https://github.com/NousResearch/kopi-agent/releases).
 
 ### Updating from Messaging Platforms
 
@@ -172,7 +172,7 @@ This pulls the latest code, updates dependencies, and restarts running gateways.
 If you installed manually (not via the quick installer):
 
 ```bash
-cd /path/to/kopi-ai-agent
+cd /path/to/kopi-agent
 # Activate the venv you created during install (outside the source tree)
 export VIRTUAL_ENV="$HOME/.kopi/venvs/kopi-dev"
 export PATH="$VIRTUAL_ENV/bin:$PATH"
@@ -193,7 +193,7 @@ kopi config migrate   # Interactively add any missing options
 If an update introduces a problem, you can roll back to a previous version:
 
 ```bash
-cd /path/to/kopi-ai-agent
+cd /path/to/kopi-agent
 
 # List recent versions
 git log --oneline -10
@@ -223,10 +223,10 @@ Nix is no longer an explicitly supported install path (best-effort only) — see
 
 ```bash
 # Update the flake input
-nix flake update kopi-ai-agent
+nix flake update kopi-agent
 
 # Or rebuild with the latest
-nix profile upgrade kopi-ai-agent
+nix profile upgrade kopi-agent
 ```
 
 Nix installations are immutable — rollback is handled by Nix's generation system:
@@ -251,7 +251,7 @@ The uninstaller gives you the option to keep your configuration files (`~/.kopi/
 
 ```bash
 rm -f ~/.local/bin/kopi
-rm -rf /path/to/kopi-ai-agent
+rm -rf /path/to/kopi-agent
 rm -rf ~/.kopi            # Optional — keep if you plan to reinstall
 ```
 

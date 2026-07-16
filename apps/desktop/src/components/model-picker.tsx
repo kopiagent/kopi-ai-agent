@@ -7,7 +7,7 @@ import { currentPickerSelection } from '@/lib/model-status-label'
 import { normalize } from '@/lib/text'
 import type { ModelOptionProvider, ModelPricing } from '@/types/kopi'
 
-import type { HermesGateway } from '../kopi'
+import type { KopiGateway } from '../kopi'
 import { cn } from '../lib/utils'
 import { startManualOnboarding } from '../store/onboarding'
 
@@ -20,7 +20,7 @@ import { Skeleton } from './ui/skeleton'
 interface ModelPickerDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  gw?: HermesGateway
+  gw?: KopiGateway
   sessionId?: string | null
   currentModel: string
   currentProvider: string

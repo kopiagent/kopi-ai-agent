@@ -1,58 +1,58 @@
 ---
-name: kopi-ai-agent
-description: "Configure, extend, or contribute to KOPI AI AGENT."
+name: kopi-agent
+description: "Configure, extend, or contribute to Kopi Agent."
 version: 2.3.0
-author: KOPI AI AGENT + Teknium
+author: Kopi Agent + Teknium
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
-  hermes:
-    tags: [hermes, setup, configuration, multi-agent, spawning, cli, gateway, development]
-    homepage: https://github.com/LINYIQ66/kopi-ai-agent
+  kopi:
+    tags: [kopi, setup, configuration, multi-agent, spawning, cli, gateway, development]
+    homepage: https://github.com/NousResearch/kopi-agent
     related_skills: [claude-code, codex, opencode]
 ---
 
-# KOPI AI AGENT
+# Kopi Agent
 
-KOPI AI AGENT is an open-source AI agent framework by Kopi Ai Agent Pte Ltd that runs in your terminal, a native desktop app, messaging platforms, and IDEs. It's in the same category as Claude Code (Anthropic), Codex (OpenAI), and OpenClaw — autonomous coding and task-execution agents that use tool calling to interact with your system. Hermes works with any LLM provider (OpenRouter, Anthropic, OpenAI, Google, DeepSeek, xAI, local models, and 20+ others) and runs on Linux, macOS, Windows, and WSL.
+Kopi Agent is an open-source AI agent framework by Nous Research that runs in your terminal, a native desktop app, messaging platforms, and IDEs. It's in the same category as Claude Code (Anthropic), Codex (OpenAI), and OpenClaw — autonomous coding and task-execution agents that use tool calling to interact with your system. Kopi works with any LLM provider (OpenRouter, Anthropic, OpenAI, Google, DeepSeek, xAI, local models, and 20+ others) and runs on Linux, macOS, Windows, and WSL.
 
-What makes Hermes different:
+What makes Kopi different:
 
-- **Self-improving through skills** — Hermes learns from experience by saving reusable procedures as skills. When it solves a complex problem, discovers a workflow, or gets corrected, it can persist that knowledge as a skill document that loads into future sessions. Skills accumulate over time, making the agent better at your specific tasks and environment.
+- **Self-improving through skills** — Kopi learns from experience by saving reusable procedures as skills. When it solves a complex problem, discovers a workflow, or gets corrected, it can persist that knowledge as a skill document that loads into future sessions. Skills accumulate over time, making the agent better at your specific tasks and environment.
 - **Persistent memory across sessions** — remembers who you are, your preferences, environment details, and lessons learned. Pluggable memory backends (built-in, Honcho, Mem0, and more) let you choose how memory works.
 - **Multi-platform gateway** — the same agent runs on Telegram, Discord, Slack, WhatsApp, iMessage, Signal, Matrix, Teams, Email, and a dozen more platforms with full tool access, not just chat.
 - **Many surfaces** — the same agent core drives the CLI, the Ink TUI, a native Electron desktop app, a web dashboard, and an ACP server for IDEs (VS Code / Zed / JetBrains).
 - **Provider-agnostic** — swap models and providers mid-workflow without changing anything else. Credential pools rotate across multiple API keys automatically.
-- **Profiles** — run multiple independent Hermes instances with isolated configs, sessions, skills, and memory.
+- **Profiles** — run multiple independent Kopi instances with isolated configs, sessions, skills, and memory.
 - **Extensible** — plugins, MCP servers, custom tools, webhook triggers, cron scheduling, and the full Python ecosystem.
 
-People use Hermes for software development, research, system administration, data analysis, content creation, home automation, and anything else that benefits from an AI agent with persistent context and full system access.
+People use Kopi for software development, research, system administration, data analysis, content creation, home automation, and anything else that benefits from an AI agent with persistent context and full system access.
 
-**This skill helps you work with KOPI AI AGENT effectively** — setting it up, configuring features, spawning additional agent instances, troubleshooting issues, finding the right commands and settings, and understanding how the system works when you need to extend or contribute to it.
+**This skill helps you work with Kopi Agent effectively** — setting it up, configuring features, spawning additional agent instances, troubleshooting issues, finding the right commands and settings, and understanding how the system works when you need to extend or contribute to it.
 
-**Docs:** https://kopiaiagent.com/docs/
+**Docs:** https://kopi-agent.nousresearch.com/docs/
 
 ## Scope & Verification
 
-This skill is a concise operating guide, not the complete source of truth for every Hermes feature. If a Hermes feature, command, or setting is not mentioned here, do not treat that absence as evidence that it does not exist. Check the live repository and official docs before giving a negative answer.
+This skill is a concise operating guide, not the complete source of truth for every Kopi feature. If a Kopi feature, command, or setting is not mentioned here, do not treat that absence as evidence that it does not exist. Check the live repository and official docs before giving a negative answer.
 
 Good verification targets:
 
 - CLI commands: `kopi --help`, `kopi <command> --help`, and `kopi_cli/main.py`
-- User documentation: https://kopiaiagent.com/docs/
-- Source tree: https://github.com/LINYIQ66/kopi-ai-agent
+- User documentation: https://kopi-agent.nousresearch.com/docs/
+- Source tree: https://github.com/NousResearch/kopi-agent
 
 ## Quick Start
 
 ```bash
 # Install (shell installer — sets up uv, Python, the venv, and the launcher)
-curl -fsSL https://kopiaiagent.com/install.sh | bash
+curl -fsSL https://kopi-agent.nousresearch.com/install.sh | bash
 
 # Or via PyPI (ships the TUI bundle + shell launcher)
-pip install kopi-ai-agent       # or: uv pip install kopi-ai-agent
+pip install kopi-agent       # or: uv pip install kopi-agent
 
 # Interactive chat (default surface; set display.interface: tui to launch the Ink TUI instead)
-hermes
+kopi
 
 # Single query
 kopi chat -q "What is the capital of France?"
@@ -145,7 +145,7 @@ kopi skills tap add REPO  Add a GitHub repo as skill source
 ### MCP Servers
 
 ```
-kopi mcp serve            Run Hermes as an MCP server
+kopi mcp serve            Run Kopi as an MCP server
 kopi mcp add NAME         Add an MCP server (--url or --command)
 kopi mcp remove NAME      Remove an MCP server
 kopi mcp list             List configured servers
@@ -155,7 +155,7 @@ kopi mcp configure NAME   Toggle tool selection
 
 How the built-in MCP client connects servers (stdio/HTTP), auto-discovers
 their tools, and exposes them as first-class tools, plus catalog install
-(`kopi mcp install <name>`): `skill_view(name="kopi-ai-agent", file_path="references/native-mcp.md")`.
+(`kopi mcp install <name>`): `skill_view(name="kopi-agent", file_path="references/native-mcp.md")`.
 
 ### Gateway (Messaging Platforms)
 
@@ -170,7 +170,7 @@ kopi gateway setup        Configure platforms
 
 Supported platforms (20+): Telegram, Discord, Slack, WhatsApp (Baileys bridge + official Business Cloud API), iMessage (Photon — `kopi photon setup`, the BlueBubbles successor with no Mac relay), Signal, Email, SMS, Matrix, Mattermost, Microsoft Teams, LINE, SimpleX, ntfy, Google Chat, Home Assistant, DingTalk, Feishu, WeCom, Weixin (WeChat), Raft (agent network), API Server, Webhooks. Open WebUI connects via the API Server adapter. Most adapters ship under `plugins/platforms/`, so new ones drop in without touching core.
 
-Platform docs: https://kopiaiagent.com/docs/user-guide/messaging/
+Platform docs: https://kopi-agent.nousresearch.com/docs/user-guide/messaging/
 
 ### Sessions
 
@@ -206,7 +206,7 @@ kopi webhook test NAME    Send a test POST
 ```
 
 Full setup, route config, payload templating, and event-driven agent-run
-patterns: `skill_view(name="kopi-ai-agent", file_path="references/webhooks.md")`.
+patterns: `skill_view(name="kopi-agent", file_path="references/webhooks.md")`.
 
 ### Profiles
 
@@ -253,7 +253,7 @@ kopi send                 Send a one-off message through a gateway platform
 kopi completion bash|zsh  Shell completions
 kopi acp                  ACP server (IDE integration)
 kopi claw migrate         Migrate from OpenClaw
-kopi uninstall            Uninstall Hermes
+kopi uninstall            Uninstall Kopi
 ```
 
 For the full, authoritative command list run `kopi --help` (and `kopi <command> --help`). Plugin- and provider-supplied subcommands (e.g. `kopi photon setup` for iMessage) only appear once their plugin is installed/active.
@@ -264,7 +264,7 @@ For the full, authoritative command list run `kopi --help` (and `kopi <command> 
 
 Type these during an interactive chat session. New commands land fairly
 often; if something below looks stale, run `/help` in-session for the
-authoritative list or see the [live slash commands reference](https://kopiaiagent.com/docs/reference/slash-commands).
+authoritative list or see the [live slash commands reference](https://kopi-agent.nousresearch.com/docs/reference/slash-commands).
 The registry of record is `kopi_cli/commands.py` — every consumer
 (autocomplete, Telegram menu, Slack mapping, `/help`) derives from it.
 
@@ -278,13 +278,13 @@ The registry of record is `kopi_cli/commands.py` — every consumer
 /compress            Manually compress context
 /stop                Kill background processes
 /rollback [N]        Restore filesystem checkpoint
-/snapshot [sub]      Create or restore state snapshots of Hermes config/state (CLI)
+/snapshot [sub]      Create or restore state snapshots of Kopi config/state (CLI)
 /background <prompt> Run prompt in background
 /queue <prompt>      Queue for next turn
 /steer <prompt>      Inject a message after the next tool call without interrupting
 /agents (/tasks)     Show active agents and running tasks
 /resume [name]       Resume a named session
-/goal [text|sub]     Set a standing goal Hermes works on across turns until achieved
+/goal [text|sub]     Set a standing goal Kopi works on across turns until achieved
                      (subcommands: status, pause, resume, clear)
 /redraw              Force a full UI repaint (CLI)
 ```
@@ -294,11 +294,11 @@ The registry of record is `kopi_cli/commands.py` — every consumer
 /config              Show config (CLI)
 /model [name]        Show or change model
 /personality [name]  Set personality
-/reasoning [level]   Set reasoning (none|minimal|low|medium|high|xhigh|show|hide)
+/reasoning [level]   Set reasoning (none|minimal|low|medium|high|xhigh|max|ultra|show|hide)
 /verbose             Cycle: off → new → all → verbose
 /voice [on|off|tts]  Voice mode
 /yolo                Toggle approval bypass
-/busy [sub]          Control what Enter does while Hermes is working (CLI)
+/busy [sub]          Control what Enter does while Kopi is working (CLI)
                      (subcommands: queue, steer, interrupt, status)
 /indicator [style]   Pick the TUI busy-indicator style (CLI)
                      (styles: kaomoji, emoji, unicode, ascii)
@@ -328,7 +328,7 @@ The registry of record is `kopi_cli/commands.py` — every consumer
 /deny                Deny a pending command (gateway)
 /restart             Restart gateway (gateway)
 /sethome             Set current chat as home channel (gateway)
-/update              Update Hermes to latest (gateway)
+/update              Update Kopi to latest (gateway)
 /topic [sub]         Enable or inspect Telegram DM topic sessions (gateway)
 /platforms (/gateway) Show platform connection status (gateway)
 ```
@@ -374,7 +374,7 @@ $KOPI_HOME/skills/        Installed skills
 ~/.kopi/state.db          Canonical session store (SQLite + FTS5)
 ~/.kopi/logs/             Gateway and error logs
 ~/.kopi/auth.json         OAuth tokens and credential pools
-~/.kopi/kopi-ai-agent/     Source code (if git-installed)
+~/.kopi/kopi-agent/     Source code (if git-installed)
 ```
 
 Profiles use `~/.kopi/profiles/<name>/` with the same layout.
@@ -398,7 +398,7 @@ Edit with `kopi config edit` or `kopi config set section.key value`.
 | `checkpoints` | `enabled`, `max_snapshots` (50) |
 | `curator` | `enabled`, `consolidate` (false — opt-in aux-model skill consolidation), `interval_hours`, `stale_after_days` |
 
-Full config reference: https://kopiaiagent.com/docs/user-guide/configuration
+Full config reference: https://kopi-agent.nousresearch.com/docs/user-guide/configuration
 
 ### Providers
 
@@ -428,7 +428,7 @@ Full config reference: https://kopiaiagent.com/docs/user-guide/configuration
 | Custom endpoint | Config | `model.base_url` + `model.api_key` in config.yaml |
 | GitHub Copilot ACP | External | `COPILOT_CLI_PATH` or Copilot CLI |
 
-Full provider docs: https://kopiaiagent.com/docs/integrations/providers
+Full provider docs: https://kopi-agent.nousresearch.com/docs/integrations/providers
 
 ### Toolsets
 
@@ -475,12 +475,12 @@ Tool changes take effect on `/reset` (new session). They do NOT apply mid-conver
 
 ## Project Context Files
 
-Hermes injects project-level instructions into the system prompt by reading context files from the working directory. The discovery order is **first match wins** — only one project context source is loaded per session.
+Kopi injects project-level instructions into the system prompt by reading context files from the working directory. The discovery order is **first match wins** — only one project context source is loaded per session.
 
 | File (in priority order) | Discovery | Use when |
 |---|---|---|
-| `.kopi.md` / `HERMES.md` | Walks parents up to the git root, stops at git root | You want hierarchical project rules (root + per-package overrides) |
-| `AGENTS.md` / `agents.md` | **Cwd only** — subdirectory and parent copies are ignored | You want portable agent instructions that work the same in Hermes, Claude Code, Codex, etc. |
+| `.kopi.md` / `KOPI.md` | Walks parents up to the git root, stops at git root | You want hierarchical project rules (root + per-package overrides) |
+| `AGENTS.md` / `agents.md` | **Cwd only** — subdirectory and parent copies are ignored | You want portable agent instructions that work the same in Kopi, Claude Code, Codex, etc. |
 | `CLAUDE.md` / `claude.md` | Cwd only | Same as AGENTS.md, Claude-flavored |
 | `.cursorrules` / `.cursor/rules/*.mdc` | Cwd only | Migrating from Cursor |
 
@@ -488,9 +488,9 @@ Hermes injects project-level instructions into the system prompt by reading cont
 
 ### Pick the right one
 
-- **Use `.kopi.md`** when you want Hermes-specific behavior that lives above the cwd (root + subtree), or when you want rules to inherit from a parent directory. The parent walk stops at the git root, so a home-level `.kopi.md` won't leak into every project (a git repo's root is the boundary).
+- **Use `.kopi.md`** when you want Kopi-specific behavior that lives above the cwd (root + subtree), or when you want rules to inherit from a parent directory. The parent walk stops at the git root, so a home-level `.kopi.md` won't leak into every project (a git repo's root is the boundary).
 - **Use `AGENTS.md`** when the same project will also be worked on by other agents (Codex, Claude Code, OpenCode). Those tools all have their own conventions for `AGENTS.md`, and the "cwd only" contract keeps the file portable.
-- **Don't put project rules in `~/.kopi/AGENTS.md`** (or any other home-level location). When Hermes runs with that directory as cwd, the file loads — but only for that one directory. For cross-project context, use `SOUL.md` (in `$KOPI_HOME`, identity-only) or install a skill via `kopi skills install`.
+- **Don't put project rules in `~/.kopi/AGENTS.md`** (or any other home-level location). When Kopi runs with that directory as cwd, the file loads — but only for that one directory. For cross-project context, use `SOUL.md` (in `$KOPI_HOME`, identity-only) or install a skill via `kopi skills install`.
 
 ### Size and truncation
 
@@ -502,14 +502,14 @@ All context files pass through the threat-pattern scanner before reaching the sy
 
 ### Disable for one session
 
-`kopi --ignore-rules` skips auto-injection of all project context files (`.kopi.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`) **and** `SOUL.md` identity, plus user config, plugins, and MCP servers. Use it to isolate whether a problem is your setup or Hermes itself.
+`kopi --ignore-rules` skips auto-injection of all project context files (`.kopi.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`) **and** `SOUL.md` identity, plus user config, plugins, and MCP servers. Use it to isolate whether a problem is your setup or Kopi itself.
 
 ### Example: a small `.kopi.md`
 
 ```markdown
 # My Project
 
-Hermes: when working in this repo, follow these rules.
+Kopi: when working in this repo, follow these rules.
 
 ## Build
 - Always run `make test` before declaring a change done.
@@ -520,11 +520,11 @@ Hermes: when working in this repo, follow these rules.
 - No `print()` in production code — use the `logger`.
 ```
 
-That file at `/home/me/projects/myrepo/.kopi.md` is auto-loaded when Hermes runs in any subdirectory of `/home/me/projects/myrepo`, but not when it runs in `/home/me/other-project`.
+That file at `/home/me/projects/myrepo/.kopi.md` is auto-loaded when Kopi runs in any subdirectory of `/home/me/projects/myrepo`, but not when it runs in `/home/me/other-project`.
 
 ## Security & Privacy Toggles
 
-Common "why is Hermes doing X to my output / tool calls / commands?" toggles — and the exact commands to change them. Most of these need a fresh session (`/reset` in chat, or start a new `kopi` invocation) because they're read once at startup.
+Common "why is Kopi doing X to my output / tool calls / commands?" toggles — and the exact commands to change them. Most of these need a fresh session (`/reset` in chat, or start a new `kopi` invocation) because they're read once at startup.
 
 ### Secret redaction in tool output
 
@@ -552,10 +552,10 @@ kopi config set privacy.redact_pii false   # disable (default)
 
 ### Command approval prompts
 
-By default (`approvals.mode: manual`), Hermes prompts the user before running shell commands flagged as destructive (`rm -rf`, `git reset --hard`, etc.). The modes are:
+By default (`approvals.mode: smart`), Kopi asks an auxiliary LLM to assess shell commands flagged as destructive (`rm -rf`, `git reset --hard`, etc.). The modes are:
 
-- `manual` — always prompt (default)
-- `smart` — use an auxiliary LLM to auto-approve low-risk commands, prompt on high-risk
+- `smart` — auto-approve a low-risk command once, deny high-risk commands, and prompt when uncertain (default)
+- `manual` — always prompt
 - `off` — skip all approval prompts (equivalent to `--yolo`)
 
 ```bash
@@ -615,9 +615,9 @@ Voice commands: `/voice on` (voice-to-voice), `/voice tts` (always voice), `/voi
 
 ---
 
-## Spawning Additional Hermes Instances
+## Spawning Additional Kopi Instances
 
-Run additional Hermes processes as fully independent subprocesses — separate sessions, tools, and environments.
+Run additional Kopi processes as fully independent subprocesses — separate sessions, tools, and environments.
 
 ### When to Use This vs delegate_task
 
@@ -640,7 +640,7 @@ terminal(command="kopi chat -q 'Set up CI/CD for ~/myapp'", background=true)
 
 ### Interactive PTY Mode (via tmux)
 
-Hermes uses prompt_toolkit, which requires a real terminal. Use tmux for interactive spawning:
+Kopi uses prompt_toolkit, which requires a real terminal. Use tmux for interactive spawning:
 
 ```
 # Start
@@ -740,7 +740,7 @@ the `cronjob` tool, the `kopi cron` CLI (`list`, `add`, `edit`,
   header/footer instead of being mirrored into the target gateway
   session (keeps role alternation intact).
 
-User docs: https://kopiaiagent.com/docs/user-guide/features/cron
+User docs: https://kopi-agent.nousresearch.com/docs/user-guide/features/cron
 
 ### Curator (skill lifecycle)
 
@@ -766,7 +766,7 @@ so nothing is lost.
 
 Config: `curator.*` (`enabled`, `interval_hours`, `min_idle_hours`,
 `stale_after_days`, `archive_after_days`, `backup.*`).
-User docs: https://kopiaiagent.com/docs/user-guide/features/curator
+User docs: https://kopi-agent.nousresearch.com/docs/user-guide/features/curator
 
 ### Kanban (multi-agent work queue)
 
@@ -795,7 +795,7 @@ sessions still have zero `kanban_*` schema footprint unless configured.
   `KOPI_KANBAN_BOARD` pinned in env); tenant is a soft namespace
   within a board for workspace-path + memory-key isolation.
 
-User docs: https://kopiaiagent.com/docs/user-guide/features/kanban
+User docs: https://kopi-agent.nousresearch.com/docs/user-guide/features/kanban
 
 ---
 
@@ -817,7 +817,7 @@ Beyond the CLI and gateway, a few things worth knowing about:
   `http://localhost:port` OpenAI API backed by whichever OAuth provider
   you're signed into (Claude Pro, ChatGPT Pro, SuperGrok). Point Codex
   CLI, Aider, Cline, Continue, or any script at it — no API key.
-- **Automation Blueprints** — pick a named automation and Hermes asks for
+- **Automation Blueprints** — pick a named automation and Kopi asks for
   what it needs (no cron syntax). One definition renders as a dashboard
   form, a slash command, an agent conversation, and a docs-catalog entry.
 - **`memory` tool batch operations** — pass an `operations` array of
@@ -834,7 +834,7 @@ Beyond the CLI and gateway, a few things worth knowing about:
 
 ## Windows-Specific Quirks
 
-Hermes runs natively on Windows (PowerShell, cmd, Windows Terminal, git-bash
+Kopi runs natively on Windows (PowerShell, cmd, Windows Terminal, git-bash
 mintty, VS Code integrated terminal). Most of it just works, but a handful
 of differences between Win32 and POSIX have bitten us — document new ones
 here as you hit them so the next person (or the next session) doesn't
@@ -857,7 +857,7 @@ a UTF-8 BOM (Notepad does this). Re-save as UTF-8 without BOM;
 ### `execute_code` / Sandbox
 
 **WinError 10106** from the sandbox child process — it can't create an
-`AF_INET` socket. Root cause is usually Hermes's env scrubber dropping
+`AF_INET` socket. Root cause is usually Kopi's env scrubber dropping
 `SYSTEMROOT`/`WINDIR`/`COMSPEC` (Python's `socket` needs `SYSTEMROOT` to find
 `mswsock.dll`), not a broken Winsock LSP. The `_WINDOWS_ESSENTIAL_ENV_VARS`
 allowlist in `tools/code_execution_tool.py` covers it; if you still hit it,
@@ -866,7 +866,7 @@ echo `os.environ` inside an `execute_code` block to confirm `SYSTEMROOT` is set.
 ### Testing on Windows
 
 `scripts/run_tests.sh` is POSIX-only (expects `.venv/bin/activate`); the
-Hermes-installed `venv/Scripts/` has no pip/pytest (stripped for size).
+Kopi-installed `venv/Scripts/` has no pip/pytest (stripped for size).
 Install pytest into a system Python and run directly with `-n 0`
 (`pyproject.toml`'s `addopts` already sets `-n`):
 
@@ -886,7 +886,7 @@ repo's `.gitattributes` normalizes. Don't let editors auto-convert committed
 POSIX-newline files to CRLF.
 
 **Forward slashes work almost everywhere.** `C:/Users/...` is accepted by
-every Hermes tool and most Windows APIs. Prefer forward slashes in code
+every Kopi tool and most Windows APIs. Prefer forward slashes in code
 and logs — avoids shell-escaping backslashes in bash.
 
 ---
@@ -948,36 +948,36 @@ kopi config set auxiliary.vision.model <model_name>
 
 | Looking for... | Location |
 |----------------|----------|
-| Config options | `kopi config edit` or [Configuration docs](https://kopiaiagent.com/docs/user-guide/configuration) |
-| Available tools | `kopi tools list` or [Tools reference](https://kopiaiagent.com/docs/reference/tools-reference) |
-| Slash commands | `/help` in session or [Slash commands reference](https://kopiaiagent.com/docs/reference/slash-commands) |
-| Skills catalog | `kopi skills browse` or [Skills catalog](https://kopiaiagent.com/docs/reference/skills-catalog) |
-| Provider setup | `kopi model` or [Providers guide](https://kopiaiagent.com/docs/integrations/providers) |
-| Platform setup | `kopi gateway setup` or [Messaging docs](https://kopiaiagent.com/docs/user-guide/messaging/) |
-| MCP servers | `kopi mcp list` or [MCP guide](https://kopiaiagent.com/docs/user-guide/features/mcp) |
-| Profiles | `kopi profile list` or [Profiles docs](https://kopiaiagent.com/docs/user-guide/profiles) |
-| Cron jobs | `kopi cron list` or [Cron docs](https://kopiaiagent.com/docs/user-guide/features/cron) |
-| Memory | `kopi memory status` or [Memory docs](https://kopiaiagent.com/docs/user-guide/features/memory) |
-| Env variables | `kopi config env-path` or [Env vars reference](https://kopiaiagent.com/docs/reference/environment-variables) |
-| CLI commands | `kopi --help` or [CLI reference](https://kopiaiagent.com/docs/reference/cli-commands) |
+| Config options | `kopi config edit` or [Configuration docs](https://kopi-agent.nousresearch.com/docs/user-guide/configuration) |
+| Available tools | `kopi tools list` or [Tools reference](https://kopi-agent.nousresearch.com/docs/reference/tools-reference) |
+| Slash commands | `/help` in session or [Slash commands reference](https://kopi-agent.nousresearch.com/docs/reference/slash-commands) |
+| Skills catalog | `kopi skills browse` or [Skills catalog](https://kopi-agent.nousresearch.com/docs/reference/skills-catalog) |
+| Provider setup | `kopi model` or [Providers guide](https://kopi-agent.nousresearch.com/docs/integrations/providers) |
+| Platform setup | `kopi gateway setup` or [Messaging docs](https://kopi-agent.nousresearch.com/docs/user-guide/messaging/) |
+| MCP servers | `kopi mcp list` or [MCP guide](https://kopi-agent.nousresearch.com/docs/user-guide/features/mcp) |
+| Profiles | `kopi profile list` or [Profiles docs](https://kopi-agent.nousresearch.com/docs/user-guide/profiles) |
+| Cron jobs | `kopi cron list` or [Cron docs](https://kopi-agent.nousresearch.com/docs/user-guide/features/cron) |
+| Memory | `kopi memory status` or [Memory docs](https://kopi-agent.nousresearch.com/docs/user-guide/features/memory) |
+| Env variables | `kopi config env-path` or [Env vars reference](https://kopi-agent.nousresearch.com/docs/reference/environment-variables) |
+| CLI commands | `kopi --help` or [CLI reference](https://kopi-agent.nousresearch.com/docs/reference/cli-commands) |
 | Gateway logs | `~/.kopi/logs/gateway.log` |
 | Session files | `kopi sessions browse` (reads state.db) |
-| Source code | `~/.kopi/kopi-ai-agent/` |
+| Source code | `~/.kopi/kopi-agent/` |
 
 ---
 
 ## Contributor Quick Reference
 
-For occasional contributors and PR authors. Full developer docs: https://kopiaiagent.com/docs/developer-guide/
+For occasional contributors and PR authors. Full developer docs: https://kopi-agent.nousresearch.com/docs/developer-guide/
 
 ### Project Layout
 
 ```
-kopi-ai-agent/
+kopi-agent/
 ├── run_agent.py          # AIAgent — core conversation loop
 ├── model_tools.py        # Tool discovery and dispatch
 ├── toolsets.py           # Toolset definitions
-├── cli.py                # Interactive CLI (HermesCLI)
+├── cli.py                # Interactive CLI (KopiCLI)
 ├── kopi_state.py       # SQLite session store
 ├── agent/                # Prompt builder, context compression, memory, model routing, credential pooling, skill dispatch
 ├── kopi_cli/           # CLI subcommands, config, setup, commands

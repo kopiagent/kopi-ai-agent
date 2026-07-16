@@ -736,7 +736,7 @@ class TestUnreadablePairingFile:
         # And the warning should include actionable advice
         msgs = " ".join(rec.getMessage() for rec in caplog.records)
         assert "docker exec" in msgs
-        assert "-u hermes" in msgs
+        assert "-u kopi" in msgs
 
     def test_is_approved_returns_false_when_file_unreadable(self, tmp_path, caplog):
         """End-to-end: an unreadable approved.json must not crash the gateway,

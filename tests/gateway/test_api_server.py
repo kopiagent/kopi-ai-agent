@@ -568,14 +568,29 @@ class TestConcurrencyCap:
         assert resp.headers.get("Retry-After")
 
     def test_cap_counts_both_buckets(self):
-        # /v1/runs (tracked by _run_streams) + chat/responses (inflight)
+        # /v1/runs (tracked by live tasks) + chat/responses (inflight)
         adapter = _make_adapter()
         adapter._max_concurrent_runs = 4
         adapter._inflight_agent_runs = 2
-        adapter._run_streams = {"r1": object(), "r2": object()}
-        resp = adapter._concurrency_limited_response()
-        assert resp is not None
-        assert resp.status == 429
+
+        async def _assert_live_tasks_are_counted_without_streams():
+            blocker = asyncio.Event()
+
+            async def _live_run():
+                await blocker.wait()
+
+            tasks = [asyncio.create_task(_live_run()) for _ in range(2)]
+            adapter._active_run_tasks = {f"r{i}": task for i, task in enumerate(tasks)}
+            adapter._run_streams = {}
+            try:
+                resp = adapter._concurrency_limited_response()
+                assert resp is not None
+                assert resp.status == 429
+            finally:
+                blocker.set()
+                await asyncio.gather(*tasks)
+
+        asyncio.run(_assert_live_tasks_are_counted_without_streams())
 
     def test_zero_disables_cap(self):
         adapter = _make_adapter()
@@ -738,7 +753,7 @@ class TestHealthDetailedEndpoint:
             "active_agents": 2,
             "exit_reason": None,
             "updated_at": "2026-04-14T00:00:00Z",
-        }):
+        }), patch("gateway.run._resolve_gateway_model", return_value="test/model"):
             async with TestClient(TestServer(app)) as cli:
                 resp = await cli.get("/health/detailed")
                 assert resp.status == 200
@@ -764,7 +779,8 @@ class TestHealthDetailedEndpoint:
                 resp = await cli.get("/health/detailed")
                 assert resp.status == 200
                 data = await resp.json()
-                assert data["status"] == "ok"
+                assert data["status"] == "degraded"
+                assert data["readiness"]["checks"]["gateway"]["status"] == "degraded"
                 assert data["gateway_state"] is None
                 assert data["platforms"] == {}
                 # No runtime file ⇒ state None ⇒ not busy, not drainable.
@@ -788,6 +804,51 @@ class TestHealthDetailedEndpoint:
             async with TestClient(TestServer(app)) as cli:
                 resp = await cli.get("/health/detailed", headers=headers)
                 assert resp.status == 200
+
+    @pytest.mark.asyncio
+    async def test_health_detailed_reports_runtime_readiness(self, adapter):
+        """Detailed health exposes bounded readiness probes without changing /health."""
+        app = _create_app(adapter)
+        expected = {
+            "status": "degraded",
+            "checks": {
+                "state_db": {"status": "ok"},
+                "config": {"status": "degraded", "detail": "invalid config"},
+            },
+        }
+        with patch("gateway.status.read_runtime_status", return_value={"gateway_state": "running"}), \
+             patch("gateway.platforms.api_server.collect_runtime_readiness", return_value=expected):
+            async with TestClient(TestServer(app)) as cli:
+                resp = await cli.get("/health/detailed")
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["status"] == "degraded"
+                assert data["readiness"] == expected
+
+    @pytest.mark.asyncio
+    async def test_public_health_does_not_run_readiness_probes(self, adapter):
+        app = _create_app(adapter)
+        with patch("gateway.platforms.api_server.collect_runtime_readiness") as probe:
+            async with TestClient(TestServer(app)) as cli:
+                resp = await cli.get("/health")
+                assert resp.status == 200
+                assert (await resp.json())["status"] == "ok"
+        probe.assert_not_called()
+
+    def test_readiness_work_counts_exclude_retained_completed_runs(self, adapter):
+        adapter._run_statuses = {
+            "queued": {"status": "queued"},
+            "running": {"status": "running"},
+            "approval": {"status": "waiting_for_approval"},
+            "done": {"status": "completed"},
+            "failed": {"status": "failed"},
+        }
+        # Completed streams may remain attached for replay; they are not work.
+        adapter._run_streams = {"done": object(), "failed": object()}
+
+        with patch("tools.process_registry.process_registry.completion_queue.qsize", return_value=4), \
+             patch("tools.async_delegation.active_count", return_value=2):
+            assert adapter._readiness_work_counts() == (3, 4, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -885,7 +946,7 @@ class TestCapabilitiesEndpoint:
             assert data["features"]["chat_completions"] is True
             assert data["features"]["run_status"] is True
             assert data["features"]["run_events_sse"] is True
-            assert data["features"]["session_continuity_header"] == "X-Hermes-Session-Id"
+            assert data["features"]["session_continuity_header"] == "X-Kopi-Session-Id"
             assert data["endpoints"]["run_status"]["path"] == "/v1/runs/{run_id}"
             assert data["endpoints"]["skills"] == {"method": "GET", "path": "/v1/skills"}
             assert data["endpoints"]["toolsets"] == {"method": "GET", "path": "/v1/toolsets"}
@@ -3107,8 +3168,8 @@ class TestChatCompletionsAgentIncomplete:
             assert data["kopi"]["partial"] is True
             assert data["kopi"]["completed"] is False
             assert data["kopi"]["error_code"] == "output_truncated"
-            assert resp.headers.get("X-Hermes-Completed") == "false"
-            assert resp.headers.get("X-Hermes-Partial") == "true"
+            assert resp.headers.get("X-Kopi-Completed") == "false"
+            assert resp.headers.get("X-Kopi-Partial") == "true"
 
     @pytest.mark.asyncio
     async def test_hard_failure_redacts_secret_like_error_text(self, adapter):
@@ -3135,7 +3196,7 @@ class TestChatCompletionsAgentIncomplete:
             data = await resp.json()
             body = json.dumps(data)
             assert raw_secret not in body
-            assert raw_secret not in resp.headers.get("X-Hermes-Error", "")
+            assert raw_secret not in resp.headers.get("X-Kopi-Error", "")
             assert "OPENAI_API_KEY=" in body
             assert data["error"]["kopi"]["failed"] is True
 
@@ -3171,7 +3232,7 @@ class TestChatCompletionsAgentIncomplete:
             assert "truncated" in data["error"]["message"].lower()
             assert data["error"]["kopi"]["partial"] is True
             assert data["error"]["kopi"]["failed"] is True
-            assert resp.headers.get("X-Hermes-Completed") == "false"
+            assert resp.headers.get("X-Kopi-Completed") == "false"
 
     @pytest.mark.asyncio
     async def test_normal_completion_unchanged(self, adapter):
@@ -3198,7 +3259,7 @@ class TestChatCompletionsAgentIncomplete:
             assert data["choices"][0]["finish_reason"] == "stop"
             assert data["choices"][0]["message"]["content"] == "All good."
             assert "kopi" not in data
-            assert "X-Hermes-Completed" not in resp.headers
+            assert "X-Kopi-Completed" not in resp.headers
 
 
 # ---------------------------------------------------------------------------
@@ -3495,14 +3556,14 @@ class TestConversationParameter:
 
 
 # ---------------------------------------------------------------------------
-# X-Hermes-Session-Id header (session continuity)
+# X-Kopi-Session-Id header (session continuity)
 # ---------------------------------------------------------------------------
 
 
 class TestSessionIdHeader:
     @pytest.mark.asyncio
     async def test_new_session_response_includes_session_id_header(self, adapter):
-        """Without X-Hermes-Session-Id, a new session is created and returned in the header."""
+        """Without X-Kopi-Session-Id, a new session is created and returned in the header."""
         mock_result = {"final_response": "Hello!", "messages": [], "api_calls": 1}
         app = _create_app(adapter)
         async with TestClient(TestServer(app)) as cli:
@@ -3513,11 +3574,11 @@ class TestSessionIdHeader:
                     json={"model": "kopi-ai-agent", "messages": [{"role": "user", "content": "Hi"}]},
                 )
             assert resp.status == 200
-            assert resp.headers.get("X-Hermes-Session-Id") is not None
+            assert resp.headers.get("X-Kopi-Session-Id") is not None
 
     @pytest.mark.asyncio
     async def test_provided_session_id_is_used_and_echoed(self, auth_adapter):
-        """When X-Hermes-Session-Id is provided, it's passed to the agent and echoed in the response."""
+        """When X-Kopi-Session-Id is provided, it's passed to the agent and echoed in the response."""
         mock_result = {"final_response": "Continuing!", "messages": [], "api_calls": 1}
         mock_db = MagicMock()
         mock_db.get_messages_as_conversation.return_value = [
@@ -3532,18 +3593,18 @@ class TestSessionIdHeader:
 
                 resp = await cli.post(
                     "/v1/chat/completions",
-                    headers={"X-Hermes-Session-Id": "my-session-123", "Authorization": "Bearer sk-secret"},
+                    headers={"X-Kopi-Session-Id": "my-session-123", "Authorization": "Bearer sk-secret"},
                     json={"model": "kopi-ai-agent", "messages": [{"role": "user", "content": "Continue"}]},
                 )
 
             assert resp.status == 200
-            assert resp.headers.get("X-Hermes-Session-Id") == "my-session-123"
+            assert resp.headers.get("X-Kopi-Session-Id") == "my-session-123"
             call_kwargs = mock_run.call_args.kwargs
             assert call_kwargs["session_id"] == "my-session-123"
 
     @pytest.mark.asyncio
     async def test_traversal_session_id_header_rejected(self, auth_adapter):
-        """Security (#5958): a path-traversal X-Hermes-Session-Id must be
+        """Security (#5958): a path-traversal X-Kopi-Session-Id must be
         rejected with 400 so it can't reach the filesystem artifact paths
         (session snapshot / request dump) and escape the sessions dir."""
         app = _create_app(auth_adapter)
@@ -3552,7 +3613,7 @@ class TestSessionIdHeader:
                 for bad in ("../../../../etc/pwned", "/abs/path", "..\\win"):
                     resp = await cli.post(
                         "/v1/chat/completions",
-                        headers={"X-Hermes-Session-Id": bad, "Authorization": "Bearer sk-secret"},
+                        headers={"X-Kopi-Session-Id": bad, "Authorization": "Bearer sk-secret"},
                         json={"model": "kopi-ai-agent", "messages": [{"role": "user", "content": "hi"}]},
                     )
                     assert resp.status == 400, f"{bad!r} should be rejected"
@@ -3561,7 +3622,7 @@ class TestSessionIdHeader:
 
     @pytest.mark.asyncio
     async def test_provided_session_id_loads_history_from_db(self, auth_adapter):
-        """When X-Hermes-Session-Id is provided, history comes from SessionDB not request body."""
+        """When X-Kopi-Session-Id is provided, history comes from SessionDB not request body."""
         mock_result = {"final_response": "OK", "messages": [], "api_calls": 1}
         db_history = [
             {"role": "user", "content": "stored message 1"},
@@ -3577,7 +3638,7 @@ class TestSessionIdHeader:
 
                 resp = await cli.post(
                     "/v1/chat/completions",
-                    headers={"X-Hermes-Session-Id": "existing-session", "Authorization": "Bearer sk-secret"},
+                    headers={"X-Kopi-Session-Id": "existing-session", "Authorization": "Bearer sk-secret"},
                     # Request body has different history — should be ignored
                     json={
                         "model": "kopi-ai-agent",
@@ -3609,7 +3670,7 @@ class TestSessionIdHeader:
 
                 resp = await cli.post(
                     "/v1/chat/completions",
-                    headers={"X-Hermes-Session-Id": "some-session", "Authorization": "Bearer sk-secret"},
+                    headers={"X-Kopi-Session-Id": "some-session", "Authorization": "Bearer sk-secret"},
                     json={"model": "kopi-ai-agent", "messages": [{"role": "user", "content": "Hi"}]},
                 )
 
@@ -3620,7 +3681,7 @@ class TestSessionIdHeader:
 
 
 # ---------------------------------------------------------------------------
-# X-Hermes-Session-Key header (long-term memory scoping)
+# X-Kopi-Session-Key header (long-term memory scoping)
 # ---------------------------------------------------------------------------
 
 
@@ -3634,7 +3695,7 @@ class TestSessionKeyHeader:
 
     @pytest.mark.asyncio
     async def test_session_key_passed_to_agent_and_echoed(self, auth_adapter):
-        """X-Hermes-Session-Key reaches _run_agent as gateway_session_key and is echoed back."""
+        """X-Kopi-Session-Key reaches _run_agent as gateway_session_key and is echoed back."""
         mock_result = {"final_response": "ok", "messages": [], "api_calls": 1}
         app = _create_app(auth_adapter)
         async with TestClient(TestServer(app)) as cli:
@@ -3643,13 +3704,13 @@ class TestSessionKeyHeader:
                 resp = await cli.post(
                     "/v1/chat/completions",
                     headers={
-                        "X-Hermes-Session-Key": "webui:user-42",
+                        "X-Kopi-Session-Key": "webui:user-42",
                         "Authorization": "Bearer sk-secret",
                     },
                     json={"model": "kopi-ai-agent", "messages": [{"role": "user", "content": "hi"}]},
                 )
             assert resp.status == 200
-            assert resp.headers.get("X-Hermes-Session-Key") == "webui:user-42"
+            assert resp.headers.get("X-Kopi-Session-Key") == "webui:user-42"
             call_kwargs = mock_run.call_args.kwargs
             assert call_kwargs["gateway_session_key"] == "webui:user-42"
 
@@ -3667,15 +3728,15 @@ class TestSessionKeyHeader:
                 resp = await cli.post(
                     "/v1/chat/completions",
                     headers={
-                        "X-Hermes-Session-Key": "channel-abc",
-                        "X-Hermes-Session-Id": "transcript-xyz",
+                        "X-Kopi-Session-Key": "channel-abc",
+                        "X-Kopi-Session-Id": "transcript-xyz",
                         "Authorization": "Bearer sk-secret",
                     },
                     json={"model": "kopi-ai-agent", "messages": [{"role": "user", "content": "hi"}]},
                 )
             assert resp.status == 200
-            assert resp.headers.get("X-Hermes-Session-Key") == "channel-abc"
-            assert resp.headers.get("X-Hermes-Session-Id") == "transcript-xyz"
+            assert resp.headers.get("X-Kopi-Session-Key") == "channel-abc"
+            assert resp.headers.get("X-Kopi-Session-Id") == "transcript-xyz"
             call_kwargs = mock_run.call_args.kwargs
             assert call_kwargs["gateway_session_key"] == "channel-abc"
             assert call_kwargs["session_id"] == "transcript-xyz"
@@ -3694,7 +3755,7 @@ class TestSessionKeyHeader:
                     json={"model": "kopi-ai-agent", "messages": [{"role": "user", "content": "hi"}]},
                 )
             assert resp.status == 200
-            assert "X-Hermes-Session-Key" not in resp.headers
+            assert "X-Kopi-Session-Key" not in resp.headers
             call_kwargs = mock_run.call_args.kwargs
             assert call_kwargs["gateway_session_key"] is None
 
@@ -3705,7 +3766,7 @@ class TestSessionKeyHeader:
         async with TestClient(TestServer(app)) as cli:
             resp = await cli.post(
                 "/v1/chat/completions",
-                headers={"X-Hermes-Session-Key": "whatever"},
+                headers={"X-Kopi-Session-Key": "whatever"},
                 json={"model": "kopi-ai-agent", "messages": [{"role": "user", "content": "hi"}]},
             )
             assert resp.status == 403
@@ -3721,7 +3782,7 @@ class TestSessionKeyHeader:
         validation.
         """
         mock_request = MagicMock()
-        mock_request.headers = {"X-Hermes-Session-Key": "bad\rvalue"}
+        mock_request.headers = {"X-Kopi-Session-Key": "bad\rvalue"}
         key, err = auth_adapter._parse_session_key_header(mock_request)
         assert key is None
         assert err is not None
@@ -3734,7 +3795,7 @@ class TestSessionKeyHeader:
         async with TestClient(TestServer(app)) as cli:
             resp = await cli.post(
                 "/v1/chat/completions",
-                headers={"X-Hermes-Session-Key": "x" * 1000, "Authorization": "Bearer sk-secret"},
+                headers={"X-Kopi-Session-Key": "x" * 1000, "Authorization": "Bearer sk-secret"},
                 json={"model": "kopi-ai-agent", "messages": [{"role": "user", "content": "hi"}]},
             )
             assert resp.status == 400
@@ -3759,7 +3820,7 @@ class TestSessionKeyHeader:
                 resp = await cli.post(
                     "/v1/chat/completions",
                     headers={
-                        "X-Hermes-Session-Key": "agent:main:webui:dm:user-7",
+                        "X-Kopi-Session-Key": "agent:main:webui:dm:user-7",
                         "Authorization": "Bearer sk-secret",
                     },
                     json={"model": "kopi-ai-agent", "messages": [{"role": "user", "content": "hi"}]},
@@ -3770,7 +3831,7 @@ class TestSessionKeyHeader:
 
     @pytest.mark.asyncio
     async def test_responses_endpoint_accepts_session_key(self, auth_adapter):
-        """Responses API honors the same X-Hermes-Session-Key contract."""
+        """Responses API honors the same X-Kopi-Session-Key contract."""
         mock_result = {"final_response": "ok", "messages": [], "api_calls": 1}
         app = _create_app(auth_adapter)
         async with TestClient(TestServer(app)) as cli:
@@ -3779,13 +3840,13 @@ class TestSessionKeyHeader:
                 resp = await cli.post(
                     "/v1/responses",
                     headers={
-                        "X-Hermes-Session-Key": "webui:chan-1",
+                        "X-Kopi-Session-Key": "webui:chan-1",
                         "Authorization": "Bearer sk-secret",
                     },
                     json={"model": "kopi-ai-agent", "input": "hello", "store": False},
                 )
             assert resp.status == 200
-            assert resp.headers.get("X-Hermes-Session-Key") == "webui:chan-1"
+            assert resp.headers.get("X-Kopi-Session-Key") == "webui:chan-1"
             call_kwargs = mock_run.call_args.kwargs
             assert call_kwargs["gateway_session_key"] == "webui:chan-1"
 
@@ -3797,7 +3858,7 @@ class TestSessionKeyHeader:
             resp = await cli.get("/v1/capabilities")
             assert resp.status == 200
             data = await resp.json()
-            assert data["features"]["session_key_header"] == "X-Hermes-Session-Key"
+            assert data["features"]["session_key_header"] == "X-Kopi-Session-Key"
 
 
 # ---------------------------------------------------------------------------
@@ -3826,7 +3887,7 @@ def _patch_create_agent_runtime(monkeypatch, captured: dict, fake_agent_cls):
     monkeypatch.setattr("gateway.run._resolve_gateway_model", lambda: "global/model")
     monkeypatch.setattr("gateway.run._load_gateway_config", lambda: {})
     monkeypatch.setattr(
-        "gateway.run.GatewayRunner._load_reasoning_config", staticmethod(lambda: {})
+        "gateway.run.GatewayRunner._load_reasoning_config", staticmethod(lambda model="": {})
     )
     monkeypatch.setattr(
         "gateway.run.GatewayRunner._load_fallback_model", staticmethod(lambda: None)

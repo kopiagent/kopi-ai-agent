@@ -1,4 +1,4 @@
-"""Tests for ACP Registry metadata shipped with Hermes."""
+"""Tests for ACP Registry metadata shipped with Kopi."""
 
 from __future__ import annotations
 
@@ -30,11 +30,11 @@ def test_agent_json_matches_official_registry_required_fields():
     assert FORBIDDEN_MANIFEST_KEYS.isdisjoint(data)
     assert data["id"] == "kopi-ai-agent"
     assert re.fullmatch(r"[a-z][a-z0-9-]*", data["id"])
-    assert data["name"] == "KOPI AI AGENT"
+    assert data["name"] == "Kopi Agent"
     assert data["description"]
-    assert data["repository"] == "https://github.com/LINYIQ66/kopi-ai-agent"
-    assert data["website"].startswith("https://kopiaiagent.com/")
-    assert data["authors"] == ["Kopi Ai Agent Pte Ltd"]
+    assert data["repository"] == "https://github.com/NousResearch/kopi-ai-agent"
+    assert data["website"].startswith("https://kopi-ai-agent.nousresearch.com/")
+    assert data["authors"] == ["Nous Research"]
     assert data["license"] == "MIT"
     assert set(data["distribution"]) <= ALLOWED_DISTRIBUTIONS
 

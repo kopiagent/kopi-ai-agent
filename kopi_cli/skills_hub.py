@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Skills Hub CLI — Unified interface for the Hermes Skills Hub.
+Skills Hub CLI — Unified interface for the Kopi Skills Hub.
 
 Powers both:
   - `kopi skills <subcommand>` (CLI argparse entry point)
@@ -440,7 +440,7 @@ def do_browse(page: int = 1, page_size: int = 20, source: str = "all",
     c.print(f"\n[bold]Skills Hub — Browse {source_label}[/]"
             f"  [dim]({loaded_label}, page {page}/{total_pages})[/]")
     if official_count > 0 and page == 1:
-        c.print(f"[bright_cyan]★ {official_count} official optional skill(s) from Kopi Ai Agent Pte Ltd[/]")
+        c.print(f"[bright_cyan]★ {official_count} official optional skill(s) from Nous Research[/]")
     c.print()
 
     # Build table
@@ -516,7 +516,7 @@ def do_install(identifier: str, category: str = "", force: bool = False,
         GitHubAuth, create_source_router, ensure_hub_dirs,
         quarantine_bundle, install_from_quarantine, HubLockFile,
     )
-    from tools.skills_guard import scan_skill, should_allow_install, format_scan_report
+    from tools.skills_guard import scan_skill_cached, should_allow_install, format_scan_report
 
     c = console or _console
     ensure_hub_dirs()
@@ -648,8 +648,24 @@ def do_install(identifier: str, category: str = "", force: bool = False,
             or getattr(meta, "identifier", "")
             or identifier
         )
-    result = scan_skill(q_path, source=scan_source)
+    from tools.skills_hub import HUB_DIR, source_url_for_bundle
+    result, scan_provenance = scan_skill_cached(
+        q_path,
+        source=scan_source,
+        source_url=source_url_for_bundle(bundle),
+        cache_dir=HUB_DIR / "scan-cache",
+    )
     c.print(format_scan_report(result))
+    freshness = "fresh" if scan_provenance["fresh"] else "cached"
+    c.print(
+        f"[dim]Scan provenance: {freshness}; scanner "
+        f"{scan_provenance['scanner_version']}; hash {scan_provenance['bundle_hash']}[/]"
+    )
+    rules = ", ".join(scan_provenance["rules"]) or "none"
+    c.print(
+        f"[dim]Source: {scan_provenance['source_url']}; scanned "
+        f"{scan_provenance['scanned_at']}; rules: {rules}[/]"
+    )
 
     # Check install policy
     allowed, reason = should_allow_install(result, force=force)
@@ -674,7 +690,7 @@ def do_install(identifier: str, category: str = "", force: bool = False,
         c.print()
         if bundle.source == "official":
             c.print(Panel(
-                "[bold bright_cyan]This is an official optional skill maintained by Kopi Ai Agent Pte Ltd.[/]\n\n"
+                "[bold bright_cyan]This is an official optional skill maintained by Nous Research.[/]\n\n"
                 "It ships with kopi-ai-agent but is not activated by default.\n"
                 "Installing will copy it to your skills directory where the agent can use it.\n\n"
                 f"Files will be at: [cyan]{display_kopi_home()}/skills/{category + '/' if category else ''}{bundle.name}/[/]",
@@ -1577,8 +1593,8 @@ def _github_publish(skill_path: Path, skill_name: str, target_repo: str,
             headers=headers, timeout=15,
             json={
                 "title": f"Add skill: {skill_name}",
-                "body": f"Submitting the `{skill_name}` skill via Hermes Skills Hub.\n\n"
-                        f"This skill was scanned by the Hermes Skills Guard before submission.",
+                "body": f"Submitting the `{skill_name}` skill via Kopi Skills Hub.\n\n"
+                        f"This skill was scanned by the Kopi Skills Guard before submission.",
                 "head": f"{fork_repo.split('/')[0]}:{branch_name}",
                 "base": default_branch,
             },

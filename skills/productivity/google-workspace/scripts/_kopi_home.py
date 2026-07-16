@@ -1,6 +1,6 @@
 """Resolve KOPI_HOME for standalone skill scripts.
 
-Skill scripts may run outside the Hermes process (e.g. system Python,
+Skill scripts may run outside the Kopi process (e.g. system Python,
 nix env, CI) where ``kopi_constants`` is not importable.  This module
 provides the same ``get_kopi_home()`` and ``display_kopi_home()``
 contracts as ``kopi_constants`` without requiring it on ``sys.path``.
@@ -25,7 +25,7 @@ try:
 except (ModuleNotFoundError, ImportError):
 
     def get_kopi_home() -> Path:
-        """Return the Hermes home directory (default: ~/.kopi).
+        """Return the Kopi home directory (default: ~/.kopi).
 
         Mirrors ``kopi_constants.get_kopi_home()``."""
         val = os.environ.get("KOPI_HOME", "").strip()

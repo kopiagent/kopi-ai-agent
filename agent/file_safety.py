@@ -17,7 +17,7 @@ def _kopi_home_path() -> Path:
 
 
 def _kopi_root_path() -> Path:
-    """Resolve the Hermes root dir (always the parent of any profile, never per-profile)."""
+    """Resolve the Kopi root dir (always the parent of any profile, never per-profile)."""
     try:
         from kopi_constants import get_default_kopi_root  # local import to avoid cycles
         return get_default_kopi_root()
@@ -95,16 +95,16 @@ def get_safe_write_roots() -> set[str]:
     return roots
 
 
-def is_write_denied(path: str) -> bool:
-    """Return True if path is blocked by the write denylist or safe root."""
+def _classify_write_denial(path: str) -> Optional[str]:
+    """Return ``'credential'``, ``'safe_root'``, or ``None`` if writes are allowed."""
     home = os.path.realpath(os.path.expanduser("~"))
     resolved = os.path.realpath(os.path.expanduser(str(path)))
 
     if resolved in build_write_denied_paths(home):
-        return True
+        return "credential"
     for prefix in build_write_denied_prefixes(home):
         if resolved.startswith(prefix):
-            return True
+            return "credential"
 
     mcp_tokens_dir_name = "mcp-tokens"
 
@@ -121,13 +121,13 @@ def is_write_denied(path: str) -> bool:
         try:
             mcp_real = os.path.realpath(os.path.join(base_real, mcp_tokens_dir_name))
             if resolved == mcp_real or resolved.startswith(mcp_real + os.sep):
-                return True
+                return "credential"
         except Exception:
             pass
         try:
             pairing_real = os.path.realpath(os.path.join(base_real, "pairing"))
             if resolved == pairing_real or resolved.startswith(pairing_real + os.sep):
-                return True
+                return "credential"
         except Exception:
             pass
 
@@ -139,9 +139,28 @@ def is_write_denied(path: str) -> bool:
                 allowed = True
                 break
         if not allowed:
-            return True
+            return "safe_root"
 
-    return False
+    return None
+
+
+def is_write_denied(path: str) -> bool:
+    """Return True if path is blocked by the write denylist or safe root."""
+    return _classify_write_denial(path) is not None
+
+
+def get_write_denied_error(path: str, *, verb: str = "Write") -> Optional[str]:
+    """Return a user/model-facing error when writes to ``path`` are blocked."""
+    denial = _classify_write_denial(path)
+    if denial is None:
+        return None
+    if denial == "safe_root":
+        roots_display = os.pathsep.join(sorted(get_safe_write_roots()))
+        return (
+            f"{verb} denied: '{path}' is outside KOPI_WRITE_SAFE_ROOT "
+            f"({roots_display}). Unset the variable or add this path's directory prefix."
+        )
+    return f"{verb} denied: '{path}' is a protected system/credential file."
 
 
 # Common secret-bearing project-local environment file basenames.
@@ -159,14 +178,14 @@ _BLOCKED_PROJECT_ENV_BASENAMES: set[str] = {
 
 
 def get_read_block_error(path: str) -> Optional[str]:
-    """Return an error message when a read targets a denied Hermes path.
+    """Return an error message when a read targets a denied Kopi path.
 
     Three categories are blocked:
 
-      * Internal Hermes cache files under ``KOPI_HOME/skills/.hub`` —
+      * Internal Kopi cache files under ``KOPI_HOME/skills/.hub`` —
         readable metadata that an attacker could use as a prompt-injection
         carrier.
-      * Credential / secret stores under KOPI_HOME and the global Hermes
+      * Credential / secret stores under KOPI_HOME and the global Kopi
         root: ``auth.json``, ``auth.lock``, ``.anthropic_oauth.json``,
         ``.env``, ``webhook_subscriptions.json``, ``auth/google_oauth.json``,
         and anything under ``mcp-tokens/``. These hold plaintext provider keys,
@@ -206,7 +225,7 @@ def get_read_block_error(path: str) -> Optional[str]:
     resolved = Path(path).expanduser().resolve()
 
     # Resolve BOTH the active KOPI_HOME (profile-aware) AND the global
-    # Hermes root so credential stores at <root>/auth.json etc. are also
+    # Kopi root so credential stores at <root>/auth.json etc. are also
     # blocked when running under a profile (KOPI_HOME points at
     # <root>/profiles/<name> in profile mode). Same shape as the write
     # deny widening (#15981, #14157).
@@ -231,7 +250,7 @@ def get_read_block_error(path: str) -> Optional[str]:
             except ValueError:
                 continue
             return (
-                f"Access denied: {path} is an internal Hermes cache file "
+                f"Access denied: {path} is an internal Kopi cache file "
                 "and cannot be read directly to prevent prompt injection. "
                 "Use the skills_list or skill_view tools instead."
             )
@@ -258,7 +277,7 @@ def get_read_block_error(path: str) -> Optional[str]:
                 continue
             if resolved == blocked:
                 return (
-                    f"Access denied: {path} is a Hermes credential store "
+                    f"Access denied: {path} is a Kopi credential store "
                     "and cannot be read directly. Provider tools consume "
                     "these credentials through internal channels. "
                     "(Defense-in-depth — not a security boundary; the "
@@ -274,7 +293,7 @@ def get_read_block_error(path: str) -> Optional[str]:
             continue
         if resolved == mcp_tokens:
             return (
-                f"Access denied: {path} is the Hermes MCP token directory "
+                f"Access denied: {path} is the Kopi MCP token directory "
                 "and cannot be read directly. (Defense-in-depth — not a "
                 "security boundary; the terminal tool can still bypass.)"
             )
@@ -283,7 +302,7 @@ def get_read_block_error(path: str) -> Optional[str]:
         except ValueError:
             continue
         return (
-            f"Access denied: {path} is a Hermes MCP token file "
+            f"Access denied: {path} is a Kopi MCP token file "
             "and cannot be read directly. (Defense-in-depth — not a "
             "security boundary; the terminal tool can still bypass.)"
         )
@@ -305,7 +324,7 @@ def get_read_block_error(path: str) -> Optional[str]:
 
 
 def raise_if_read_blocked(path: str) -> None:
-    """Raise ``ValueError`` if ``path`` is a denied Hermes read (see
+    """Raise ``ValueError`` if ``path`` is a denied Kopi read (see
     :func:`get_read_block_error`), else return.
 
     Shared chokepoint for provider input-loading sites that read a local
@@ -331,7 +350,7 @@ def raise_if_read_blocked(path: str) -> None:
 # ---------------------------------------------------------------------------
 # Cross-profile write guard (#TBD)
 #
-# Hermes profiles are separate KOPI_HOME dirs under
+# Kopi profiles are separate KOPI_HOME dirs under
 # ``<root>/profiles/<name>/``. Each profile has its own skills/, plugins/,
 # cron/, memories/. When an agent runs under one profile, writing into
 # ANOTHER profile's directories is almost always wrong — those skills /
@@ -385,7 +404,7 @@ def classify_cross_profile_target(path: str) -> Optional[dict]:
     """Classify a write target as cross-profile if it lands in another
     profile's scoped area (skills/plugins/cron/memories).
 
-    Returns ``None`` when the target is outside Hermes scope, or is inside
+    Returns ``None`` when the target is outside Kopi scope, or is inside
     the ACTIVE profile, or doesn't hit a profile-scoped area. Otherwise
     returns a dict with:
 
@@ -448,7 +467,7 @@ def get_cross_profile_warning(path: str) -> Optional[str]:
     """Return a model-facing warning string when ``path`` is cross-profile.
 
     Returns ``None`` when the write is in-scope (same profile) or outside
-    Hermes entirely. Caller is expected to surface the warning to the
+    Kopi entirely. Caller is expected to surface the warning to the
     agent as a tool-result error, NOT to silently allow the write — the
     agent must either get explicit user direction to proceed, or pass
     ``cross_profile=True`` to its write tool.
@@ -462,7 +481,7 @@ def get_cross_profile_warning(path: str) -> Optional[str]:
         return None
     return (
         f"Cross-profile write blocked by soft guard: {info['target_path']} "
-        f"belongs to Hermes profile {info['target_profile']!r}, but the "
+        f"belongs to Kopi profile {info['target_profile']!r}, but the "
         f"agent is running under profile {info['active_profile']!r}. "
         f"Editing another profile's {info['area']}/ will affect that "
         f"profile's future sessions, not the one you are currently in. "
@@ -489,7 +508,7 @@ def get_cross_profile_warning(path: str) -> Optional[str]:
 #
 # This guard is path-shape-only: it detects the
 # ``…/sandboxes/<backend>/<task>/home/.kopi/…`` segment and warns
-# regardless of which Hermes profile is active. It does NOT cover the
+# regardless of which Kopi profile is active. It does NOT cover the
 # inner-container case where the bind mount strips the ``sandboxes/`` prefix
 # (the agent's view inside the container is plain ``/root/.kopi/...``);
 # that case needs a separate dispatch-layer or host-side ``profile_state``
@@ -501,7 +520,7 @@ def _find_sandbox_mirror_segments(parts: tuple) -> Optional[int]:
     """Return the index of the inner ``.kopi`` part in a sandbox-mirror path.
 
     Matches ``…/sandboxes/<backend>/<task>/home/.kopi/…`` and returns the
-    index where the inner Hermes-state portion starts. Returns ``None`` for
+    index where the inner Kopi-state portion starts. Returns ``None`` for
     paths that do not contain the sandbox-mirror shape.
     """
     for i, part in enumerate(parts):
@@ -516,7 +535,7 @@ def _find_sandbox_mirror_segments(parts: tuple) -> Optional[int]:
 
 
 def classify_sandbox_mirror_target(path: str) -> Optional[dict]:
-    """Classify a write target as a sandbox-mirror of authoritative Hermes state.
+    """Classify a write target as a sandbox-mirror of authoritative Kopi state.
 
     Returns ``None`` when the path does not match the sandbox-mirror shape.
     Otherwise returns a dict with:
@@ -527,7 +546,7 @@ def classify_sandbox_mirror_target(path: str) -> Optional[dict]:
       * ``inner_path``: the portion under the mirror's ``.kopi`` (what the
         agent likely meant to address on the host)
 
-    Detection is path-shape-only — does not require any Hermes resolver to
+    Detection is path-shape-only — does not require any Kopi resolver to
     succeed, so it works correctly even when called from contexts where
     KOPI_HOME resolution would be ambiguous.
     """
@@ -572,7 +591,7 @@ def get_sandbox_mirror_warning(path: str) -> Optional[str]:
         f"Sandbox-mirror write blocked by soft guard: {info['target_path']} "
         f"sits under {info['mirror_root']!r}, which is a per-task mirror "
         f"created by a non-local terminal backend (docker/daytona/etc.). "
-        f"Writes here land on a copy that the host Hermes process never "
+        f"Writes here land on a copy that the host Kopi process never "
         f"reads — the authoritative file is likely {info['inner_path']!r} "
         f"under the real KOPI_HOME. Use the host-side tool for "
         f"authoritative state (e.g. ``memory`` for memories), or address "
@@ -635,7 +654,7 @@ def get_container_mirror_warning(
     mirror_prefix: str | None = None,
 ) -> Optional[str]:
     """Return a model-facing warning when *path* lands in the container's
-    sandbox mirror of authoritative Hermes state.
+    sandbox mirror of authoritative Kopi state.
 
     The caller supplies ``mirror_prefix`` only when the current file-tool
     backend is known to execute inside a Docker sandbox. Same contract as
@@ -649,7 +668,7 @@ def get_container_mirror_warning(
     return (
         f"Sandbox-mirror write blocked by soft guard: {info['target_path']} "
         f"sits under {info['mirror_root']!r}, which is the container's "
-        f"bind-mounted home — a per-task mirror that the host Hermes "
+        f"bind-mounted home — a per-task mirror that the host Kopi "
         f"process never reads. The authoritative file is "
         f"{info['inner_path']!r} under the real KOPI_HOME. Use the "
         f"host-side tool for authoritative state (e.g. ``memory`` for "

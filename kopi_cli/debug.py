@@ -1,4 +1,4 @@
-"""``kopi debug`` debug tools for KOPI AI AGENT.
+"""``kopi debug`` debug tools for Kopi Agent.
 
 Currently supports:
     kopi debug share    Upload debug report (system info + logs) to a
@@ -295,7 +295,7 @@ def _upload_dpaste_com(content: str, expiry_days: int = 7) -> str:
 
     dpaste.com uses multipart form data.
     """
-    boundary = "----HermesDebugBoundary9f3c"
+    boundary = "----KopiDebugBoundary9f3c"
 
     def _field(name: str, value: str) -> str:
         return (
@@ -876,13 +876,13 @@ def run_debug_share(args):
     # Manual delete fallback
     print("To delete now:  kopi debug delete <url>")
 
-    print("\nShare these links with the Hermes team for support.")
+    print("\nShare these links with the Kopi team for support.")
 
 
 _NOUS_PRIVACY_NOTICE = """\
 ⚠️  --nous: This uploads your debug bundle to Nous-INTERNAL storage (AWS S3),
     NOT a public paste service. The following is included:
-  • System info (OS, Python/Hermes version, provider, which API keys are
+  • System info (OS, Python/Kopi version, provider, which API keys are
     configured — NOT the actual keys)
   • Full agent.log, gateway.log, and desktop.log (up to 512 KB each — likely
     contains conversation content, tool outputs, and file paths)

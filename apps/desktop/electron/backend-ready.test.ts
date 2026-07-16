@@ -16,7 +16,8 @@ import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import test from 'node:test'
+
+import { test } from 'vitest'
 
 import {
   DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS,
@@ -124,7 +125,7 @@ test('rejects with the timeout message after the deadline', async () => {
   const child = makeFakeChild()
   await assert.rejects(
     waitForDashboardPort(child, 20),
-    /Timed out waiting for Hermes backend port announcement \(20ms\)/
+    /Timed out waiting for Kopi backend port announcement \(20ms\)/
   )
 })
 

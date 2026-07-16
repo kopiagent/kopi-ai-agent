@@ -68,14 +68,14 @@ export type Route = 'welcome' | 'progress' | 'success' | 'failure'
 
 /// How the installer was launched, mirrored from src-tauri AppMode.
 /// 'install' = first-run onboarding (bare launch). 'update' = driven by the
-/// desktop app handing off via `Hermes-Setup.exe --update`.
+/// desktop app handing off via `Kopi-Setup.exe --update`.
 export type AppMode = 'install' | 'update'
 
 export const $route = atom<Route>('welcome')
 export const $mode = atom<AppMode>('install')
 export const $bootstrap = atom<BootstrapStateModel>(INITIAL)
 export const $logPath = atom<string | null>(null)
-export const $hermesHome = atom<string | null>(null)
+export const $kopiHome = atom<string | null>(null)
 
 export const $progress = computed($bootstrap, (b) => {
   const total = b.stageOrder.length
@@ -171,7 +171,7 @@ export async function initialize(): Promise<void> {
   if (fake) {
     unlisten = () => {}
     $logPath.set('~/.kopi/logs/bootstrap-installer.log')
-    $hermesHome.set('~/.kopi')
+    $kopiHome.set('~/.kopi')
     $mode.set(fake === 'update' ? 'update' : 'install')
     // Update auto-runs (it's a hand-off); install/failure wait for the welcome click.
     if (fake === 'update') void runFakeBoot('update')
@@ -180,13 +180,13 @@ export async function initialize(): Promise<void> {
 
   // Pull static info on mount for the diagnostics footer.
   try {
-    const [logPath, hermesHome, mode] = await Promise.all([
+    const [logPath, kopiHome, mode] = await Promise.all([
       invoke<string>('get_log_path'),
       invoke<string>('get_kopi_home'),
       invoke<AppMode>('get_mode')
     ])
     $logPath.set(logPath)
-    $hermesHome.set(hermesHome)
+    $kopiHome.set(kopiHome)
     $mode.set(mode)
   } catch (err) {
     console.warn('failed to fetch installer paths', err)
@@ -242,7 +242,7 @@ export async function initialize(): Promise<void> {
           installRoot: payload.installRoot,
           currentStage: null
         })
-        // Install: show the "launch Hermes" success screen. Update: this is a
+        // Install: show the "launch Kopi" success screen. Update: this is a
         // hand-off — the installer relaunches the desktop and exits within a
         // few hundred ms, so routing to success just flashes that screen
         // before the window closes. Stay on progress until we exit.
@@ -299,7 +299,7 @@ export async function startUpdate(): Promise<void> {
     void runFakeBoot('update')
     return
   }
-  // Update is driven by the desktop handing off (Hermes-Setup.exe --update);
+  // Update is driven by the desktop handing off (Kopi-Setup.exe --update);
   // there's no welcome click. Reset + jump straight to progress, then let the
   // Rust side stream the synthetic update manifest.
   $bootstrap.set(INITIAL)
@@ -315,7 +315,7 @@ export async function cancelInstall(): Promise<void> {
   await invoke('cancel_bootstrap')
 }
 
-export async function launchHermesDesktop(): Promise<void> {
+export async function launchKopiDesktop(): Promise<void> {
   if (fakeMode()) throw new Error('Preview mode — launching is disabled.')
   const installRoot = $bootstrap.get().installRoot
   if (!installRoot) throw new Error('no install root')
@@ -355,7 +355,7 @@ const FAKE_INSTALL_STAGES: FakeStage[] = [
   { name: 'system-packages', title: 'System packages' },
   { name: 'uv', title: 'uv' },
   { name: 'python', title: 'Python environment' },
-  { name: 'repo', title: 'Hermes repository' },
+  { name: 'repo', title: 'Kopi repository' },
   { name: 'dependencies', title: 'Python dependencies' },
   { name: 'node', title: 'Node runtime' },
   { name: 'desktop', title: 'Desktop app' }

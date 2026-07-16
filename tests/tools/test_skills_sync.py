@@ -219,7 +219,7 @@ class TestRmtreeWritableScopeGuard:
         (kopi / "skills").mkdir()
         with patch("tools.skills_sync.SKILLS_DIR", kopi / "skills"):
             with pytest.raises(ValueError, match="refusing to rmtree"):
-                _rmtree_writable(hermes)
+                _rmtree_writable(kopi)
 
     def test_refuses_sibling_directory(self, tmp_path):
         """A directory that is a sibling of SKILLS_DIR (e.g. a wrong

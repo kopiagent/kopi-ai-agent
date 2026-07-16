@@ -173,7 +173,7 @@ def _connect(board: Optional[str] = None):
     default) preserves the legacy resolution chain
     (``KOPI_KANBAN_DB`` → ``KOPI_KANBAN_BOARD`` env → current symlink
     → ``default``). Per-tool ``board`` lets a Telegram-side agent override
-    the env-pinned active board without restarting Hermes.
+    the env-pinned active board without restarting Kopi.
     """
     from kopi_cli import kanban_db as kb
     return kb, kb.connect(board=board)
@@ -629,6 +629,13 @@ def _handle_complete(args: dict, **kw) -> str:
                     result=result, summary=summary, metadata=metadata,
                     created_cards=created_cards,
                     expected_run_id=_worker_run_id(tid),
+                )
+            except kb.ArtifactPreservationError as artifact_err:
+                return tool_error(
+                    f"kanban_complete could not preserve the declared artifacts: "
+                    f"{artifact_err}. Your task is still in-flight and its "
+                    f"scratch workspace was kept. Fix the artifact path or "
+                    f"storage error, then retry kanban_complete with the same handoff."
                 )
             except kb.HallucinatedCardsError as hall_err:
                 # Structured rejection — surface the phantom ids so the
@@ -1277,8 +1284,10 @@ KANBAN_COMPLETE_SCHEMA = {
                     "lands with the completion notification. Skip "
                     "intermediate scratch files and references that "
                     "are not the deliverable. The path must exist "
-                    "on disk when the notifier runs; missing files "
-                    "are silently skipped."
+                    "on disk at completion. Files inside a managed scratch "
+                    "workspace are copied to durable task attachments before "
+                    "cleanup; a missing declared scratch artifact keeps the "
+                    "task in-flight so you can fix the path and retry."
                 ),
             },
             "board": _board_schema_prop(),

@@ -1,14 +1,14 @@
 ---
 title: "Honcho"
 sidebar_label: "Honcho"
-description: "Configure and use Honcho memory with Hermes -- cross-session user modeling, multi-profile peer isolation, observation config, dialectic reasoning, session su..."
+description: "Configure and use Honcho memory with Kopi -- cross-session user modeling, multi-profile peer isolation, observation config, dialectic reasoning, session su..."
 ---
 
 {/* This page is auto-generated from the skill's SKILL.md by website/scripts/generate-skill-docs.py. Edit the source SKILL.md, not this page. */}
 
 # Honcho
 
-Configure and use Honcho memory with Hermes -- cross-session user modeling, multi-profile peer isolation, observation config, dialectic reasoning, session summaries, and context budget enforcement. Use when setting up Honcho, troubleshooting memory, managing profiles with Honcho peers, or tuning observation, recall, and dialectic settings.
+Configure and use Honcho memory with Kopi -- cross-session user modeling, multi-profile peer isolation, observation config, dialectic reasoning, session summaries, and context budget enforcement. Use when setting up Honcho, troubleshooting memory, managing profiles with Honcho peers, or tuning observation, recall, and dialectic settings.
 
 ## Skill metadata
 
@@ -17,21 +17,21 @@ Configure and use Honcho memory with Hermes -- cross-session user modeling, mult
 | Source | Optional — install with `kopi skills install official/autonomous-ai-agents/honcho` |
 | Path | `optional-skills/autonomous-ai-agents/honcho` |
 | Version | `2.0.0` |
-| Author | KOPI AI AGENT |
+| Author | Kopi Agent |
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `Honcho`, `Memory`, `Profiles`, `Observation`, `Dialectic`, `User-Modeling`, `Session-Summary` |
-| Related skills | [`kopi-ai-agent`](/docs/user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-kopi-ai-agent) |
+| Related skills | [`kopi-agent`](/docs/user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-kopi-agent) |
 
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Kopi loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
-# Honcho Memory for Hermes
+# Honcho Memory for Kopi
 
-Honcho provides AI-native cross-session user modeling. It learns who the user is across conversations and gives every Hermes profile its own peer identity while sharing a unified view of the user.
+Honcho provides AI-native cross-session user modeling. It learns who the user is across conversations and gives every Kopi profile its own peer identity while sharing a unified view of the user.
 
 ## When to Use
 
@@ -58,7 +58,7 @@ kopi memory setup honcho
 # select "local", enter base URL (e.g. http://localhost:8000)
 ```
 
-See: https://docs.honcho.dev/v3/guides/integrations/kopi#running-honcho-locally-with-hermes
+See: https://docs.honcho.dev/v3/guides/integrations/kopi#running-honcho-locally-with-kopi
 
 ### Verify
 
@@ -74,7 +74,7 @@ When Honcho injects context into the system prompt (in `hybrid` or `context` rec
 
 1. **Session summary** -- a short digest of the current session so far (placed first so the model has immediate conversational continuity)
 2. **User representation** -- Honcho's accumulated model of the user (preferences, facts, patterns)
-3. **AI peer card** -- the identity card for this Hermes profile's AI peer
+3. **AI peer card** -- the identity card for this Kopi profile's AI peer
 
 The session summary is generated automatically by Honcho at the start of each turn (when a prior session exists). It gives the model a warm start without replaying full history.
 
@@ -91,10 +91,10 @@ You do not need to configure this -- it is automatic based on session state.
 
 ### Peers
 
-Honcho models conversations as interactions between **peers**. Hermes creates two peers per session:
+Honcho models conversations as interactions between **peers**. Kopi creates two peers per session:
 
 - **User peer** (`peerName`): represents the human. Honcho builds a user representation from observed messages.
-- **AI peer** (`aiPeer`): represents this Hermes instance. Each profile gets its own AI peer so agents develop independent views.
+- **AI peer** (`aiPeer`): represents this Kopi instance. Each profile gets its own AI peer so agents develop independent views.
 
 ### Observation
 
@@ -135,7 +135,7 @@ Honcho sessions scope where messages and observations land. Strategy options:
 |----------|----------|
 | `per-directory` (default) | One session per working directory |
 | `per-repo` | One session per git repository root |
-| `per-session` | New Honcho session each Hermes run |
+| `per-session` | New Honcho session each Kopi run |
 | `global` | Single session across all directories |
 
 Manual override: `kopi honcho map my-project-name`
@@ -211,7 +211,7 @@ Higher levels produce richer synthesis but cost more tokens on Honcho's backend.
 
 ## Multi-Profile Setup
 
-Each Hermes profile gets its own Honcho AI peer while sharing the same workspace (user context). This means:
+Each Kopi profile gets its own Honcho AI peer while sharing the same workspace (user context). This means:
 
 - All profiles see the same user representation
 - Each profile builds its own AI identity and observations
@@ -221,11 +221,11 @@ Each Hermes profile gets its own Honcho AI peer while sharing the same workspace
 
 ```bash
 kopi profile create coder --clone
-# creates host block hermes.coder, AI peer "coder", inherits config from default
+# creates host block kopi.coder, AI peer "coder", inherits config from default
 ```
 
 What `--clone` does for Honcho:
-1. Creates a `hermes.coder` host block in `honcho.json`
+1. Creates a `kopi.coder` host block in `honcho.json`
 2. Sets `aiPeer: "coder"` (the profile name)
 3. Inherits `workspace`, `peerName`, `writeFrequency`, `recallMode`, etc. from default
 4. Eagerly creates the peer in Honcho so it exists before first message
@@ -243,7 +243,7 @@ Override any setting in the host block:
 ```json
 {
   "hosts": {
-    "hermes.coder": {
+    "kopi.coder": {
       "aiPeer": "coder",
       "recallMode": "tools",
       "dialecticDepth": 2,
@@ -303,7 +303,7 @@ honcho_conclude delete_id="abc123"    # PII removal
 
 ## Agent Usage Patterns
 
-Guidelines for Hermes when Honcho memory is active.
+Guidelines for Kopi when Honcho memory is active.
 
 ### On conversation start
 
@@ -439,8 +439,8 @@ Session summary requires at least one prior turn in the current Honcho session. 
 | `kopi honcho sessions` | List known directory-to-session-name mappings |
 | `kopi honcho map <name>` | Map current working directory to a Honcho session name |
 | `kopi honcho identity` | Seed AI peer identity or show both peer representations |
-| `kopi honcho sync` | Create host blocks for all Hermes profiles that don't have one yet |
-| `kopi honcho migrate` | Step-by-step migration guide from OpenClaw native memory to Hermes + Honcho |
+| `kopi honcho sync` | Create host blocks for all Kopi profiles that don't have one yet |
+| `kopi honcho migrate` | Step-by-step migration guide from OpenClaw native memory to Kopi + Honcho |
 | `kopi memory setup` | Generic memory provider picker (selecting "honcho" runs the same wizard) |
 | `kopi memory status` | Show active memory provider and config |
 | `kopi memory off` | Disable external memory provider |

@@ -1,17 +1,17 @@
 # NeMo Relay Observability
 
-Optional Hermes observability plugin that maps Hermes observer hooks to
+Optional Kopi observability plugin that maps Kopi observer hooks to
 NeMo Relay scopes, LLM spans, tool spans, marks, ATOF, and ATIF.
 
 NeMo Relay is NVIDIA's runtime layer for agent execution boundaries. It does
-not replace KOPI AI AGENT's planner, tools, memory, model provider routing, or
-CLI UX. Instead, this plugin lets Hermes emit NeMo Relay lifecycle events for
-the work Hermes already owns: sessions, turns, provider/API calls, tool calls,
+not replace Kopi Agent's planner, tools, memory, model provider routing, or
+CLI UX. Instead, this plugin lets Kopi emit NeMo Relay lifecycle events for
+the work Kopi already owns: sessions, turns, provider/API calls, tool calls,
 approval prompts, and delegated subagents.
 
-With this plugin enabled, KOPI AI AGENT can:
+With this plugin enabled, Kopi Agent can:
 
-- Preserve Hermes execution as NeMo Relay scopes, LLM spans, tool spans, and
+- Preserve Kopi execution as NeMo Relay scopes, LLM spans, tool spans, and
   mark events.
 - Export raw lifecycle events as Agent Trajectory Observability Format (ATOF)
   JSONL for debugging and offline inspection.
@@ -56,9 +56,9 @@ Runs started with `--ignore_user_config` skip the enabled-plugin state from
 `KOPI_HOME`, so local E2E tests should omit that flag unless the test harness
 loads `observability/nemo_relay` explicitly another way.
 
-`KOPI_HOME` is the Hermes profile/config home used by both
+`KOPI_HOME` is the Kopi profile/config home used by both
 `kopi plugins enable ...` and the later `kopi chat ...` run. If unset,
-Hermes uses the user's default home, usually `~/.kopi`. For isolated smoke
+Kopi uses the user's default home, usually `~/.kopi`. For isolated smoke
 tests, choose any writable temporary directory and use the same value for every
 command in that test:
 
@@ -84,14 +84,15 @@ wheel from this checkout, then install the official NeMo Relay runtime extra:
 ```bash
 uv build --wheel
 python -m pip install --force-reinstall dist/kopi_agent-*.whl
-python -m pip install "nemo-relay==0.3"
+python -m pip install "nemo-relay>=0.5,<1.0"
 kopi plugins enable observability/nemo_relay
 ```
 
-The plugin fails open when `nemo-relay` is not installed. Install and test it against the official NeMo Relay 0.3 PyPI distribution:
+The plugin fails open when `nemo-relay` is not installed. Install a supported
+NeMo Relay 0.x distribution beginning with 0.5:
 
 ```bash
-pip install "nemo-relay==0.3"
+pip install "nemo-relay>=0.5,<1.0"
 ```
 
 ## Export Configuration
@@ -129,7 +130,7 @@ Optional overrides:
 ### NeMo Relay Component Config
 
 To initialize NeMo Relay from a component config, create a `plugins.toml` file
-and point Hermes at it:
+and point Kopi at it:
 
 ```bash
 export KOPI_NEMO_RELAY_PLUGINS_TOML=.nemo-relay/plugins.toml
@@ -157,7 +158,7 @@ mode = "overwrite"
 enabled = true
 output_directory = ".nemo-relay/atif"
 filename_template = "trajectory-{session_id}.json"
-agent_name = "KOPI AI AGENT"
+agent_name = "Kopi Agent"
 agent_version = "local"
 ```
 
@@ -165,9 +166,9 @@ When `KOPI_NEMO_RELAY_PLUGINS_TOML` is set and initializes successfully, NeMo
 Relay owns exporter lifecycle through that config. The direct
 `KOPI_NEMO_RELAY_ATOF_*` fallback setup is skipped. If the same
 `plugins.toml` observability config enables `atif`, the direct
-`KOPI_NEMO_RELAY_ATIF_*` fallback setup is also skipped so Hermes does not
+`KOPI_NEMO_RELAY_ATIF_*` fallback setup is also skipped so Kopi does not
 double-export trajectories on teardown. If `plugins.toml` initialization fails,
-Hermes keeps the direct env-var fallbacks active for that run.
+Kopi keeps the direct env-var fallbacks active for that run.
 
 To enable NeMo Relay managed execution intercepts for provider and tool calls,
 include an adaptive component in the same `plugins.toml`:
@@ -182,23 +183,82 @@ mode = "observe_only"
 ```
 
 When the adaptive component is enabled and the installed NeMo Relay runtime
-exposes `llm.execute(...)` / `tools.execute(...)`, Hermes routes LLM and tool
+exposes `llm.execute(...)` / `tools.execute(...)`, Kopi routes LLM and tool
 execution through those middleware boundaries. The observer hooks still emit
 session, turn, approval, and subagent marks; the plugin skips its manual
 `llm.call` and `tools.call` spans for executions that are already managed by
 NeMo Relay. `tool_parallelism.mode = "observe_only"` keeps tool scheduling
 observational while still wrapping the real execution boundary.
 
-For the full generic Hermes middleware contract, see
+### Dynamic Plugins
+
+Kopi feature-detects the dynamic-plugin activation API available in NeMo Relay
+0.6 and later. Configure native or worker plugins with Kopi-owned
+`[[dynamic_plugins]]` entries that match the Python binding's activation-spec
+fields:
+
+```toml
+[[dynamic_plugins]]
+plugin_id = "example-plugin"
+kind = "rust_dynamic"
+manifest_ref = "./example-plugin/relay-plugin.toml"
+
+[dynamic_plugins.config]
+mode = "enabled"
+```
+
+For a worker plugin, also provide the lifecycle-managed `environment_ref`:
+
+```toml
+[[dynamic_plugins]]
+plugin_id = "example-worker"
+kind = "worker"
+manifest_ref = "./example-worker/relay-plugin.toml"
+environment_ref = "/absolute/path/from-nemo-relay-plugins-inspect"
+
+[dynamic_plugins.config]
+mode = "enabled"
+```
+
+Provision the worker first with `nemo-relay plugins add`, then copy
+`data.source.environment_ref` from the JSON output of
+`nemo-relay plugins inspect <plugin-id> --json`. Relay rejects arbitrary Python
+environments at activation time.
+
+Relative `manifest_ref` and `environment_ref` values resolve relative to the
+physical `plugins.toml` file.
+
+Relay's canonical gateway `[[plugins.dynamic]]` records are not interchangeable
+with this Kopi-owned section. The gateway combines those records with
+separate lifecycle state for enablement, trust policy, and worker environments;
+the Python binding does not yet expose that resolver. Kopi rejects
+`[[plugins.dynamic]]` with an actionable diagnostic instead of silently
+ignoring it or bypassing lifecycle policy. Use `[[dynamic_plugins]]` until Relay
+exposes shared file-and-lifecycle resolution to embedding hosts.
+
+Kopi activates these plugins before registering its managed LLM and tool
+execution middleware and retains the activation for the runtime lifetime.
+During shutdown it closes session exporters, flushes Relay subscribers, and
+then closes the activation so callbacks are removed before plugin code is
+unloaded.
+
+NeMo Relay 0.5 does not expose dynamic activation through its Python binding.
+When dynamic plugin configuration is present with a binding that lacks the
+activation API, Kopi logs an actionable warning and continues with the
+ordinary static component configuration, so ATOF and ATIF observability remain
+available. No dynamic plugin is loaded in that degraded mode.
+
+For the full generic Kopi middleware contract, see
 [`docs/middleware/README.md`](../../../docs/middleware/README.md).
 
 ## Canonical Local Examples
 
-The observe-only examples in this section use the official `nemo-relay==0.3`
-distribution and a local Ollama model served through the OpenAI-compatible API.
+The observe-only examples in this section use a supported NeMo Relay 0.x
+distribution beginning with 0.5 and a local Ollama model served through the
+OpenAI-compatible API.
 
 ```bash
-pip install "nemo-relay==0.3"
+pip install "nemo-relay>=0.5,<1.0"
 
 export KOPI_HOME=/tmp/kopi-nemo-relay-docs/kopi-home
 mkdir -p "$KOPI_HOME"
@@ -225,7 +285,7 @@ YAML
 
 ### Delegated Subagent Tool Call
 
-This run starts a parent Hermes session, delegates to a child subagent, has the
+This run starts a parent Kopi session, delegates to a child subagent, has the
 child call `terminal`, and writes both ATOF and ATIF.
 
 ```bash
@@ -236,7 +296,7 @@ export KOPI_NEMO_RELAY_ATOF_MODE=overwrite
 export KOPI_NEMO_RELAY_ATIF_ENABLED=1
 export KOPI_NEMO_RELAY_ATIF_OUTPUT_DIRECTORY=/tmp/kopi-nemo-relay-docs/subagent/atif
 export KOPI_NEMO_RELAY_ATIF_FILENAME_TEMPLATE='nested-subagent-atif-{session_id}.json'
-export KOPI_NEMO_RELAY_ATIF_AGENT_NAME='KOPI AI AGENT E2E'
+export KOPI_NEMO_RELAY_ATIF_AGENT_NAME='Kopi Agent E2E'
 export KOPI_NEMO_RELAY_ATIF_AGENT_VERSION=docs-example
 export KOPI_NEMO_RELAY_ATIF_SUBAGENT_EXPORT_MODE=all
 
@@ -261,7 +321,7 @@ Sanitized ATOF excerpt:
 
 ```jsonl
 {"kind":"scope","category":"tool","name":"delegate_task","scope_category":"start","metadata":{"session_id":"docs-parent-session","tool_call_id":"call_delegate"},"data":{"goal":"Run the command `printf docs_nested_leaf_function` using the terminal tool.","toolsets":["terminal"]}}
-{"kind":"mark","name":"hermes.subagent.start","metadata":{"parent_session_id":"docs-parent-session","session_id":"docs-child-session","subagent_id":"sa-0-docs","child_role":"leaf"}}
+{"kind":"mark","name":"kopi.subagent.start","metadata":{"parent_session_id":"docs-parent-session","session_id":"docs-child-session","subagent_id":"sa-0-docs","child_role":"leaf"}}
 {"kind":"scope","category":"tool","name":"terminal","scope_category":"end","metadata":{"session_id":"docs-child-session","tool_call_id":"call_terminal","status":"ok"},"data":"{\"output\":\"docs_nested_leaf_function\",\"exit_code\":0,\"error\":null}"}
 {"kind":"scope","category":"tool","name":"delegate_task","scope_category":"end","metadata":{"session_id":"docs-parent-session","tool_call_id":"call_delegate","status":"ok"}}
 ```
@@ -272,7 +332,7 @@ Sanitized ATIF excerpt:
 {
   "schema_version": "ATIF-v1.7",
   "session_id": "docs-parent-session",
-  "agent": {"name": "KOPI AI AGENT E2E", "version": "docs-example", "model_name": "qwen3.6:35b"},
+  "agent": {"name": "Kopi Agent E2E", "version": "docs-example", "model_name": "qwen3.6:35b"},
   "steps": [
     {
       "source": "agent",
@@ -306,7 +366,7 @@ Sanitized ATIF excerpt:
 ### Parallel Tool Calls
 
 This run asks the model to emit two `read_file` tool calls in the same assistant
-message. Hermes dispatches the read-only tools as one batch, and NeMo Relay
+message. Kopi dispatches the read-only tools as one batch, and NeMo Relay
 records both tool invocations.
 
 ```bash
@@ -322,7 +382,7 @@ export KOPI_NEMO_RELAY_ATOF_MODE=overwrite
 export KOPI_NEMO_RELAY_ATIF_ENABLED=1
 export KOPI_NEMO_RELAY_ATIF_OUTPUT_DIRECTORY=/tmp/kopi-nemo-relay-docs/parallel/atif
 export KOPI_NEMO_RELAY_ATIF_FILENAME_TEMPLATE='parallel-tools-atif-{session_id}.json'
-export KOPI_NEMO_RELAY_ATIF_AGENT_NAME='KOPI AI AGENT E2E'
+export KOPI_NEMO_RELAY_ATIF_AGENT_NAME='Kopi Agent E2E'
 export KOPI_NEMO_RELAY_ATIF_AGENT_VERSION=docs-example
 
 kopi chat \
@@ -358,7 +418,7 @@ Sanitized ATIF excerpt:
 {
   "schema_version": "ATIF-v1.7",
   "session_id": "docs-parallel-session",
-  "agent": {"name": "KOPI AI AGENT E2E", "version": "docs-example", "model_name": "qwen3.6:35b"},
+  "agent": {"name": "Kopi Agent E2E", "version": "docs-example", "model_name": "qwen3.6:35b"},
   "steps": [
     {
       "source": "agent",
@@ -382,9 +442,9 @@ Sanitized ATIF excerpt:
 
 The plugin keeps NeMo Relay's native event model:
 
-- Hermes sessions map to `agent` scopes.
-- Hermes API request hooks map to `llm` scope start/end events.
-- Hermes tool hooks map to `tool` scope start/end events.
+- Kopi sessions map to `agent` scopes.
+- Kopi API request hooks map to `llm` scope start/end events.
+- Kopi tool hooks map to `tool` scope start/end events.
 - Turn, approval, subagent, and diagnostic fallback events map to `mark`
   events.
 
@@ -396,7 +456,7 @@ separate trajectories.
 
 ## Adaptive Middleware Example
 
-The `observability/nemo_relay` plugin uses Hermes execution middleware to hand
+The `observability/nemo_relay` plugin uses Kopi execution middleware to hand
 LLM and tool calls to NeMo Relay managed execution when an adaptive component is
 enabled.
 
@@ -413,26 +473,26 @@ enabled = true
 mode = "observe_only"
 ```
 
-Enable it for Hermes:
+Enable it for Kopi:
 
 ```bash
 export KOPI_NEMO_RELAY_PLUGINS_TOML=/tmp/kopi-middleware-test/plugins.toml
 ```
 
 When the adaptive component is enabled and the installed NeMo Relay runtime
-exposes `llm.execute(...)` and `tools.execute(...)`, Hermes routes execution
+exposes `llm.execute(...)` and `tools.execute(...)`, Kopi routes execution
 through these boundaries:
 
 ```text
-Hermes provider call
+Kopi provider call
   -> llm_execution middleware
     -> nemo_relay.llm.execute(...)
-      -> Hermes provider adapter next_call(...)
+      -> Kopi provider adapter next_call(...)
 
-Hermes tool call
+Kopi tool call
   -> tool_execution middleware
     -> nemo_relay.tools.execute(...)
-      -> Hermes tool dispatcher next_call(...)
+      -> Kopi tool dispatcher next_call(...)
 ```
 
 The plugin still emits observer marks for sessions, turns, approvals, and
@@ -443,10 +503,9 @@ for the same execution.
 ### Local Adaptive E2E
 
 This example enables both NeMo Relay observability export and adaptive execution
-middleware for a local Hermes run. This path requires a NeMo Relay runtime that
-supports `[components.config.tool_parallelism]`; the `nemo-relay==0.3`
-install used by the earlier observability-only examples does not support this
-adaptive config.
+middleware for a local Kopi run. This path requires a NeMo Relay runtime that
+supports `[components.config.tool_parallelism]`, as provided by the supported
+0.x release range beginning with 0.5.
 
 ```bash
 export KOPI_HOME=/tmp/kopi-middleware-test/kopi-home
@@ -483,7 +542,7 @@ mode = "overwrite"
 enabled = true
 output_directory = "/tmp/kopi-middleware-test/atif"
 filename_template = "middleware-trajectory-{session_id}.json"
-agent_name = "Hermes Middleware E2E"
+agent_name = "Kopi Middleware E2E"
 agent_version = "local"
 
 [[components]]
@@ -528,7 +587,7 @@ Expected ATIF shape:
   "schema_version": "ATIF-v1.7",
   "session_id": "middleware-demo-session",
   "agent": {
-    "name": "Hermes Middleware E2E",
+    "name": "Kopi Middleware E2E",
     "version": "local",
     "model_name": "qwen3.6:35b"
   },

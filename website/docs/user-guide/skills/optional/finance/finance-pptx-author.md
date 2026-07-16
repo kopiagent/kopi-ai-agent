@@ -17,7 +17,7 @@ Build PowerPoint decks headless with python-pptx. Pairs with excel-author for mo
 | Source | Optional — install with `kopi skills install official/finance/pptx-author` |
 | Path | `optional-skills/finance/pptx-author` |
 | Version | `1.0.0` |
-| Author | Anthropic (adapted by Kopi Ai Agent Pte Ltd) |
+| Author | Anthropic (adapted by Nous Research) |
 | License | Apache-2.0 |
 | Platforms | linux, macos, windows |
 | Tags | `powerpoint`, `pptx`, `python-pptx`, `presentation`, `finance` |
@@ -26,7 +26,7 @@ Build PowerPoint decks headless with python-pptx. Pairs with excel-author for mo
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Kopi loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # pptx-author

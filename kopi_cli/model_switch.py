@@ -122,19 +122,19 @@ def _bare_custom_provider_def(current_base_url: str) -> Optional[ProviderDef]:
 # ---------------------------------------------------------------------------
 
 _KOPI_MODEL_WARNING = (
-    "Kopi Ai Agent Pte Ltd Hermes 3 & 4 models are NOT agentic and are not designed "
-    "for use with KOPI AI AGENT. They lack the tool-calling capabilities "
+    "Nous Research Kopi 3 & 4 models are NOT agentic and are not designed "
+    "for use with Kopi Agent. They lack the tool-calling capabilities "
     "required for agent workflows. Consider using an agentic model instead "
     "(Claude, GPT, Gemini, DeepSeek, etc.)."
 )
 
-# Match only the real Kopi Ai Agent Pte Ltd Hermes 3 / Hermes 4 chat families.
+# Match only the real Nous Research Kopi 3 / Kopi 4 chat families.
 # The previous substring check (`"kopi" in name.lower()`) false-positived on
 # unrelated local Modelfiles like ``kopi-brain:qwen3-14b-ctx16k`` that just
 # happen to carry "kopi" in their tag but are fully tool-capable.
 #
 # Positive examples the regex must match:
-#   Kopi Ai Agent Pte Ltd/Hermes-3-Llama-3.1-70B, kopi-4-405b, openrouter/kopi3:70b
+#   NousResearch/Kopi-3-Llama-3.1-70B, kopi-4-405b, openrouter/kopi3:70b
 # Negative examples it must NOT match:
 #   kopi-brain:qwen3-14b-ctx16k, qwen3:14b, claude-opus-4-6
 _NOUS_KOPI_NON_AGENTIC_RE = re.compile(
@@ -144,7 +144,7 @@ _NOUS_KOPI_NON_AGENTIC_RE = re.compile(
 
 
 def is_nous_kopi_non_agentic(model_name: str) -> bool:
-    """Return True if *model_name* is a real Nous Hermes 3/4 chat model.
+    """Return True if *model_name* is a real Nous Kopi 3/4 chat model.
 
     Used to decide whether to surface the non-agentic warning at startup.
     Callers in :mod:`cli.py` and here should go through this single helper
@@ -156,7 +156,7 @@ def is_nous_kopi_non_agentic(model_name: str) -> bool:
 
 
 def _check_kopi_model_warning(model_name: str) -> str:
-    """Return a warning string if *model_name* is a Nous Hermes 3/4 chat model."""
+    """Return a warning string if *model_name* is a Nous Kopi 3/4 chat model."""
     if is_nous_kopi_non_agentic(model_name):
         return _KOPI_MODEL_WARNING
     return ""
@@ -548,7 +548,12 @@ def _model_sort_key(model_id: str, prefix: str) -> tuple:
 
     # Suffix quality ranking: pro/max > (no suffix) > omni/flash/mini/lite
     # Lower number = preferred
-    _SUFFIX_RANK = {"pro": 0, "max": 0, "plus": 0, "turbo": 0}
+    # "sol" is the flagship tier of the GPT-5.6 series (sol > terra > luna);
+    # without it, alias resolution would tiebreak alphabetically and pick
+    # luna (the cheapest) for `/model gpt`. Unlike pro/max/plus/turbo it is a
+    # series codename, not a generic quality word — revisit if another vendor
+    # ever ships a "-sol" suffix that isn't a flagship.
+    _SUFFIX_RANK = {"pro": 0, "max": 0, "plus": 0, "turbo": 0, "sol": 0}
     suffix_rank = _SUFFIX_RANK.get(suffix, 1)
 
     return version_key + (suffix_rank, suffix)
@@ -1389,6 +1394,25 @@ import threading as _threading  # noqa: E402
 _picker_prewarm_done = _threading.Event()
 
 
+def _credential_pool_is_usable(provider: str, *, raw_pool_present: bool = False) -> bool:
+    """Return whether *provider* has a credential that can be selected now.
+
+    ``auth.json`` historically allowed opaque token-style pool values that do
+    not deserialize into ``PooledCredential`` entries. Preserve visibility for
+    those legacy values, but when a real pool exists its availability state is
+    authoritative: an all-exhausted/dead pool is not authenticated.
+    """
+    try:
+        from agent.credential_pool import load_pool
+
+        pool = load_pool(provider)
+        if pool.has_credentials():
+            return pool.has_available()
+    except Exception:
+        pass
+    return raw_pool_present
+
+
 def _extra_headers_from_config(entry: Any) -> dict[str, str]:
     if not isinstance(entry, dict):
         return {}
@@ -1604,9 +1628,9 @@ def list_authenticated_providers(
     curated: dict[str, list[str]] = dict(_PROVIDER_MODELS)
     curated["openrouter"] = [mid for mid, _ in OPENROUTER_MODELS]
     # "nous" pulls from the remote model-catalog manifest published at
-    # https://kopiaiagent.com/docs/api/model-catalog.json so
+    # https://kopi-ai-agent.nousresearch.com/docs/api/model-catalog.json so
     # newly added Portal models surface in the /model picker without
-    # requiring a Hermes release. Falls back to the in-repo
+    # requiring a Kopi release. Falls back to the in-repo
     # _PROVIDER_MODELS["nous"] snapshot when the manifest is unreachable.
     curated["nous"] = get_curated_nous_model_ids()
     # Ollama Cloud uses dynamic discovery (no static curated list)
@@ -1642,7 +1666,7 @@ def list_authenticated_providers(
             live = [current_model]
         curated["lmstudio"] = live
 
-    # --- 1. Check Hermes-mapped providers ---
+    # --- 1. Check Kopi-mapped providers ---
     from kopi_cli.models import _AGGREGATOR_PROVIDERS as _AGG_PROVIDERS
     from kopi_cli.providers import ALIASES as _PROVIDER_ALIAS_TABLE
     for kopi_id, mdev_id in PROVIDER_TO_MODELS_DEV.items():
@@ -1678,6 +1702,12 @@ def list_authenticated_providers(
         # section 2 (KOPI_OVERLAYS) with proper auth store checking.
         if pconfig and pconfig.auth_type != "api_key":
             continue
+        # models.dev catalogs include providers Kopi may not route yet.
+        # Gate on runtime capability rather than registry membership: special
+        # providers and plugin aliases can be routable without a registry row.
+        from kopi_cli.auth import is_runtime_provider_routable
+        if not is_runtime_provider_routable(kopi_id):
+            continue
         if pconfig and pconfig.api_key_env_vars:
             env_vars = list(pconfig.api_key_env_vars)
         else:
@@ -1691,8 +1721,13 @@ def list_authenticated_providers(
             try:
                 from kopi_cli.auth import _load_auth_store
                 store = _load_auth_store()
-                if store and store.get("credential_pool", {}).get(kopi_id):
-                    has_creds = True
+                raw_pool_present = bool(
+                    store and store.get("credential_pool", {}).get(kopi_id)
+                )
+                if raw_pool_present:
+                    has_creds = _credential_pool_is_usable(
+                        kopi_id, raw_pool_present=True
+                    )
             except Exception:
                 pass
         if not has_creds:
@@ -1707,6 +1742,15 @@ def list_authenticated_providers(
             model_ids = curated.get(kopi_id, [])
             if kopi_id in _MODELS_DEV_PREFERRED:
                 model_ids = _merge_with_models_dev(kopi_id, model_ids)
+        # A providers.<built-in>.models block extends the provider's discovered
+        # catalog. Section 3 cannot emit it later because this built-in row owns
+        # the slug, so merge declarations here before applying max_models.
+        configured_models: list[str] = []
+        if isinstance(user_providers, dict):
+            configured = user_providers.get(kopi_id)
+            if isinstance(configured, dict):
+                configured_models = _declared_model_ids(configured.get("models"))
+        model_ids = list(dict.fromkeys([*configured_models, *model_ids]))
         total = len(model_ids)
         if kopi_id in _UNCAPPED_PICKER_PROVIDERS:
             top = model_ids  # Aggregator: show full catalog regardless of max_models
@@ -1730,20 +1774,20 @@ def list_authenticated_providers(
         seen_mdev_ids.add(mdev_id)
         _record_builtin_endpoint(slug)
 
-    # --- 2. Check Hermes-only providers (nous, openai-codex, copilot, opencode-go) ---
+    # --- 2. Check Kopi-only providers (nous, openai-codex, copilot, opencode-go) ---
     from kopi_cli.providers import KOPI_OVERLAYS
     from kopi_cli.auth import PROVIDER_REGISTRY as _auth_registry
 
-    # Build reverse mapping: models.dev ID → Hermes provider ID.
+    # Build reverse mapping: models.dev ID → Kopi provider ID.
     # KOPI_OVERLAYS keys may be models.dev IDs (e.g. "github-copilot")
-    # while _PROVIDER_MODELS and config.yaml use Hermes IDs ("copilot").
+    # while _PROVIDER_MODELS and config.yaml use Kopi IDs ("copilot").
     _mdev_to_kopi = {v: k for k, v in PROVIDER_TO_MODELS_DEV.items()}
 
     for pid, overlay in KOPI_OVERLAYS.items():
         if pid.lower() in seen_slugs:
             continue
 
-        # Resolve Hermes slug — e.g. "github-copilot" → "copilot"
+        # Resolve Kopi slug — e.g. "github-copilot" → "copilot"
         kopi_slug = _mdev_to_kopi.get(pid, pid)
         if kopi_slug.lower() in seen_slugs:
             continue
@@ -1781,9 +1825,7 @@ def list_authenticated_providers(
         # imports on demand but aren't in the raw auth.json yet.
         if not has_creds:
             try:
-                from agent.credential_pool import load_pool
-                pool = load_pool(kopi_slug)
-                if pool.has_credentials():
+                if _credential_pool_is_usable(kopi_slug):
                     has_creds = True
             except Exception as exc:
                 logger.debug("Credential pool check failed for %s: %s", kopi_slug, exc)
@@ -1922,9 +1964,7 @@ def list_authenticated_providers(
                 pass
         if not _cp_has_creds:
             try:
-                from agent.credential_pool import load_pool
-                _cp_pool = load_pool(_cp.slug)
-                if _cp_pool.has_credentials():
+                if _credential_pool_is_usable(_cp.slug):
                     _cp_has_creds = True
             except Exception:
                 pass
@@ -1983,7 +2023,7 @@ def list_authenticated_providers(
             if ep_name.lower() in seen_slugs:
                 continue
             display_name = ep_cfg.get("name", "") or ep_name
-            # ``base_url`` is Hermes's canonical write key (matches
+            # ``base_url`` is Kopi's canonical write key (matches
             # custom_providers and _save_custom_provider); ``api`` / ``url``
             # remain as fallbacks for hand-edited / legacy configs.
             api_url = (
@@ -2001,7 +2041,7 @@ def list_authenticated_providers(
             if default_model:
                 models_list.append(default_model)
             # Also include the full models list from config.
-            # Hermes writes ``models:`` as a dict keyed by model id, but older
+            # Kopi writes ``models:`` as a dict keyed by model id, but older
             # or hand-edited configs may use strings or ``[{id: ...}]`` rows.
             for model_id in _declared_model_ids(ep_cfg.get("models", [])):
                 if model_id not in models_list:
@@ -2192,7 +2232,7 @@ def list_authenticated_providers(
             if group_key not in groups:
                 # Strip per-model suffix so "Ollama — GLM 5.1" becomes
                 # "Ollama" for the grouped row. Em dash is the convention
-                # Hermes's own writer uses; a hyphen variant is accepted
+                # Kopi's own writer uses; a hyphen variant is accepted
                 # for hand-edited configs.
                 display_name = raw_name
                 for sep in ("—", " - "):
@@ -2208,6 +2248,7 @@ def list_authenticated_providers(
                     "api_url": api_url,
                     "api_key": api_key,
                     "models": [],
+                    "has_explicit_models": False,
                     "discover_models": discover,
                     "extra_headers": entry_extra_headers,
                 }
@@ -2222,7 +2263,7 @@ def list_authenticated_providers(
                     groups[group_key]["discover_models"] = False
 
             # The singular ``model:`` field only holds the currently
-            # active model. Hermes's own writer (main.py::_save_custom_provider)
+            # active model. Kopi's own writer (main.py::_save_custom_provider)
             # stores every configured model as a dict under ``models:``;
             # downstream readers (agent/models_dev.py, gateway/run.py,
             # run_agent.py, kopi_cli/config.py) already consume that dict.
@@ -2230,7 +2271,10 @@ def list_authenticated_providers(
             if default_model and default_model not in groups[group_key]["models"]:
                 groups[group_key]["models"].append(default_model)
 
-            for model_id in _declared_model_ids(entry.get("models", {})):
+            declared_models = _declared_model_ids(entry.get("models", {}))
+            if declared_models:
+                groups[group_key]["has_explicit_models"] = True
+            for model_id in declared_models:
                 if model_id not in groups[group_key]["models"]:
                     groups[group_key]["models"].append(model_id)
 
@@ -2293,11 +2337,13 @@ def list_authenticated_providers(
             #   the (possibly partial) ``models:`` subset configured for
             #   context-length overrides with the full live catalog.
             #   This is the Bifrost / aggregator-gateway case.
-            # - Without an api_key but with an explicit ``models:`` list
-            #   (or top-level ``model:``), the user is narrowing a public
-            #   endpoint to a specific subset (e.g. ollama.com /v1/models
-            #   returns 35 models but the user only wants 4). Preserve the
-            #   explicit list and skip live discovery.
+            # - Without an api_key but with an explicit ``models:`` list,
+            #   the user is narrowing a public endpoint to a specific subset
+            #   (e.g. ollama.com /v1/models returns 35 models but the user
+            #   only wants 4). Preserve the explicit list and skip live
+            #   discovery. The singular ``model:`` field is only the current
+            #   active selection and must not suppress discovery on local
+            #   no-key endpoints.
             # - Without an api_key AND no explicit models, fall through to
             #   live discovery so bare-endpoint custom providers (local
             #   llama.cpp / Ollama servers) still appear populated.
@@ -2315,7 +2361,7 @@ def list_authenticated_providers(
             should_probe = (
                 _can_probe_custom_provider(row_is_current=_grp_is_current)
                 and bool(api_url)
-                and (bool(api_key) or not grp["models"])
+                and (bool(api_key) or not grp.get("has_explicit_models"))
                 and grp.get("discover_models", True)
             )
             if should_probe:

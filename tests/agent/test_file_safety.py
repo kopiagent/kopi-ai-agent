@@ -80,7 +80,7 @@ class TestEnvFileReadBlocking:
             assert error is None, f"{path} should be allowed"
 
     def test_allowed_kopi_env(self):
-        """Hermes' own .env inside KOPI_HOME is NOT blocked by this rule
+        """Kopi' own .env inside KOPI_HOME is NOT blocked by this rule
         (it's handled by other mechanisms). Only project-local .env is blocked."""
         # Note: kopi internal .env is in ~/.kopi/.env which is NOT a project-local
         # path, but the basename check applies to ANY .env. This is intentional —
@@ -100,7 +100,7 @@ class TestEnvFileReadBlocking:
 
 
 class TestCacheFileReadBlocking:
-    """Internal Hermes cache files must remain blocked."""
+    """Internal Kopi cache files must remain blocked."""
 
     def test_hub_index_cache_blocked(self, tmp_path):
         """Hub index-cache reads are blocked."""
@@ -112,7 +112,7 @@ class TestCacheFileReadBlocking:
         with patch("agent.file_safety._kopi_home_path", return_value=kopi_home):
             error = get_read_block_error(str(cache))
             assert error is not None
-            assert "internal Hermes cache" in error
+            assert "internal Kopi cache" in error
 
     def test_hub_directory_blocked(self, tmp_path):
         """Hub directory reads are blocked."""
@@ -158,4 +158,4 @@ class TestCombinedGuards:
         with patch("agent.file_safety._kopi_home_path", return_value=kopi_home):
             error = get_read_block_error(str(cache))
             assert error is not None
-            assert "internal Hermes cache" in error
+            assert "internal Kopi cache" in error

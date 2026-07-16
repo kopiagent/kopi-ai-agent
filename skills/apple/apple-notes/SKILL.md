@@ -2,11 +2,11 @@
 name: apple-notes
 description: "Manage Apple Notes via memo CLI: create, search, edit."
 version: 1.0.0
-author: KOPI AI AGENT
+author: Kopi Agent
 license: MIT
 platforms: [macos]
 metadata:
-  hermes:
+  kopi:
     tags: [Notes, Apple, macOS, note-taking]
     related_skills: [obsidian]
 prerequisites:

@@ -143,6 +143,13 @@ class TestRunConversationCodexPath:
                 turn_id="turn-compact-1",
                 thread_id="thread-compact-1",
                 compacted=True,
+                token_usage_last={
+                    "totalTokens": 300_000,
+                    "inputTokens": 300_000,
+                    "cachedInputTokens": 0,
+                    "outputTokens": 0,
+                    "reasoningOutputTokens": 0,
+                },
             )
 
         monkeypatch.setattr(CodexAppServerSession, "run_turn", fake_run_turn)
@@ -157,8 +164,11 @@ class TestRunConversationCodexPath:
 
         assert result["completed"] is True
         assert agent.context_compressor.compression_count == 1
-        assert agent.context_compressor.last_prompt_tokens == -1
-        assert agent.context_compressor.awaiting_real_usage_after_compression is True
+        # A compacted turn with real usage is judged against that same real
+        # prompt count, exactly like a normal completed compression boundary.
+        assert agent.context_compressor.last_prompt_tokens == 300_000
+        assert agent.context_compressor.awaiting_real_usage_after_compression is False
+        assert agent.context_compressor._ineffective_compression_count == 1
         assert events == [
             (
                 "session:compress",
@@ -337,7 +347,7 @@ class TestRunConversationCodexPath:
     def test_gateway_terminal_cwd_seeds_codex_thread_cwd(self, monkeypatch, tmp_path):
         """Gateway sessions set TERMINAL_CWD without stamping agent.session_cwd.
         Codex app-server must still start in that configured workspace instead
-        of falling back to the Hermes daemon process cwd."""
+        of falling back to the Kopi daemon process cwd."""
         from agent.transports.codex_app_server_session import (
             CodexAppServerSession, TurnResult,
         )
@@ -395,7 +405,7 @@ class TestRunConversationCodexPath:
     def test_approvals_mode_off_auto_approves_codex_server_requests(
         self, monkeypatch
     ):
-        """When the user disables Hermes approvals, codex app-server approval
+        """When the user disables Kopi approvals, codex app-server approval
         requests should not fail closed just because no interactive callback is
         wired (the typical gateway path). Codex's own sandbox permission
         profile remains the filesystem boundary."""
@@ -685,7 +695,7 @@ class TestSessionRetirementOnRunAgent:
 
 class TestCodexToolProgressBridge:
     """#38835: Codex app-server item/started notifications must surface as
-    Hermes tool-progress so gateways show verbose breadcrumbs on this route."""
+    Kopi tool-progress so gateways show verbose breadcrumbs on this route."""
 
     def test_mapper_command_execution(self):
         from agent.codex_runtime import _codex_note_to_tool_progress

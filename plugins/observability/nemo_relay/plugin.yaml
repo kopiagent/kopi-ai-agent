@@ -1,7 +1,7 @@
 name: nemo_relay
 version: "0.1.0"
-description: "Optional NeMo Relay observability for Hermes. Opt in with `kopi plugins enable observability/nemo_relay`; KOPI_NEMO_RELAY_* env vars configure exports after the plugin is enabled."
-author: Kopi Ai Agent Pte Ltd
+description: "Optional NeMo Relay observability for Kopi. Opt in with `kopi plugins enable observability/nemo_relay`; KOPI_NEMO_RELAY_* env vars configure exports after the plugin is enabled."
+author: NousResearch
 hooks:
   - on_session_start
   - on_session_end

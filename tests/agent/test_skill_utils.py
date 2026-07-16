@@ -16,7 +16,7 @@ from agent.skill_utils import (
 )
 
 
-def test_metadata_as_dict_with_hermes():
+def test_metadata_as_dict_with_kopi():
     """Normal case: metadata is a dict containing kopi keys."""
     frontmatter = {
         "metadata": {

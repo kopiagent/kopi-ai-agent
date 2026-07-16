@@ -1,6 +1,6 @@
-"""Tests for the cross-Hermes-profile write guard in agent/file_safety.
+"""Tests for the cross-Kopi-profile write guard in agent/file_safety.
 
-The guard fires when a tool tries to write into another Hermes profile's
+The guard fires when a tool tries to write into another Kopi profile's
 skills/plugins/cron/memories directory. It's a soft guard — defense in
 depth, NOT a security boundary — but it prevents the agent from silently
 corrupting a profile that belongs to a different session.
@@ -18,14 +18,14 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# Helpers — set up a fake Hermes root with two profiles, monkeypatch the
+# Helpers — set up a fake Kopi root with two profiles, monkeypatch the
 # resolver helpers so the classifier sees the test layout.
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def fake_hermes(tmp_path, monkeypatch):
-    """Build a fake Hermes layout:
+def fake_kopi(tmp_path, monkeypatch):
+    """Build a fake Kopi layout:
 
         <tmp>/
           skills/foo/SKILL.md           # default profile
@@ -39,7 +39,7 @@ def fake_hermes(tmp_path, monkeypatch):
             coder/
               skills/foo/SKILL.md       # another named profile
     """
-    root = tmp_path / "fake-hermes"
+    root = tmp_path / "fake-kopi"
     (root / "skills" / "foo").mkdir(parents=True)
     (root / "skills" / "foo" / "SKILL.md").write_text("# default skill\n")
     (root / "plugins" / "foo").mkdir(parents=True)
@@ -84,17 +84,17 @@ def _set_active_home(monkeypatch, kopi_home: Path):
 
 
 class TestResolveActiveProfileName:
-    def test_default_when_home_is_root(self, fake_hermes, monkeypatch):
-        _set_active_home(monkeypatch, fake_hermes["default_home"])
+    def test_default_when_home_is_root(self, fake_kopi, monkeypatch):
+        _set_active_home(monkeypatch, fake_kopi["default_home"])
         from agent.file_safety import _resolve_active_profile_name
         assert _resolve_active_profile_name() == "default"
 
-    def test_named_profile(self, fake_hermes, monkeypatch):
-        _set_active_home(monkeypatch, fake_hermes["security_home"])
+    def test_named_profile(self, fake_kopi, monkeypatch):
+        _set_active_home(monkeypatch, fake_kopi["security_home"])
         from agent.file_safety import _resolve_active_profile_name
         assert _resolve_active_profile_name() == "kopi-security"
 
-    def test_falls_back_to_default_on_resolution_failure(self, fake_hermes, monkeypatch):
+    def test_falls_back_to_default_on_resolution_failure(self, fake_kopi, monkeypatch):
         """If KOPI_HOME resolution raises, return 'default' rather than crashing the tool."""
         import agent.file_safety as fs
 
@@ -112,69 +112,69 @@ class TestResolveActiveProfileName:
 
 
 class TestClassifyCrossProfileTarget:
-    def test_same_profile_write_returns_none(self, fake_hermes, monkeypatch):
-        _set_active_home(monkeypatch, fake_hermes["security_home"])
+    def test_same_profile_write_returns_none(self, fake_kopi, monkeypatch):
+        _set_active_home(monkeypatch, fake_kopi["security_home"])
         from agent.file_safety import classify_cross_profile_target
         result = classify_cross_profile_target(
-            str(fake_hermes["security_home"] / "skills" / "foo" / "SKILL.md")
+            str(fake_kopi["security_home"] / "skills" / "foo" / "SKILL.md")
         )
         assert result is None
 
-    def test_security_writing_default_skill(self, fake_hermes, monkeypatch):
+    def test_security_writing_default_skill(self, fake_kopi, monkeypatch):
         """The exact incident from May 2026."""
-        _set_active_home(monkeypatch, fake_hermes["security_home"])
+        _set_active_home(monkeypatch, fake_kopi["security_home"])
         from agent.file_safety import classify_cross_profile_target
         result = classify_cross_profile_target(
-            str(fake_hermes["default_home"] / "skills" / "foo" / "SKILL.md")
+            str(fake_kopi["default_home"] / "skills" / "foo" / "SKILL.md")
         )
         assert result is not None
         assert result["active_profile"] == "kopi-security"
         assert result["target_profile"] == "default"
         assert result["area"] == "skills"
 
-    def test_default_writing_security_skill(self, fake_hermes, monkeypatch):
+    def test_default_writing_security_skill(self, fake_kopi, monkeypatch):
         """Inverse direction — default-profile session reaching into a named profile."""
-        _set_active_home(monkeypatch, fake_hermes["default_home"])
+        _set_active_home(monkeypatch, fake_kopi["default_home"])
         from agent.file_safety import classify_cross_profile_target
         result = classify_cross_profile_target(
-            str(fake_hermes["security_home"] / "skills" / "foo" / "SKILL.md")
+            str(fake_kopi["security_home"] / "skills" / "foo" / "SKILL.md")
         )
         assert result is not None
         assert result["active_profile"] == "default"
         assert result["target_profile"] == "kopi-security"
 
-    def test_named_to_named_cross_profile(self, fake_hermes, monkeypatch):
-        _set_active_home(monkeypatch, fake_hermes["security_home"])
+    def test_named_to_named_cross_profile(self, fake_kopi, monkeypatch):
+        _set_active_home(monkeypatch, fake_kopi["security_home"])
         from agent.file_safety import classify_cross_profile_target
         result = classify_cross_profile_target(
-            str(fake_hermes["coder_home"] / "skills" / "foo" / "SKILL.md")
+            str(fake_kopi["coder_home"] / "skills" / "foo" / "SKILL.md")
         )
         assert result is not None
         assert result["target_profile"] == "coder"
 
     @pytest.mark.parametrize("area", ["skills", "plugins", "cron", "memories"])
-    def test_all_profile_scoped_areas_classified(self, fake_hermes, monkeypatch, area):
-        _set_active_home(monkeypatch, fake_hermes["security_home"])
+    def test_all_profile_scoped_areas_classified(self, fake_kopi, monkeypatch, area):
+        _set_active_home(monkeypatch, fake_kopi["security_home"])
         from agent.file_safety import classify_cross_profile_target
-        target = fake_hermes["default_home"] / area / "foo.txt"
+        target = fake_kopi["default_home"] / area / "foo.txt"
         result = classify_cross_profile_target(str(target))
         assert result is not None
         assert result["area"] == area
 
-    def test_non_kopi_path_returns_none(self, fake_hermes, monkeypatch, tmp_path):
-        _set_active_home(monkeypatch, fake_hermes["security_home"])
+    def test_non_kopi_path_returns_none(self, fake_kopi, monkeypatch, tmp_path):
+        _set_active_home(monkeypatch, fake_kopi["security_home"])
         from agent.file_safety import classify_cross_profile_target
-        # Path outside any Hermes root
+        # Path outside any Kopi root
         assert classify_cross_profile_target(str(tmp_path / "random.txt")) is None
 
-    def test_kopi_config_not_classified_as_cross_profile(self, fake_hermes, monkeypatch):
+    def test_kopi_config_not_classified_as_cross_profile(self, fake_kopi, monkeypatch):
         """Files under <root>/config.yaml or <root>/.env are NOT profile-scoped
         (already covered by build_write_denied_paths). Don't double-warn."""
-        _set_active_home(monkeypatch, fake_hermes["security_home"])
+        _set_active_home(monkeypatch, fake_kopi["security_home"])
         from agent.file_safety import classify_cross_profile_target
         # config.yaml at root level is not in PROFILE_SCOPED_AREAS
         result = classify_cross_profile_target(
-            str(fake_hermes["default_home"] / "config.yaml")
+            str(fake_kopi["default_home"] / "config.yaml")
         )
         assert result is None
 
@@ -185,18 +185,18 @@ class TestClassifyCrossProfileTarget:
 
 
 class TestGetCrossProfileWarning:
-    def test_in_profile_returns_none(self, fake_hermes, monkeypatch):
-        _set_active_home(monkeypatch, fake_hermes["security_home"])
+    def test_in_profile_returns_none(self, fake_kopi, monkeypatch):
+        _set_active_home(monkeypatch, fake_kopi["security_home"])
         from agent.file_safety import get_cross_profile_warning
         assert get_cross_profile_warning(
-            str(fake_hermes["security_home"] / "skills" / "foo" / "SKILL.md")
+            str(fake_kopi["security_home"] / "skills" / "foo" / "SKILL.md")
         ) is None
 
-    def test_cross_profile_warning_names_both_profiles(self, fake_hermes, monkeypatch):
-        _set_active_home(monkeypatch, fake_hermes["security_home"])
+    def test_cross_profile_warning_names_both_profiles(self, fake_kopi, monkeypatch):
+        _set_active_home(monkeypatch, fake_kopi["security_home"])
         from agent.file_safety import get_cross_profile_warning
         warn = get_cross_profile_warning(
-            str(fake_hermes["default_home"] / "skills" / "foo" / "SKILL.md")
+            str(fake_kopi["default_home"] / "skills" / "foo" / "SKILL.md")
         )
         assert warn is not None
         # Must name BOTH profiles so the model knows which is which.
@@ -207,11 +207,11 @@ class TestGetCrossProfileWarning:
         # Must reference the area.
         assert "skills" in warn
 
-    def test_warning_is_defense_in_depth_not_boundary(self, fake_hermes, monkeypatch):
-        _set_active_home(monkeypatch, fake_hermes["security_home"])
+    def test_warning_is_defense_in_depth_not_boundary(self, fake_kopi, monkeypatch):
+        _set_active_home(monkeypatch, fake_kopi["security_home"])
         from agent.file_safety import get_cross_profile_warning
         warn = get_cross_profile_warning(
-            str(fake_hermes["default_home"] / "skills" / "foo" / "SKILL.md")
+            str(fake_kopi["default_home"] / "skills" / "foo" / "SKILL.md")
         )
         # Must self-document as defense-in-depth so future reviewers
         # don't promote it to a hard block.

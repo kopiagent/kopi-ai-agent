@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GitHub environment detection helper for KOPI AI AGENT skills.
+# GitHub environment detection helper for Kopi Agent skills.
 #
 # Usage (via terminal tool):
 #   source skills/github/github-auth/scripts/gh-env.sh

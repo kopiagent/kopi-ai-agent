@@ -1,17 +1,17 @@
 ---
 sidebar_position: 4
 title: "Slack"
-description: "Set up KOPI AI AGENT as a Slack bot using Socket Mode"
+description: "Set up Kopi Agent as a Slack bot using Socket Mode"
 ---
 
 # Slack Setup
 
-Connect KOPI AI AGENT to Slack as a bot using Socket Mode. Socket Mode uses WebSockets instead of
-public HTTP endpoints, so your Hermes instance doesn't need to be publicly accessible — it works
+Connect Kopi Agent to Slack as a bot using Socket Mode. Socket Mode uses WebSockets instead of
+public HTTP endpoints, so your Kopi instance doesn't need to be publicly accessible — it works
 behind firewalls, on your laptop, or on a private server.
 
 :::warning Classic Slack Apps Deprecated
-Classic Slack apps (using RTM API) were **fully deprecated in March 2025**. Hermes uses the modern
+Classic Slack apps (using RTM API) were **fully deprecated in March 2025**. Kopi uses the modern
 Bolt SDK with Socket Mode. If you have an old classic app, you must create a new one following
 the steps below.
 :::
@@ -29,19 +29,20 @@ the steps below.
 
 ## Step 1: Create a Slack App
 
-The fastest path is to paste a manifest Hermes generates for you. It
+The fastest path is to paste a manifest Kopi generates for you. It
 declares every built-in slash command (`/btw`, `/stop`, `/model`, …),
 every required OAuth scope, every event subscription, and enables Socket
 Mode — all at once.
 
-### Option A: From a Hermes-generated manifest (recommended)
+### Option A: From a Kopi-generated manifest (recommended)
 
-1. Generate the manifest:
+1. Generate the manifest. New Slack apps must use Agent view:
    ```bash
-   kopi slack manifest --write
+   kopi slack manifest --agent-view --write
    ```
    This writes `~/.kopi/slack-manifest.json` and prints paste-in
-   instructions.
+   instructions. Existing apps that still use Slack's legacy Assistant view
+   can omit `--agent-view` until they are ready to migrate.
 2. Go to [https://api.slack.com/apps](https://api.slack.com/apps) →
    **Create New App** → **From an app manifest**
 3. Pick your workspace, paste the JSON contents, review, click **Next**
@@ -54,7 +55,7 @@ Mode — all at once.
 1. Go to [https://api.slack.com/apps](https://api.slack.com/apps)
 2. Click **Create New App**
 3. Choose **From scratch**
-4. Enter an app name (e.g., "KOPI AI AGENT") and select your workspace
+4. Enter an app name (e.g., "Kopi Agent") and select your workspace
 5. Click **Create App**
 
 You'll land on the app's **Basic Information** page. Continue with
@@ -84,7 +85,7 @@ Navigate to **Features → OAuth & Permissions** in the sidebar. Scroll to **Sco
 
 :::caution Missing scopes = missing features
 Without `channels:history` and `groups:history`, the bot **will not receive messages in channels** —
-it will only work in DMs. Without `files:read`, Hermes can chat but **cannot reliably read user-uploaded attachments**.
+it will only work in DMs. Without `files:read`, Kopi can chat but **cannot reliably read user-uploaded attachments**.
 These are the most commonly missed scopes.
 :::
 
@@ -152,7 +153,7 @@ This step enables direct messages to the bot. Without it, users see **"Sending m
 4. Check **"Allow users to send Slash commands and messages from the messages tab"**
 
 :::danger Without this step, DMs are completely blocked
-Even with all the correct scopes and event subscriptions, Slack will not allow users to send direct messages to the bot unless the Messages Tab is enabled. This is a Slack platform requirement, not a Hermes configuration issue.
+Even with all the correct scopes and event subscriptions, Slack will not allow users to send direct messages to the bot unless the Messages Tab is enabled. This is a Slack platform requirement, not a Kopi configuration issue.
 :::
 
 ---
@@ -174,7 +175,7 @@ to take effect. The Install App page will show a banner prompting you to do so.
 
 ## Step 7: Find User IDs for the Allowlist
 
-Hermes uses Slack **Member IDs** (not usernames or display names) for the allowlist.
+Kopi uses Slack **Member IDs** (not usernames or display names) for the allowlist.
 
 To find a Member ID:
 
@@ -187,7 +188,7 @@ Member IDs look like `U01ABC2DEF3`. You need your own Member ID at minimum.
 
 ---
 
-## Step 8: Configure Hermes
+## Step 8: Configure Kopi
 
 Add the following to your `~/.kopi/.env` file:
 
@@ -223,7 +224,7 @@ sudo kopi gateway install --system   # Linux only: boot-time system service
 After starting the gateway, you need to **invite the bot** to any channel where you want it to respond:
 
 ```
-/invite @KOPI AI AGENT
+/invite @Kopi Agent
 ```
 
 The bot will **not** automatically join channels. You must invite it to each channel individually.
@@ -232,20 +233,37 @@ The bot will **not** automatically join channels. You must invite it to each cha
 
 ## Slash Commands
 
-Every Hermes command (`/btw`, `/stop`, `/new`, `/model`, `/help`, ...)
+Every Kopi command (`/btw`, `/stop`, `/new`, `/model`, `/help`, ...)
 is a native Slack slash command — exactly the way they work on Telegram
 and Discord. Type `/` in Slack and the autocomplete picker lists every
-Hermes command with its description.
+Kopi command with its description.
 
-Under the hood: Hermes ships with a generated Slack app manifest (see
+Under the hood: Kopi ships with a generated Slack app manifest (see
 Step 1, Option A) that declares every command in
-[`COMMAND_REGISTRY`](https://github.com/LINYIQ66/kopi-ai-agent/blob/main/kopi_cli/commands.py)
+[`COMMAND_REGISTRY`](https://github.com/NousResearch/kopi-agent/blob/main/kopi_cli/commands.py)
 as a slash command. In Socket Mode, Slack routes the command event
 through the WebSocket regardless of the manifest's `url` field.
 
+### Agent messaging experience
+
+New Slack apps use Slack's **Agent** messaging experience. Existing Kopi
+Assistant apps can migrate by regenerating the manifest with `--agent-view`:
+
+```bash
+kopi slack manifest --agent-view --write
+```
+
+Update the manifest in **Features → App Manifest**, then reinstall the app if
+Slack asks. Agent view cannot be reverted to Assistant view, and users may need
+to hard-refresh Slack after the switch. The generated Agent manifest subscribes
+to `message.im`, `app_home_opened`, and `app_context_changed`, so Kopi can
+identify a Messages-tab DM and receive the user's active Slack context with a
+turn. Kopi only supplies that context as a label; it does not read the viewed
+channel's history.
+
 ### Refreshing slash commands after updates
 
-When Hermes adds new commands (e.g. after `kopi update`), regenerate
+When Kopi adds new commands (e.g. after `kopi update`), regenerate
 the manifest and update your Slack app:
 
 ```bash
@@ -254,7 +272,7 @@ kopi slack manifest --write
 
 Then in Slack:
 1. Open [https://api.slack.com/apps](https://api.slack.com/apps) →
-   your Hermes app
+   your Kopi app
 2. **Features → App Manifest → Edit**
 3. Paste the new contents of `~/.kopi/slack-manifest.json`
 4. **Save**. Slack will prompt to reinstall the app if scopes or slash
@@ -263,7 +281,7 @@ Then in Slack:
 ### Legacy `/kopi <subcommand>` still works
 
 For backward compatibility with older manifests, you can still type
-`/kopi btw run the tests` — Hermes routes it the same way as `/btw
+`/kopi btw run the tests` — Kopi routes it the same way as `/btw
 run the tests`. Free-form questions also work: `/kopi what's the
 weather?` is treated as a regular message.
 
@@ -272,12 +290,12 @@ weather?` is treated as a regular message.
 Slack itself blocks native slash commands inside thread replies — try
 `/queue` in a thread and Slack responds with *"/queue is not supported
 in threads. Sorry!"* There is no app-side setting that re-enables them;
-Slack never delivers them to Hermes.
+Slack never delivers them to Kopi.
 
-As a workaround, Hermes recognises a leading `!` as an alternate
+As a workaround, Kopi recognises a leading `!` as an alternate
 command prefix that works in threads (and anywhere else). Type
 `!queue`, `!stop`, `!model gpt-5.4`, etc. as a regular thread reply —
-Hermes treats it identically to the slash form and replies in the same
+Kopi treats it identically to the slash form and replies in the same
 thread.
 
 Only the first token is checked against the known command list, so
@@ -285,7 +303,7 @@ casual messages like `!nice work` pass through to the agent unchanged.
 
 Approval prompts (dangerous command / `execute_code` approval) normally
 render as interactive buttons. When buttons can't be delivered and
-Hermes falls back to a text prompt, the prompt instructs you to reply
+Kopi falls back to a text prompt, the prompt instructs you to reply
 with `!approve` / `!deny` — the form that works inside threads.
 
 ### Advanced: emit only the slash-commands array
@@ -304,13 +322,13 @@ existing manifest.
 
 ## How the Bot Responds
 
-Understanding how Hermes behaves in different contexts:
+Understanding how Kopi behaves in different contexts:
 
 | Context | Behavior |
 |---------|----------|
 | **DMs** | Bot responds to every message — no @mention needed |
-| **Channels** | Bot **only responds when @mentioned** (e.g., `@KOPI AI AGENT what time is it?`). In channels, Hermes replies in a thread attached to that message. |
-| **Threads** | If you @mention Hermes inside an existing thread, it replies in that same thread. Once the bot has an active session in a thread, **subsequent replies in that thread do not require @mention** — the bot follows the conversation naturally. |
+| **Channels** | Bot **only responds when @mentioned** (e.g., `@Kopi Agent what time is it?`). In channels, Kopi replies in a thread attached to that message. |
+| **Threads** | If you @mention Kopi inside an existing thread, it replies in that same thread. Once the bot has an active session in a thread, **subsequent replies in that thread do not require @mention** — the bot follows the conversation naturally. |
 
 :::tip
 In channels, always @mention the bot to start a conversation. Once the bot is active in a thread, you can reply in that thread without mentioning it. Outside of threads, messages without @mention are ignored to prevent noise in busy channels.
@@ -353,6 +371,19 @@ platforms:
       # gracefully fall back to aligned monospace.
       rich_blocks: false
 
+      # Append Slack-native feedback controls to final Block Kit replies.
+      # Requires rich_blocks: true. Default: false.
+      feedback_buttons: false
+
+      # Suggested prompts pinned at the top of Agent view's Messages tab.
+      # Either a list of {title, message} rows, or a titled object:
+      # {title: "Start here", prompts: [{title: "Plan", message: "..."}]}
+      suggested_prompts: []
+
+      # Title Agent/Assistant DM threads from the first user message.
+      # Default: true. Set false to leave Slack's default thread titles.
+      assistant_thread_titles: true
+
       # Continuable-cron delivery surface (default: "thread").
       # "in_channel" delivers a continuable cron job FLAT into the channel
       # (no dedicated thread); pair with reply_in_thread: false (and
@@ -367,6 +398,9 @@ platforms:
 | `platforms.slack.extra.reply_in_thread` | `true` | When `false`, channel messages get direct replies instead of threads. Messages inside existing threads still reply in-thread. |
 | `platforms.slack.extra.reply_broadcast` | `false` | When `true`, thread replies are also posted to the main channel. Only the first chunk is broadcast. |
 | `platforms.slack.extra.rich_blocks` | `false` | When `true`, agent messages are rendered as [Block Kit](https://docs.slack.dev/block-kit/) blocks (headers, dividers, true nested lists, and native tables). A plain-text fallback is always sent. Tables over Slack's limits fall back to aligned monospace. No app reinstall required — it's a send-side change only. |
+| `platforms.slack.extra.feedback_buttons` | `false` | When `true` with `rich_blocks`, appends Slack-native feedback controls to final replies. |
+| `platforms.slack.extra.suggested_prompts` | `[]` | Up to four `{title, message}` prompts for Agent/Assistant DM entry points; accepts either a list or `{title, prompts}`. |
+| `platforms.slack.extra.assistant_thread_titles` | `true` | When `true`, names Agent/Assistant DM threads from the first user message. |
 | `platforms.slack.extra.cron_continuable_surface` | `"thread"` | Delivery surface for [continuable cron jobs](../features/cron.md#flat-in-channel-continuation-slack). `"thread"` opens a dedicated thread per delivery (default); `"in_channel"` delivers flat into the channel timeline. Pair `in_channel` with `reply_in_thread: false` (and `require_mention: false`) so a plain channel reply continues the job. |
 
 ### Session Isolation
@@ -376,7 +410,7 @@ platforms:
 group_sessions_per_user: true
 ```
 
-When `true` (the default), each user in a shared channel gets their own isolated conversation session. Two people talking to Hermes in `#general` will have separate histories and contexts.
+When `true` (the default), each user in a shared channel gets their own isolated conversation session. Two people talking to Kopi in `#general` will have separate histories and contexts.
 
 Set to `false` if you want a collaborative mode where the entire channel shares one conversation session. Be aware this means users share context growth and token costs, and one user's `/reset` clears the session for everyone.
 
@@ -394,14 +428,14 @@ slack:
   # "auto-engage" — remembering past mentions in a thread and following
   # up on bot-message replies, and resuming active sessions without a
   # fresh mention. With strict_mention ON, every new channel message
-  # must @mention the bot before Hermes will respond.
+  # must @mention the bot before Kopi will respond.
   strict_mention: false
 
   # Custom mention patterns that trigger the bot
   # (in addition to the default @mention detection)
   mention_patterns:
-    - "hey hermes"
-    - "hermes,"
+    - "hey kopi"
+    - "kopi,"
 
   # Text prepended to every outgoing message
   reply_prefix: ""
@@ -500,7 +534,7 @@ platforms:
 
 ## Home Channel
 
-Set `SLACK_HOME_CHANNEL` to a channel ID where Hermes will deliver scheduled messages,
+Set `SLACK_HOME_CHANNEL` to a channel ID where Kopi will deliver scheduled messages,
 cron job results, and other proactive notifications. To find a channel ID:
 
 1. Right-click the channel name in Slack
@@ -511,13 +545,13 @@ cron job results, and other proactive notifications. To find a channel ID:
 SLACK_HOME_CHANNEL=C01234567890
 ```
 
-Make sure the bot has been **invited to the channel** (`/invite @KOPI AI AGENT`).
+Make sure the bot has been **invited to the channel** (`/invite @Kopi Agent`).
 
 ---
 
 ## Multi-Workspace Support
 
-Hermes can connect to **multiple Slack workspaces** simultaneously using a single gateway instance. Each workspace is authenticated independently with its own bot user ID.
+Kopi can connect to **multiple Slack workspaces** simultaneously using a single gateway instance. Each workspace is authenticated independently with its own bot user ID.
 
 ### Configuration
 
@@ -541,7 +575,7 @@ platforms:
 
 ### OAuth Token File
 
-In addition to tokens in the environment or config, Hermes also loads tokens from an **OAuth token file** at:
+In addition to tokens in the environment or config, Kopi also loads tokens from an **OAuth token file** at:
 
 ```
 ~/.kopi/slack_tokens.json
@@ -564,14 +598,14 @@ Tokens from this file are merged with any tokens specified via `SLACK_BOT_TOKEN`
 
 - The **first token** in the list is the primary token, used for the Socket Mode connection (AsyncApp).
 - Each token is authenticated via `auth.test` on startup. The gateway maps each `team_id` to its own `WebClient` and `bot_user_id`.
-- When a message arrives, Hermes uses the correct workspace-specific client to respond.
+- When a message arrives, Kopi uses the correct workspace-specific client to respond.
 - The primary `bot_user_id` (from the first token) is used for backward compatibility with features that expect a single bot identity.
 
 ---
 
 ## Voice Messages
 
-Hermes supports voice on Slack:
+Kopi supports voice on Slack:
 
 - **Incoming:** Voice/audio messages are automatically transcribed using the configured STT provider: local `faster-whisper`, Groq Whisper (`GROQ_API_KEY`), or OpenAI Whisper (`VOICE_TOOLS_OPENAI_KEY`)
 - **Outgoing:** TTS responses are sent as audio file attachments
@@ -628,14 +662,14 @@ Notes:
 | Problem | Solution |
 |---------|----------|
 | Bot doesn't respond to DMs | Verify `message.im` is in your event subscriptions and the app is reinstalled |
-| Bot works in DMs but not in channels | **Most common issue.** Add `message.channels` and `message.groups` to event subscriptions, reinstall the app, and invite the bot to the channel with `/invite @KOPI AI AGENT` |
+| Bot works in DMs but not in channels | **Most common issue.** Add `message.channels` and `message.groups` to event subscriptions, reinstall the app, and invite the bot to the channel with `/invite @Kopi Agent` |
 | Bot doesn't respond to @mentions in channels | 1) Check `message.channels` event is subscribed. 2) Bot must be invited to the channel. 3) Ensure `channels:history` scope is added. 4) Reinstall the app after scope/event changes |
 | Bot ignores messages in private channels | Add both the `message.groups` event subscription and `groups:history` scope, then reinstall the app and `/invite` the bot |
 | Bot doesn't respond in group DMs (multi-person DMs) | Add the `message.mpim` event subscription and the `mpim:history` scope (plus `mpim:read`), then **reinstall** the app. Without `message.mpim`, Slack never delivers group-DM messages to the bot — even though 1:1 DMs work. |
 | "Sending messages to this app has been turned off" in DMs | Enable the **Messages Tab** in App Home settings (see Step 5) |
 | "not_authed" or "invalid_auth" errors | Regenerate your Bot Token and App Token, update `.env` |
-| Bot responds but can't post in a channel | Invite the bot to the channel with `/invite @KOPI AI AGENT` |
-| Bot can chat but can't read uploaded images/files | Add `files:read`, then **reinstall** the app. Hermes now surfaces attachment access diagnostics in-chat when Slack returns scope/auth/permission failures. |
+| Bot responds but can't post in a channel | Invite the bot to the channel with `/invite @Kopi Agent` |
+| Bot can chat but can't read uploaded images/files | Add `files:read`, then **reinstall** the app. Kopi now surfaces attachment access diagnostics in-chat when Slack returns scope/auth/permission failures. |
 | `missing_scope` error | Add the required scope in OAuth & Permissions, then **reinstall** the app |
 | Socket disconnects frequently | Check your network; Bolt auto-reconnects but unstable connections cause lag |
 | Changed scopes/events but nothing changed | You **must reinstall** the app to your workspace after any scope or event subscription change |
@@ -650,7 +684,7 @@ If the bot isn't working in channels, verify **all** of the following:
 4. ✅ `channels:history` scope is added (for public channels)
 5. ✅ `groups:history` scope is added (for private channels)
 6. ✅ App was **reinstalled** after adding scopes/events
-7. ✅ Bot was **invited** to the channel (`/invite @KOPI AI AGENT`)
+7. ✅ Bot was **invited** to the channel (`/invite @Kopi Agent`)
 8. ✅ You are **@mentioning** the bot in your message
 
 ---
@@ -665,5 +699,5 @@ treat them like passwords.
 
 - Tokens should be stored in `~/.kopi/.env` (file permissions `600`)
 - Rotate tokens periodically via the Slack app settings
-- Audit who has access to your Hermes config directory
+- Audit who has access to your Kopi config directory
 - Socket Mode means no public endpoint is exposed — one less attack surface

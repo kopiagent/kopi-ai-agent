@@ -13,7 +13,11 @@ class NousProfile(ProviderProfile):
     def build_extra_body(
         self, *, session_id: str | None = None, **context
     ) -> dict[str, Any]:
-        return {"tags": nous_portal_tags()}
+        body: dict[str, Any] = {"tags": nous_portal_tags()}
+        provider_preferences = context.get("provider_preferences")
+        if provider_preferences:
+            body["provider"] = provider_preferences
+        return body
 
     def build_api_kwargs_extras(
         self,
@@ -40,9 +44,9 @@ nous = NousProfile(
     name="nous",
     aliases=("nous-portal", "nousresearch"),
     env_vars=("NOUS_API_KEY",),
-    display_name="Kopi Ai Agent Pte Ltd",
-    description="Kopi Ai Agent Pte Ltd — Hermes model family",
-    signup_url="https://kopiaiagent.com/",
+    display_name="Nous Research",
+    description="Nous Research — Kopi model family",
+    signup_url="https://nousresearch.com/",
     fallback_models=(
         "kopi-3-405b",
         "kopi-3-70b",

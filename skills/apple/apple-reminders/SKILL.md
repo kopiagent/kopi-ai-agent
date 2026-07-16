@@ -2,11 +2,11 @@
 name: apple-reminders
 description: "Apple Reminders via remindctl: add, list, complete."
 version: 1.0.0
-author: KOPI AI AGENT
+author: Kopi Agent
 license: MIT
 platforms: [macos]
 metadata:
-  hermes:
+  kopi:
     tags: [Reminders, tasks, todo, macOS, Apple]
 prerequisites:
   commands: [remindctl]

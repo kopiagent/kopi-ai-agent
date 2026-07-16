@@ -345,7 +345,7 @@ class TestBackup:
         # Add a nested kopi-ai-agent directory inside skills (like the real layout)
         nested = kopi_home / "skills" / "autonomous-ai-agents" / "kopi-ai-agent"
         nested.mkdir(parents=True)
-        (nested / "SKILL.md").write_text("# KOPI AI AGENT Skill\n")
+        (nested / "SKILL.md").write_text("# Kopi Agent Skill\n")
         (nested / "sub").mkdir()
         (nested / "sub" / "item.txt").write_text("nested content\n")
 
@@ -460,7 +460,7 @@ class TestValidateBackupZip:
                 zf.writestr(name, "dummy")
 
     def test_state_db_passes(self, tmp_path):
-        """A zip containing state.db is accepted as a valid Hermes backup."""
+        """A zip containing state.db is accepted as a valid Kopi backup."""
         from kopi_cli.backup import _validate_backup_zip
         zip_path = tmp_path / "backup.zip"
         self._make_zip(zip_path, ["state.db", "sessions/abc.json"])
@@ -921,7 +921,7 @@ class TestValidation:
             ok, reason = _validate_backup_zip(zf)
         assert not ok
 
-    def test_detect_prefix_hermes(self):
+    def test_detect_prefix_kopi(self):
         """Detects .kopi/ prefix wrapping all entries."""
         import io
         from kopi_cli.backup import _detect_prefix
@@ -1091,7 +1091,7 @@ class TestBackupEdgeCases:
             # The pre-1980 file should be skipped, not crash the backup
             assert "ancient.txt" not in names
 
-    def test_skips_output_zip_inside_hermes(self, tmp_path, monkeypatch):
+    def test_skips_output_zip_inside_kopi(self, tmp_path, monkeypatch):
         """Backup skips its own output zip if it's inside kopi root."""
         kopi_home = tmp_path / ".kopi"
         kopi_home.mkdir()
@@ -2165,7 +2165,7 @@ class TestPreMigrationBackup:
         out = create_pre_migration_backup(kopi_home=kopi_home)
         assert out is not None
         assert out.exists()
-        # Shares the backups/ directory with pre-update backups so `hermes
+        # Shares the backups/ directory with pre-update backups so `kopi
         # import` and the update-backup listing both pick them up.
         assert out.parent == kopi_home / "backups"
         assert out.name.startswith("pre-migration-")
@@ -2189,7 +2189,7 @@ class TestPreMigrationBackup:
         assert "gateway.pid" not in names
 
     def test_restorable_with_kopi_import(self, kopi_home, tmp_path):
-        """The zip produced by pre-migration backup must be a valid Hermes
+        """The zip produced by pre-migration backup must be a valid Kopi
         backup — `kopi import` should accept it."""
         from kopi_cli.backup import create_pre_migration_backup, _validate_backup_zip
         out = create_pre_migration_backup(kopi_home=kopi_home)

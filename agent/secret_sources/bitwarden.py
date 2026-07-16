@@ -1,13 +1,13 @@
 """Bitwarden Secrets Manager (`bws` CLI) integration.
 
-Hermes pulls API keys from Bitwarden Secrets Manager at process startup
+Kopi pulls API keys from Bitwarden Secrets Manager at process startup
 so they don't have to live in plaintext in ``~/.kopi/.env``.
 
 Design summary
 --------------
 
 * The ``bws`` binary is auto-installed into ``<kopi_home>/bin/bws`` on
-  first use.  Hermes pins one version (``_BWS_VERSION``) and downloads
+  first use.  Kopi pins one version (``_BWS_VERSION``) and downloads
   the matching asset from the official GitHub Releases page, verifying
   the SHA-256 against the release's published checksum file.
 * The access token is stored in ``~/.kopi/.env`` as
@@ -18,7 +18,7 @@ Design summary
   --output json`` call.  We cache the result in-process for
   ``cache_ttl_seconds`` so back-to-back ``kopi`` invocations don't
   hammer the API.
-* Failures NEVER block Hermes startup.  Missing binary, no network,
+* Failures NEVER block Kopi startup.  Missing binary, no network,
   expired token, etc. all emit a one-line warning and continue with
   whatever credentials ``.env`` already had.
 
@@ -119,7 +119,7 @@ def _disk_cache_path(home_path: Optional[Path] = None) -> Path:
 
 
 def _kopi_bin_dir() -> Path:
-    """Where Hermes stores its managed binaries.  Profile-aware."""
+    """Where Kopi stores its managed binaries.  Profile-aware."""
     from kopi_constants import get_kopi_home
 
     return get_kopi_home() / "bin"

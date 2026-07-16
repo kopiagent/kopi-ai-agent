@@ -28,7 +28,7 @@ class ManagedToolGatewayConfig:
 
 
 def auth_json_path():
-    """Return the Hermes auth store path, respecting KOPI_HOME overrides."""
+    """Return the Kopi auth store path, respecting KOPI_HOME overrides."""
     return get_kopi_home() / "auth.json"
 
 

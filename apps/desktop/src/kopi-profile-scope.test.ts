@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
-  checkHermesUpdate,
+  checkKopiUpdate,
   getActionStatus,
   getStatus,
   restartGateway,
   setApiRequestProfile,
-  updateHermes
+  updateKopi
 } from './kopi'
 
 // Contract: every backend-targeted action helper must carry the active gateway
@@ -17,13 +17,13 @@ describe('backend action helpers are profile-scoped', () => {
   const api = vi.fn(async (_req: { path: string; profile?: string }) => ({}) as never)
 
   beforeEach(() => {
-    ;(window as { hermesDesktop?: unknown }).kopiDesktop = { api }
+    ;(window as { kopiDesktop?: unknown }).kopiDesktop = { api }
     api.mockClear()
   })
 
   afterEach(() => {
     setApiRequestProfile(null)
-    delete (window as { hermesDesktop?: unknown }).kopiDesktop
+    delete (window as { kopiDesktop?: unknown }).kopiDesktop
   })
 
   const lastProfile = () => api.mock.calls.at(-1)?.[0].profile
@@ -38,8 +38,8 @@ describe('backend action helpers are profile-scoped', () => {
 
     void getStatus()
     void restartGateway()
-    void updateHermes()
-    void checkHermesUpdate()
+    void updateKopi()
+    void checkKopiUpdate()
     void getActionStatus('gateway-restart')
 
     for (const call of api.mock.calls) {

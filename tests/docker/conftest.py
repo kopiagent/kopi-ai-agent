@@ -86,16 +86,16 @@ def container_name(request) -> Iterator[str]:
 # docker_exec — default to the unprivileged kopi user
 # ---------------------------------------------------------------------------
 #
-# Background: every Hermes runtime path inside the container drops to UID
-# 10000 (the ``kopi`` user) via ``s6-setuidgid hermes``. ``docker exec``
+# Background: every Kopi runtime path inside the container drops to UID
+# 10000 (the ``kopi`` user) via ``s6-setuidgid kopi``. ``docker exec``
 # without ``-u`` runs as root, which is **not** representative of how
 # production code executes. PR #30136 review caught a real regression
 # this way — ``Path('/proc/1/exe').resolve()`` works as root and silently
-# fails (PermissionError swallowed) for hermes, so a test that ran as root
+# fails (PermissionError swallowed) for kopi, so a test that ran as root
 # couldn't catch a feature that was inert for the actual runtime user.
 #
 # Tests in this directory MUST exercise the realistic user context. The
-# helpers below run every probe under ``-u hermes`` unless a specific
+# helpers below run every probe under ``-u kopi`` unless a specific
 # test explicitly opts into ``user="root"`` (rare — e.g. inspecting
 # /proc/1/exe itself, chowning a volume).
 # ---------------------------------------------------------------------------
@@ -108,7 +108,7 @@ def docker_exec(
     timeout: int = 30,
     extra_docker_args: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
-    """Run a command inside ``container`` as ``user`` (default: hermes).
+    """Run a command inside ``container`` as ``user`` (default: kopi).
 
     Returns the CompletedProcess with text=True, capture_output=True.
 

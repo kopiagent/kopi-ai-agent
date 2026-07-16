@@ -97,7 +97,7 @@ def generate_bash(parser: argparse.ArgumentParser) -> str:
 
     cases_str = "\n".join(cases)
 
-    return f"""# KOPI AI AGENT bash completion
+    return f"""# Kopi Agent bash completion
 # Add to ~/.bashrc:
 #   eval "$(kopi completion bash)"
 
@@ -135,7 +135,7 @@ _kopi_completion() {{
     fi
 }}
 
-complete -F _kopi_completion hermes
+complete -F _kopi_completion kopi
 """
 
 
@@ -199,8 +199,8 @@ def generate_zsh(parser: argparse.ArgumentParser) -> str:
             )
     sub_cases_str = "\n".join(sub_cases)
 
-    return f"""#compdef hermes
-# KOPI AI AGENT zsh completion
+    return f"""#compdef kopi
+# Kopi Agent zsh completion
 # Add to ~/.zshrc:
 #   eval "$(kopi completion zsh)"
 
@@ -213,7 +213,7 @@ _kopi_profiles() {{
     _describe 'profile' profiles
 }}
 
-_hermes() {{
+_kopi() {{
     local context state line
     typeset -A opt_args
 
@@ -240,7 +240,7 @@ _hermes() {{
     esac
 }}
 
-compdef _kopi hermes
+compdef _kopi kopi
 """
 
 
@@ -254,7 +254,7 @@ def generate_fish(parser: argparse.ArgumentParser) -> str:
     top_cmds_str = " ".join(top_cmds)
 
     lines: list[str] = [
-        "# KOPI AI AGENT fish completion",
+        "# Kopi Agent fish completion",
         "# Add to your config:",
         "#   kopi completion fish | source",
         "",

@@ -1,9 +1,9 @@
 //! Update orchestration.
 //!
-//! Driven when the installer is launched as `Hermes-Setup.exe --update` (see
+//! Driven when the installer is launched as `Kopi-Setup.exe --update` (see
 //! `AppMode` in lib.rs). The desktop app hands off to us — it exits, then we:
 //!
-//!   1. wait for the old Hermes desktop process to fully exit (so both the
+//!   1. wait for the old Kopi desktop process to fully exit (so both the
 //!      venv shim and packaged app.asar are free; otherwise `kopi update`
 //!      or repair bootstrap can race locked files),
 //!   2. run `kopi update --yes --gateway` (Python/repo update; this does NOT
@@ -18,7 +18,7 @@
 //! sees discrete steps (with the live log underneath) instead of one bar.
 //!
 //! Cross-platform note: `kopi update` already handles macOS/Linux (git/pip).
-//! The only OS-specific bits here are the venv shim path (resolve_hermes) and
+//! The only OS-specific bits here are the venv shim path (resolve_kopi) and
 //! the no-window creation flag — both already cfg-gated. Keep new logic
 //! OS-agnostic so the mac/linux port stays "fill in the paths".
 
@@ -143,12 +143,12 @@ impl Drop for UpdateMarkerGuard {
 
 async fn run_update(app: AppHandle) -> Result<()> {
     let kopi_home = crate::paths::kopi_home();
-    let install_root = kopi_home.join("kopi-ai-agent");
+    let install_root = kopi_home.join("kopi-agent");
 
     // Mutual exclusion (#50238): publish an "update in progress" marker for the
     // entire duration of this update. A desktop instance the user relaunches
     // mid-update consults this before spawning its own local backend — without
-    // it, that backend re-locks the venv shim, our `force_kill_other_hermes`
+    // it, that backend re-locks the venv shim, our `force_kill_other_kopi`
     // straggler-cleanup kills it, and the relaunch/kill cycle loops. The guard
     // removes the marker on every exit path (incl. early returns / panics).
     let _update_marker = UpdateMarkerGuard::acquire(crate::paths::update_in_progress_marker());
@@ -162,9 +162,9 @@ async fn run_update(app: AppHandle) -> Result<()> {
         None
     };
 
-    let kopi = resolve_hermes(&install_root).ok_or_else(|| {
+    let kopi = resolve_kopi(&install_root).ok_or_else(|| {
         let msg = format!(
-            "Could not find the kopi CLI under {}. Is Hermes installed? \
+            "Could not find the kopi CLI under {}. Is Kopi installed? \
              Re-run the installer to repair the install.",
             install_root.display()
         );
@@ -228,16 +228,16 @@ async fn run_update(app: AppHandle) -> Result<()> {
     // `sys.exit(2)` and dead-end the handoff). By contract the desktop has
     // already exited and waited for the install locks to clear before launching
     // us, and wait_for_install_locks_free below force-kills any straggler — so by the
-    // time `kopi update` runs there is no legitimate hermes.exe to protect,
-    // and the guard would only produce a false "Hermes is still running" stop.
+    // time `kopi update` runs there is no legitimate kopi.exe to protect,
+    // and the guard would only produce a false "Kopi is still running" stop.
     //
     // NOTE: --force does NOT bypass the venv-python holder guard (that needs
     // an explicit `--force-venv`, which we deliberately do not pass). Our lock
-    // probe only checks the hermes.exe shim and app.asar, so an external venv
+    // probe only checks the kopi.exe shim and app.asar, so an external venv
     // python holding a native .pyd (a user terminal, an unmanaged gateway)
     // could still be alive here — mutating the venv under it would strand the
     // install half-updated. If that guard fires, it exits 2 and the match arm
-    // below surfaces the correct "close all Hermes windows" message.
+    // below surfaces the correct "close all Kopi windows" message.
     update_args.push("--force".into());
     update_args.push("--branch".into());
     update_args.push(update_branch);
@@ -246,7 +246,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
     let started = Instant::now();
     let mut update = run_streamed(
         &app,
-        &hermes,
+        &kopi,
         &update_args,
         &install_root,
         &child_env,
@@ -265,7 +265,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
     // second `kopi update` runs clean because the now-current module is loaded
     // from the start. Rather than make the parked user click Update twice (and
     // stare at a scary crash first), retry once automatically. Skip the retry
-    // for the concurrent-instance guard (exit 2) — that's a "close Hermes" state
+    // for the concurrent-instance guard (exit 2) — that's a "close Kopi" state
     // a retry can't fix.
     if !matches!(update.exit_code, Some(0) | Some(UPDATE_EXIT_CONCURRENT)) {
         emit_log(
@@ -277,7 +277,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
         );
         update = run_streamed(
             &app,
-            &hermes,
+            &kopi,
             &update_args,
             &install_root,
             &child_env,
@@ -292,7 +292,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
             emit_stage(&app, "update", StageState::Succeeded, Some(update_ms), None);
         }
         Some(code) if code == UPDATE_EXIT_CONCURRENT => {
-            let msg = "Hermes is still running. Close all Hermes windows and try \
+            let msg = "Kopi is still running. Close all Kopi windows and try \
                        the update again."
                 .to_string();
             emit_stage(
@@ -346,7 +346,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
     let rebuild_args: Vec<String> = vec!["desktop".into(), "--build-only".into()];
     let mut rebuild = run_streamed(
         &app,
-        &hermes,
+        &kopi,
         &rebuild_args,
         &install_root,
         &child_env,
@@ -372,7 +372,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
         );
         rebuild = run_streamed(
             &app,
-            &hermes,
+            &kopi,
             &rebuild_args,
             &install_root,
             &child_env,
@@ -459,7 +459,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
                 &app,
                 None,
                 LogStream::Stderr,
-                &format!("[update] could not auto-launch desktop: {err}. Launch Hermes manually."),
+                &format!("[update] could not auto-launch desktop: {err}. Launch Kopi manually."),
             );
         }
     } else if let Err(err) =
@@ -472,7 +472,7 @@ async fn run_update(app: AppHandle) -> Result<()> {
             &app,
             None,
             LogStream::Stdout,
-            &format!("[update] could not auto-launch desktop: {err}. Launch Hermes manually."),
+            &format!("[update] could not auto-launch desktop: {err}. Launch Kopi manually."),
         );
     }
 
@@ -486,7 +486,7 @@ pub(crate) async fn wait_for_install_locks_free(install_root: &Path, app: &AppHa
     let lock_targets = install_lock_probe_paths(install_root);
     let deadline = Instant::now() + DESKTOP_EXIT_WAIT;
 
-    emit_log(app, Some(stage), LogStream::Stdout, "[handoff] waiting for Hermes to exit…");
+    emit_log(app, Some(stage), LogStream::Stdout, "[handoff] waiting for Kopi to exit…");
 
     loop {
         let locked = locked_paths(&lock_targets);
@@ -494,24 +494,24 @@ pub(crate) async fn wait_for_install_locks_free(install_root: &Path, app: &AppHa
             return;
         }
         if Instant::now() >= deadline {
-            // Last resort: a backend hermes.exe (or the desktop Hermes.exe
+            // Last resort: a backend kopi.exe (or the desktop Kopi.exe
             // itself) is still holding one of the update-sensitive files. The
             // desktop should have reaped its tree before handing off, but
             // SIGTERM races / detached grandchildren / AV handles can leave a
             // straggler. Rather than "proceed anyway" straight into uv's
             // "Access is denied" or install.ps1's locked app.asar failure,
-            // force-kill every Hermes.exe except ourselves, then give the OS a
+            // force-kill every Kopi.exe except ourselves, then give the OS a
             // beat to unload the image.
             emit_log(
                 app,
                 Some(stage),
                 LogStream::Stdout,
                 &format!(
-                    "[handoff] Hermes still holding install files ({}); force-killing stragglers…",
+                    "[handoff] Kopi still holding install files ({}); force-killing stragglers…",
                     format_locked_paths(&locked)
                 ),
             );
-            force_kill_other_hermes();
+            force_kill_other_kopi();
             tokio::time::sleep(Duration::from_millis(800)).await;
             let locked_after_kill = locked_paths(&lock_targets);
             if locked_after_kill.is_empty() {
@@ -539,7 +539,7 @@ pub(crate) async fn wait_for_install_locks_free(install_root: &Path, app: &AppHa
 }
 
 fn install_lock_probe_paths(install_root: &Path) -> Vec<PathBuf> {
-    let mut paths = vec![venv_hermes(install_root)];
+    let mut paths = vec![venv_kopi(install_root)];
     paths.extend(desktop_app_payload_paths(install_root));
     paths
 }
@@ -553,8 +553,8 @@ fn desktop_app_payload_paths(install_root: &Path) -> Vec<PathBuf> {
         ]
     } else if cfg!(target_os = "macos") {
         vec![
-            release.join("mac").join("Hermes.app").join("Contents").join("Resources").join("app.asar"),
-            release.join("mac-arm64").join("Hermes.app").join("Contents").join("Resources").join("app.asar"),
+            release.join("mac").join("Kopi.app").join("Contents").join("Resources").join("app.asar"),
+            release.join("mac-arm64").join("Kopi.app").join("Contents").join("Resources").join("app.asar"),
         ]
     } else {
         vec![release.join("linux-unpacked").join("resources").join("app.asar")]
@@ -569,21 +569,21 @@ fn format_locked_paths(paths: &[PathBuf]) -> String {
     paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
 }
 
-/// Force-kill any `hermes.exe` other than this process. Windows-only; a no-op
+/// Force-kill any `kopi.exe` other than this process. Windows-only; a no-op
 /// elsewhere (POSIX has no mandatory-lock contention). We can't selectively
 /// target "the backend" by PID here — the desktop already exited and we never
-/// knew its children — so we kill the whole `hermes.exe` image tree via
+/// knew its children — so we kill the whole `kopi.exe` image tree via
 /// taskkill, excluding our own PID.
 ///
 /// Safe w.r.t. our own update child: this runs inside the install-lock wait,
-/// which completes BEFORE we spawn `venv\Scripts\hermes.exe update`. And a
+/// which completes BEFORE we spawn `venv\Scripts\kopi.exe update`. And a
 /// desktop the user relaunches mid-update will NOT have spawned a backend —
-/// `startHermes()` in the desktop gates local-backend startup on our
+/// `startKopi()` in the desktop gates local-backend startup on our
 /// update-in-progress marker and parks until we finish (#50238). So the only
-/// hermes.exe images here are stragglers from the old desktop — exactly what
+/// kopi.exe images here are stragglers from the old desktop — exactly what
 /// we want gone. (`/FI PID ne <self>` also spares this Tauri process, though it
-/// isn't named hermes.exe.)
-fn force_kill_other_hermes() {
+/// isn't named kopi.exe.)
+fn force_kill_other_kopi() {
     if !cfg!(target_os = "windows") {
         return;
     }
@@ -596,7 +596,7 @@ fn force_kill_other_hermes() {
                 "/F",
                 "/T",
                 "/IM",
-                "hermes.exe",
+                "kopi.exe",
                 "/FI",
                 &format!("PID ne {my_pid}"),
             ])
@@ -698,23 +698,23 @@ struct CmdResult {
 }
 
 /// Path to the venv kopi shim under an install root, regardless of existence.
-fn venv_hermes(install_root: &Path) -> PathBuf {
+fn venv_kopi(install_root: &Path) -> PathBuf {
     if cfg!(target_os = "windows") {
-        install_root.join("venv").join("Scripts").join("hermes.exe")
+        install_root.join("venv").join("Scripts").join("kopi.exe")
     } else {
-        install_root.join("venv").join("bin").join("hermes")
+        install_root.join("venv").join("bin").join("kopi")
     }
 }
 
 /// Resolve the kopi CLI to drive. Prefer the venv shim in the install we
-/// just updated; fall back to `hermes` on PATH.
-fn resolve_hermes(install_root: &Path) -> Option<PathBuf> {
-    let shim = venv_hermes(install_root);
+/// just updated; fall back to `kopi` on PATH.
+fn resolve_kopi(install_root: &Path) -> Option<PathBuf> {
+    let shim = venv_kopi(install_root);
     if shim.exists() {
         return Some(shim);
     }
     // PATH fallback. which-style probe via env, kept dependency-free.
-    let exe = if cfg!(target_os = "windows") { "hermes.exe" } else { "hermes" };
+    let exe = if cfg!(target_os = "windows") { "kopi.exe" } else { "kopi" };
     if let Ok(path) = std::env::var("PATH") {
         let sep = if cfg!(target_os = "windows") { ';' } else { ':' };
         for dir in path.split(sep) {
@@ -810,7 +810,7 @@ async fn install_macos_app_update(
 
     let rebuilt_app = crate::bootstrap::resolve_kopi_desktop_app(install_root).ok_or_else(|| {
         anyhow!(
-            "desktop rebuild succeeded but no Hermes.app was found under {}",
+            "desktop rebuild succeeded but no Kopi.app was found under {}",
             install_root.join("apps").join("desktop").join("release").display()
         )
     })?;
@@ -1035,8 +1035,8 @@ mod tests {
 
     #[test]
     fn venv_kopi_is_under_install_root() {
-        let root = Path::new("/x/kopi-ai-agent");
-        let shim = venv_hermes(root);
+        let root = Path::new("/x/kopi-agent");
+        let shim = venv_kopi(root);
         assert!(shim.starts_with(root));
         assert!(shim.to_string_lossy().contains("venv"));
     }
@@ -1048,11 +1048,11 @@ mod tests {
 
     #[test]
     fn lock_probe_paths_include_desktop_app_payload() {
-        let root = Path::new("/x/kopi-ai-agent");
+        let root = Path::new("/x/kopi-agent");
         let probes = install_lock_probe_paths(root);
 
         assert!(
-            probes.iter().any(|p| p == &venv_hermes(root)),
+            probes.iter().any(|p| p == &venv_kopi(root)),
             "venv shim remains part of the update lock probe"
         );
         assert!(
@@ -1063,7 +1063,7 @@ mod tests {
 
     #[test]
     fn locked_paths_ignores_missing_payloads() {
-        let root = Path::new("/nonexistent/kopi-ai-agent");
+        let root = Path::new("/nonexistent/kopi-agent");
         let probes = install_lock_probe_paths(root);
 
         assert!(locked_paths(&probes).is_empty());
@@ -1167,8 +1167,8 @@ mod tests {
     #[test]
     fn parses_only_app_targets() {
         assert_eq!(
-            target_app_from_args(["--update", "--target-app", "/Applications/Hermes.app"]),
-            Some(PathBuf::from("/Applications/Hermes.app"))
+            target_app_from_args(["--update", "--target-app", "/Applications/Kopi.app"]),
+            Some(PathBuf::from("/Applications/Kopi.app"))
         );
         assert_eq!(target_app_from_args(["--target-app", "/tmp/not-an-app"]), None);
     }
@@ -1176,7 +1176,7 @@ mod tests {
     // Helpers for the swap tests: make a throwaway dir tree we can rename.
     fn unique_tmp_dir(tag: &str) -> PathBuf {
         let base = std::env::temp_dir().join(format!(
-            "hermes-swap-test-{tag}-{}-{}",
+            "kopi-swap-test-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1195,9 +1195,9 @@ mod tests {
     #[tokio::test]
     async fn swap_installs_new_bundle_and_cleans_up() {
         let base = unique_tmp_dir("ok");
-        let target = base.join("Hermes.app");
-        let tmp = base.join("Hermes.app.kopi-update-new");
-        let old = base.join("Hermes.app.kopi-update-old");
+        let target = base.join("Kopi.app");
+        let tmp = base.join("Kopi.app.kopi-update-new");
+        let old = base.join("Kopi.app.kopi-update-old");
         write_marker(&target, "OLD");
         write_marker(&tmp, "NEW");
 
@@ -1225,9 +1225,9 @@ mod tests {
         //  - `old` is a NON-EMPTY dir  -> rename(target, old) fails
         //  - `tmp` does not exist       -> rename(tmp, target) fails
         let base = unique_tmp_dir("fail");
-        let target = base.join("Hermes.app");
-        let tmp = base.join("Hermes.app.kopi-update-new"); // intentionally absent
-        let old = base.join("Hermes.app.kopi-update-old");
+        let target = base.join("Kopi.app");
+        let tmp = base.join("Kopi.app.kopi-update-new"); // intentionally absent
+        let old = base.join("Kopi.app.kopi-update-old");
         write_marker(&target, "OLD");
         write_marker(&old, "OCCUPIED"); // non-empty => rename(target,old) fails
 
@@ -1248,9 +1248,9 @@ mod tests {
         // Move-aside succeeds but installing the staged bundle fails (tmp
         // absent). The original must be rolled back from `old` to `target`.
         let base = unique_tmp_dir("rollback");
-        let target = base.join("Hermes.app");
-        let tmp = base.join("Hermes.app.kopi-update-new"); // absent
-        let old = base.join("Hermes.app.kopi-update-old");
+        let target = base.join("Kopi.app");
+        let tmp = base.join("Kopi.app.kopi-update-new"); // absent
+        let old = base.join("Kopi.app.kopi-update-old");
         write_marker(&target, "OLD");
 
         let result = swap_in_new_bundle(&tmp, &target, &old).await;

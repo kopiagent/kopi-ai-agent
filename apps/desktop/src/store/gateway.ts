@@ -1,7 +1,7 @@
 import { type ConnectionState, type GatewayEvent, resolveGatewayWsUrl } from '@kopi/shared'
 import { atom } from 'nanostores'
 
-import { HermesGateway } from '@/kopi'
+import { KopiGateway } from '@/kopi'
 import { setGatewayState } from '@/store/session'
 
 // ── Multi-profile gateway routing ──────────────────────────────────────────
@@ -18,12 +18,12 @@ const normKey = (profile: string | null | undefined): string => (profile ?? '').
 
 // Read connection state through a call so TS control-flow analysis doesn't
 // narrow the getter to a constant across guards (it genuinely changes).
-const isOpen = (gateway: HermesGateway | null): boolean => gateway?.connectionState === 'open'
+const isOpen = (gateway: KopiGateway | null): boolean => gateway?.connectionState === 'open'
 
 // The active gateway instance, exposed for inline message-stream components
 // (e.g. inline ClarifyTool, model overlays) that call gateway methods without
 // the instance threaded down through props.
-export const $gateway = atom<HermesGateway | null>(null)
+export const $gateway = atom<KopiGateway | null>(null)
 
 interface RegistryConfig {
   onEvent: (event: GatewayEvent) => void
@@ -36,10 +36,10 @@ export function configureGatewayRegistry(cfg: RegistryConfig): void {
 }
 
 // ── Primary (window) backend ───────────────────────────────────────────────
-let primaryGateway: HermesGateway | null = null
+let primaryGateway: KopiGateway | null = null
 let primaryProfile = 'default'
 
-export function setPrimaryGateway(gateway: HermesGateway | null, profile = 'default'): void {
+export function setPrimaryGateway(gateway: KopiGateway | null, profile = 'default'): void {
   primaryGateway = gateway
   primaryProfile = normKey(profile)
 }
@@ -47,7 +47,7 @@ export function setPrimaryGateway(gateway: HermesGateway | null, profile = 'defa
 // ── Secondary (pool) backends ──────────────────────────────────────────────
 interface Secondary {
   profile: string
-  gateway: HermesGateway
+  gateway: KopiGateway
   offEvent: () => void
   offState: () => void
   reconnectTimer: ReturnType<typeof setTimeout> | null
@@ -66,7 +66,7 @@ export function isActivePrimary(): boolean {
   return activeKey === primaryProfile
 }
 
-export function activeGateway(): HermesGateway | null {
+export function activeGateway(): KopiGateway | null {
   if (activeKey === primaryProfile) {
     return primaryGateway
   }
@@ -151,7 +151,7 @@ async function reconnectSecondary(entry: Secondary): Promise<void> {
 }
 
 function createSecondary(profile: string): Secondary {
-  const gateway = new HermesGateway()
+  const gateway = new KopiGateway()
 
   const entry: Secondary = {
     profile,
@@ -164,7 +164,7 @@ function createSecondary(profile: string): Secondary {
     wantOpen: true
   }
 
-  entry.offEvent = gateway.onEvent(event => config?.onEvent(event))
+  entry.offEvent = gateway.onEvent(event => config?.onEvent({ ...event, profile }))
   entry.offState = gateway.onState(state => {
     reportGatewayState(profile, state)
 
@@ -216,7 +216,7 @@ export async function ensureGatewayForProfile(profile: string): Promise<void> {
 
 // Reconnect the active gateway after a transient request failure. Primary
 // reconnects are owned by use-gateway-boot, so we only drive secondaries here.
-export async function ensureActiveGatewayOpen(): Promise<HermesGateway | null> {
+export async function ensureActiveGatewayOpen(): Promise<KopiGateway | null> {
   if (activeKey === primaryProfile) {
     return primaryGateway
   }

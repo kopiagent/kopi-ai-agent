@@ -44,12 +44,14 @@ function appendUniquePathEntries(entries, { delimiter = path.delimiter } = {}) {
     if (!entry) {
       continue
     }
+
     const parts = Array.isArray(entry) ? entry : String(entry).split(delimiter)
 
     for (const part of parts) {
       if (!part || seen.has(part)) {
         continue
       }
+
       seen.add(part)
       ordered.push(part)
     }
@@ -59,25 +61,26 @@ function appendUniquePathEntries(entries, { delimiter = path.delimiter } = {}) {
 }
 
 function buildDesktopBackendPath({
-  hermesHome,
+  kopiHome,
   venvRoot,
   currentPath = '',
   platform = process.platform,
   pathModule = pathModuleForPlatform(platform)
 }: any = {}) {
   const delimiter = delimiterForPlatform(platform)
-  const hermesNodeBin = hermesHome ? pathModule.join(hermesHome, 'node', 'bin') : null
+  const kopiNodeBin = kopiHome ? pathModule.join(kopiHome, 'node', 'bin') : null
   const venvBin = venvRoot ? pathModule.join(venvRoot, platform === 'win32' ? 'Scripts' : 'bin') : null
   const saneEntries = platform === 'win32' ? [] : POSIX_SANE_PATH_ENTRIES
 
-  return appendUniquePathEntries([hermesNodeBin, venvBin, currentPath, saneEntries], { delimiter })
+  return appendUniquePathEntries([kopiNodeBin, venvBin, currentPath, saneEntries], { delimiter })
 }
 
-function normalizeHermesHomeRoot(hermesHome, { pathModule = pathModuleForPlatform(process.platform) }: any = {}) {
-  if (!hermesHome) {
-    return hermesHome
+function normalizeKopiHomeRoot(kopiHome, { pathModule = pathModuleForPlatform(process.platform) }: any = {}) {
+  if (!kopiHome) {
+    return kopiHome
   }
-  const resolved = pathModule.resolve(String(hermesHome))
+
+  const resolved = pathModule.resolve(String(kopiHome))
   const parent = pathModule.dirname(resolved)
 
   if (pathModule.basename(parent).toLowerCase() === 'profiles') {
@@ -88,7 +91,7 @@ function normalizeHermesHomeRoot(hermesHome, { pathModule = pathModuleForPlatfor
 }
 
 function buildDesktopBackendEnv({
-  hermesHome,
+  kopiHome,
   pythonPathEntries = [],
   venvRoot,
   currentEnv = process.env,
@@ -102,7 +105,7 @@ function buildDesktopBackendEnv({
   return {
     PYTHONPATH: appendUniquePathEntries([...pythonPathEntries, currentPythonPath], { delimiter }),
     [key]: buildDesktopBackendPath({
-      hermesHome,
+      kopiHome,
       venvRoot,
       currentPath: currentPathValue(currentEnv, platform),
       platform,
@@ -116,7 +119,7 @@ export {
   buildDesktopBackendEnv,
   buildDesktopBackendPath,
   delimiterForPlatform,
-  normalizeHermesHomeRoot,
+  normalizeKopiHomeRoot,
   pathEnvKey,
   POSIX_SANE_PATH_ENTRIES
 }

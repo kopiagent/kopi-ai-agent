@@ -56,7 +56,7 @@ curl -fsSL https://kopiaiagent.com/install.sh | bash
 
 ### Windows (native, PowerShell)
 
-> **Heads up:** Native Windows runs KOPI AI AGENT without WSL — CLI, gateway, TUI, and tools all work natively. If you'd rather use WSL2, the Linux one-liner above works there too. Found a bug? Please [file issues](https://github.com/LINYIQ66/kopi-ai-agent/issues).
+> **Heads up:** Native Windows runs KOPI AI AGENT without WSL — CLI, gateway, TUI, and tools all work natively. If you'd rather use WSL2, the Linux one-liner above works there too. Found a bug? Please [file issues](https://github.com/kopiagent/kopi-ai-agent/issues).
 
 Run this in PowerShell:
 
@@ -420,7 +420,7 @@ KOPI: 📊 SME Ad Report — Week of Jul 7
 
 ## Community
 
-- 🐛 [Issues](https://github.com/LINYIQ66/kopi-ai-agent/issues)
+- 🐛 [Issues](https://github.com/kopiagent/kopi-ai-agent/issues)
 - 🔌 [computer-use-linux](https://github.com/avifenesh/computer-use-linux) — Linux desktop-control MCP server with AT-SPI accessibility trees, Wayland/X11 input, screenshots, and compositor window targeting.
 - 🔌 [KOPI Claw](https://github.com/AaronWong1999/kopiclaw) — Community WeChat bridge: Run KOPI AI AGENT on WeChat.
 

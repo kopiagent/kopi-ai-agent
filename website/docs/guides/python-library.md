@@ -1,44 +1,44 @@
 ---
 sidebar_position: 5
-title: "Using Hermes as a Python Library"
+title: "Using Kopi as a Python Library"
 description: "Embed AIAgent in your own Python scripts, web apps, or automation pipelines — no CLI required"
 ---
 
-# Using Hermes as a Python Library
+# Using Kopi as a Python Library
 
-Hermes isn't just a CLI tool. You can import `AIAgent` directly and use it programmatically in your own Python scripts, web applications, or automation pipelines. This guide shows you how.
+Kopi isn't just a CLI tool. You can import `AIAgent` directly and use it programmatically in your own Python scripts, web applications, or automation pipelines. This guide shows you how.
 
 ---
 
 ## Installation
 
-Install Hermes directly from the repository:
+Install Kopi directly from the repository:
 
 ```bash
-pip install git+https://github.com/LINYIQ66/kopi-ai-agent.git
+pip install git+https://github.com/NousResearch/kopi-agent.git
 ```
 
 Or with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv pip install git+https://github.com/LINYIQ66/kopi-ai-agent.git
+uv pip install git+https://github.com/NousResearch/kopi-agent.git
 ```
 
 You can also pin it in your `requirements.txt`:
 
 ```text
-kopi-ai-agent @ git+https://github.com/LINYIQ66/kopi-ai-agent.git
+kopi-agent @ git+https://github.com/NousResearch/kopi-agent.git
 ```
 
 :::tip
-The same environment variables used by the CLI are required when using Hermes as a library. At minimum, set `OPENROUTER_API_KEY` (or `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` if using direct provider access).
+The same environment variables used by the CLI are required when using Kopi as a library. At minimum, set `OPENROUTER_API_KEY` (or `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` if using direct provider access).
 :::
 
 ---
 
 ## Basic Usage
 
-The simplest way to use Hermes is the `chat()` method — pass a message, get a string back:
+The simplest way to use Kopi is the `chat()` method — pass a message, get a string back:
 
 ```python
 from run_agent import AIAgent
@@ -54,7 +54,7 @@ print(response)
 `chat()` handles the full conversation loop internally — tool calls, retries, everything — and returns just the final text response.
 
 :::warning
-Always set `quiet_mode=True` when embedding Hermes in your own code. Without it, the agent prints CLI spinners, progress indicators, and other terminal output that will clutter your application's output.
+Always set `quiet_mode=True` when embedding Kopi in your own code. Without it, the agent prints CLI spinners, progress indicators, and other terminal output that will clutter your application's output.
 :::
 
 ---
@@ -187,7 +187,7 @@ This is ideal for building specialized agents — a code reviewer, a documentati
 
 ## Batch Processing
 
-For running many prompts in parallel, Hermes includes `batch_runner.py`. It manages concurrent `AIAgent` instances with proper resource isolation:
+For running many prompts in parallel, Kopi includes `batch_runner.py`. It manages concurrent `AIAgent` instances with proper resource isolation:
 
 ```bash
 python batch_runner.py --input prompts.jsonl --output results.jsonl

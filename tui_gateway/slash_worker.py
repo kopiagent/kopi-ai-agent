@@ -1,10 +1,10 @@
-"""Persistent slash-command worker — one HermesCLI per TUI session.
+"""Persistent slash-command worker — one KopiCLI per TUI session.
 
 Protocol: reads JSON lines from stdin {id, command}, writes {id, ok, output|error} to stdout.
 """
 
 # Stop a ``utils/`` (or ``proxy/``, ``ui/``) package in the launch directory
-# from shadowing Hermes's own top-level modules.  This worker is spawned as
+# from shadowing Kopi's own top-level modules.  This worker is spawned as
 # ``-m tui_gateway.slash_worker`` and inherits the user's CWD, so the ``import
 # cli`` below would otherwise resolve ``utils`` to a colliding local package
 # and crash the child in a retry loop (issue #51286).  ``kopi_bootstrap``
@@ -28,7 +28,7 @@ import time
 import psutil
 
 import cli as cli_mod
-from cli import HermesCLI
+from cli import KopiCLI
 from rich.console import Console
 
 # Env-overridable so the integration test can drive sub-second timing.
@@ -65,6 +65,27 @@ def _is_orphaned(original_ppid, parent_create_time, getppid=os.getppid) -> bool:
         return True
 
 
+def _prepare_slash_worker_runtime() -> None:
+    """Start bounded MCP discovery before KopiCLI snapshots tools.
+
+    Each slash_worker child is its own process — the parent ``kopi serve``
+    discovery thread does not populate this registry (issue #61891).
+    """
+    import logging
+
+    from kopi_cli.mcp_startup import (
+        start_background_mcp_discovery,
+        wait_for_mcp_discovery,
+    )
+
+    logger = logging.getLogger(__name__)
+    start_background_mcp_discovery(
+        logger=logger,
+        thread_name="slash-worker-mcp-discovery",
+    )
+    wait_for_mcp_discovery()
+
+
 def _start_parent_death_watchdog(original_ppid, parent_create_time) -> None:
     def _loop():
         while not _is_orphaned(original_ppid, parent_create_time):
@@ -77,7 +98,7 @@ def _start_parent_death_watchdog(original_ppid, parent_create_time) -> None:
     threading.Thread(target=_loop, daemon=True).start()
 
 
-def _run(cli: HermesCLI, command: str) -> str:
+def _run(cli: KopiCLI, command: str) -> str:
     cmd = (command or "").strip()
     if not cmd:
         return ""
@@ -121,7 +142,7 @@ def main():
     os.environ["KOPI_SESSION_KEY"] = args.session_key
     os.environ["KOPI_INTERACTIVE"] = "1"
 
-    # Start before the (hundreds-of-ms) HermesCLI build — that window is itself
+    # Start before the (hundreds-of-ms) KopiCLI build — that window is itself
     # an orphan risk if the gateway dies mid-spawn.
     orig_ppid = os.getppid()
     try:
@@ -129,9 +150,10 @@ def main():
     except psutil.Error:
         parent_create_time = 0.0
     _start_parent_death_watchdog(orig_ppid, parent_create_time)
+    _prepare_slash_worker_runtime()
 
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-        cli = HermesCLI(model=args.model or None, compact=True, resume=args.session_key, verbose=False)
+        cli = KopiCLI(model=args.model or None, compact=True, resume=args.session_key, verbose=False)
 
     for raw in sys.stdin:
         line = raw.strip()

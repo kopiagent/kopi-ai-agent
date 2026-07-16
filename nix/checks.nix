@@ -7,15 +7,15 @@
   perSystem = { pkgs, lib, self', ... }:
     let
       kopi-ai-agent = self'.packages.default;
-      hermesVenv = kopi-ai-agent.kopiVenv;
+      kopiVenv = kopi-ai-agent.kopiVenv;
 
       configMergeScript = pkgs.callPackage ./configMergeScript.nix { };
 
       # Auto-generated config key reference — always in sync with Python
-      configKeys = pkgs.runCommand "hermes-config-keys" {} ''
+      configKeys = pkgs.runCommand "kopi-config-keys" {} ''
         set -euo pipefail
         export HOME=$TMPDIR
-        ${hermesVenv}/bin/python3 -c '
+        ${kopiVenv}/bin/python3 -c '
 import json, sys
 from kopi_cli.config import DEFAULT_CONFIG
 
@@ -49,7 +49,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
           results = map (sys: { inherit sys; result = tryEvalPkg sys; }) targetSystems;
           failures = builtins.filter (r: !r.result.success) results;
           failMsg = lib.concatMapStringsSep "\n" (r: "  - ${r.sys}") failures;
-        in pkgs.runCommand "hermes-cross-eval" { } (
+        in pkgs.runCommand "kopi-cross-eval" { } (
           if failures != [] then
             throw "Package fails to evaluate on:\n${failMsg}"
           else ''
@@ -62,21 +62,21 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
         # Verify the default package builds successfully (cross-platform).
         # On Linux the runtime checks below already depend on the package,
         # but this ensures darwin builders also build it during flake check.
-        build-package = pkgs.runCommand "hermes-build-package" { } ''
+        build-package = pkgs.runCommand "kopi-build-package" { } ''
           echo "PASS: package built at ${kopi-ai-agent}"
           mkdir -p $out
           echo "ok" > $out/result
         '';
 
         # Verify the devShell builds successfully (cross-platform).
-        build-devshell = pkgs.runCommand "hermes-build-devshell" { } ''
+        build-devshell = pkgs.runCommand "kopi-build-devshell" { } ''
           echo "PASS: devShell built at ${self'.devShells.default}"
           mkdir -p $out
           echo "ok" > $out/result
         '';
       } // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
         # Verify binaries exist and are executable
-        package-contents = pkgs.runCommand "hermes-package-contents" { } ''
+        package-contents = pkgs.runCommand "kopi-package-contents" { } ''
           set -e
           echo "=== Checking binaries ==="
           test -x ${kopi-ai-agent}/bin/kopi || (echo "FAIL: kopi binary missing"; exit 1)
@@ -84,7 +84,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
           echo "PASS: All binaries present"
 
           echo "=== Checking version ==="
-          ${kopi-ai-agent}/bin/kopi version 2>&1 | grep -qi "hermes" || (echo "FAIL: version check"; exit 1)
+          ${kopi-ai-agent}/bin/kopi version 2>&1 | grep -qi "kopi" || (echo "FAIL: version check"; exit 1)
           echo "PASS: Version check"
 
           echo "=== All checks passed ==="
@@ -93,10 +93,10 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
         '';
 
         # Verify every pyproject.toml [project.scripts] entry has a wrapped binary
-        entry-points-sync = pkgs.runCommand "hermes-entry-points-sync" { } ''
+        entry-points-sync = pkgs.runCommand "kopi-entry-points-sync" { } ''
           set -e
           echo "=== Checking entry points match pyproject.toml [project.scripts] ==="
-          for bin in kopi kopi-ai-agent hermes-acp; do
+          for bin in kopi kopi-ai-agent kopi-acp; do
             test -x ${kopi-ai-agent}/bin/$bin || (echo "FAIL: $bin binary missing from Nix package"; exit 1)
             echo "PASS: $bin present"
           done
@@ -106,7 +106,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
         '';
 
         # Verify CLI subcommands are accessible
-        cli-commands = pkgs.runCommand "hermes-cli-commands" { } ''
+        cli-commands = pkgs.runCommand "kopi-cli-commands" { } ''
           set -e
           export HOME=$(mktemp -d)
 
@@ -121,7 +121,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
         '';
 
         # Verify bundled skills are present in the package
-        bundled-skills = pkgs.runCommand "hermes-bundled-skills" { } ''
+        bundled-skills = pkgs.runCommand "kopi-bundled-skills" { } ''
           set -e
           echo "=== Checking bundled skills ==="
           test -d ${kopi-ai-agent}/share/kopi-ai-agent/skills || (echo "FAIL: skills directory missing"; exit 1)
@@ -141,7 +141,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
         '';
 
         # Verify bundled plugins (platforms, memory, context_engine) are present
-        bundled-plugins = pkgs.runCommand "hermes-bundled-plugins" { } ''
+        bundled-plugins = pkgs.runCommand "kopi-bundled-plugins" { } ''
           set -e
           echo "=== Checking bundled plugins ==="
           test -d ${kopi-ai-agent}/share/kopi-ai-agent/plugins || (echo "FAIL: plugins directory missing"; exit 1)
@@ -163,7 +163,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
         # Verify bundled i18n locale catalogs are present and resolvable.
         # Regression for #23943 / #27632 / #35374 — sealed Nix venvs dropped
         # locales/, surfacing raw i18n keys like gateway.reset.header_default.
-        bundled-locales = pkgs.runCommand "hermes-bundled-locales" { } ''
+        bundled-locales = pkgs.runCommand "kopi-bundled-locales" { } ''
           set -e
           echo "=== Checking bundled locales ==="
           test -d ${kopi-ai-agent}/share/kopi-ai-agent/locales || (echo "FAIL: locales directory missing"; exit 1)
@@ -183,7 +183,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
           echo "=== Rendering via the wrapper override (KOPI_BUNDLED_LOCALES) ==="
           export HOME=$(mktemp -d)
           RENDERED=$(cd "$HOME" && KOPI_BUNDLED_LOCALES=${kopi-ai-agent}/share/kopi-ai-agent/locales \
-            ${hermesVenv}/bin/python3 -c "from agent import i18n; print(i18n.t('gateway.reset.header_default', lang='en'))")
+            ${kopiVenv}/bin/python3 -c "from agent import i18n; print(i18n.t('gateway.reset.header_default', lang='en'))")
           echo "rendered: $RENDERED"
           test "$RENDERED" != "gateway.reset.header_default" || (echo "FAIL: i18n returned the raw key with KOPI_BUNDLED_LOCALES set"; exit 1)
           echo "PASS: i18n renders a human string via the wrapper override"
@@ -194,8 +194,8 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
           # the wrapper override above would mask the regression at runtime while
           # `pip install`/other sealed paths silently break — this catches it.
           echo "=== Rendering WITHOUT the env var (data-files materialization) ==="
-          BARE_DIR=$(cd "$HOME" && ${hermesVenv}/bin/python3 -c "from agent import i18n; print(i18n._locales_dir())")
-          BARE=$(cd "$HOME" && ${hermesVenv}/bin/python3 -c "from agent import i18n; print(i18n.t('gateway.reset.header_default', lang='en'))")
+          BARE_DIR=$(cd "$HOME" && ${kopiVenv}/bin/python3 -c "from agent import i18n; print(i18n._locales_dir())")
+          BARE=$(cd "$HOME" && ${kopiVenv}/bin/python3 -c "from agent import i18n; print(i18n.t('gateway.reset.header_default', lang='en'))")
           echo "resolved dir (no env var): $BARE_DIR"
           echo "rendered: $BARE"
           test "$BARE" != "gateway.reset.header_default" || \
@@ -208,7 +208,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
         '';
 
         # Verify bundled TUI is present and compiled
-        bundled-tui = pkgs.runCommand "hermes-bundled-tui" { } ''
+        bundled-tui = pkgs.runCommand "kopi-bundled-tui" { } ''
           set -e
           echo "=== Checking bundled TUI ==="
           test -d ${kopi-ai-agent}/ui-tui || (echo "FAIL: ui-tui directory missing"; exit 1)
@@ -230,14 +230,14 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
 
         # Verify KOPI_NODE is set in wrapper and points to Node 20+
         # (string-width uses the /v regex flag which requires Node 20+)
-        hermes-node = pkgs.runCommand "hermes-node-version" { } ''
+        kopi-node = pkgs.runCommand "kopi-node-version" { } ''
           set -e
           echo "=== Checking KOPI_NODE in wrapper ==="
           grep -q "KOPI_NODE" ${kopi-ai-agent}/bin/kopi || \
             (echo "FAIL: KOPI_NODE not set in wrapper"; exit 1)
           echo "PASS: KOPI_NODE present in wrapper"
 
-          KOPI_NODE=$(sed -n "s/^export KOPI_NODE='\(.*\)'/\1/p" ${kopi-ai-agent}/bin/hermes)
+          KOPI_NODE=$(sed -n "s/^export KOPI_NODE='\(.*\)'/\1/p" ${kopi-ai-agent}/bin/kopi)
           test -x "$KOPI_NODE" || (echo "FAIL: KOPI_NODE=$KOPI_NODE not executable"; exit 1)
           echo "PASS: KOPI_NODE executable at $KOPI_NODE"
 
@@ -252,7 +252,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
         '';
 
         # Verify KOPI_MANAGED guard works on all mutation commands
-        managed-guard = pkgs.runCommand "hermes-managed-guard" { } ''
+        managed-guard = pkgs.runCommand "kopi-managed-guard" { } ''
           set -e
           export HOME=$(mktemp -d)
 
@@ -276,23 +276,23 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
         # Verify extraPythonPackages PYTHONPATH injection
         extra-python-packages = let
           testPkg = pkgs.python312Packages.pyfiglet;
-          hermesWithExtra = kopi-ai-agent.override {
+          kopiWithExtra = kopi-ai-agent.override {
             extraPythonPackages = [ testPkg ];
           };
-        in pkgs.runCommand "hermes-extra-python-packages" { } ''
+        in pkgs.runCommand "kopi-extra-python-packages" { } ''
           set -e
           echo "=== Checking extraPythonPackages PYTHONPATH injection ==="
 
-          grep -q "PYTHONPATH" ${hermesWithExtra}/bin/kopi || \
+          grep -q "PYTHONPATH" ${kopiWithExtra}/bin/kopi || \
             (echo "FAIL: PYTHONPATH not in wrapper"; exit 1)
           echo "PASS: PYTHONPATH present in wrapper"
 
-          grep -q "${testPkg}" ${hermesWithExtra}/bin/kopi || \
+          grep -q "${testPkg}" ${kopiWithExtra}/bin/kopi || \
             (echo "FAIL: test package path not in PYTHONPATH"; exit 1)
           echo "PASS: test package path found in wrapper"
 
           echo "=== Checking base package has no PYTHONPATH ==="
-          if grep -q "PYTHONPATH" ${kopi-ai-agent}/bin/hermes; then
+          if grep -q "PYTHONPATH" ${kopi-ai-agent}/bin/kopi; then
             echo "FAIL: base package should not have PYTHONPATH"; exit 1
           fi
           echo "PASS: base package clean"
@@ -304,18 +304,18 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
 
         # Verify extraDependencyGroups passes through to python.nix
         extra-dependency-groups = let
-          hermesWithGroups = kopi-ai-agent.override {
+          kopiWithGroups = kopi-ai-agent.override {
             extraDependencyGroups = [ "honcho" ];
           };
-        in pkgs.runCommand "hermes-extra-dependency-groups" { } ''
+        in pkgs.runCommand "kopi-extra-dependency-groups" { } ''
           set -e
           echo "=== Checking extraDependencyGroups override evaluates ==="
 
           # Eval-only: verify the override produces valid derivation paths
           # without building the full venv (which is expensive and redundant
           # since the mechanism is just list concatenation into python.nix).
-          echo "derivation: ${hermesWithGroups}"
-          echo "venv: ${hermesWithGroups.kopiVenv}"
+          echo "derivation: ${kopiWithGroups}"
+          echo "venv: ${kopiWithGroups.kopiVenv}"
           echo "PASS: extraDependencyGroups override evaluates cleanly"
 
           echo "=== All extraDependencyGroups checks passed ==="
@@ -326,7 +326,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
         # Regression guard: messaging deps live outside [all], so the
         # #messaging variant must actually ship discord.py — otherwise
         # `nix profile install .#messaging` regresses to the broken default.
-        messaging-variant = pkgs.runCommand "hermes-messaging-variant" { } ''
+        messaging-variant = pkgs.runCommand "kopi-messaging-variant" { } ''
           set -e
           echo "=== Checking discord.py importable from messaging variant ==="
           ${self'.packages.messaging.kopiVenv}/bin/python3 -c \
@@ -396,7 +396,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
                 - USER_VAR
           '';
 
-        in pkgs.runCommand "hermes-config-roundtrip" {
+        in pkgs.runCommand "kopi-config-roundtrip" {
           nativeBuildInputs = [ pkgs.jq ];
         } ''
           set -e
@@ -410,7 +410,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
             local kopi_home="$1"
             export KOPI_HOME="$kopi_home"
             ${configMergeScript} ${nixSettings} "$kopi_home/config.yaml"
-            ${hermesVenv}/bin/python3 -c '
+            ${kopiVenv}/bin/python3 -c '
 import json, sys
 from kopi_cli.config import load_config
 json.dump(load_config(), sys.stdout, default=str)

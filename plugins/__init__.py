@@ -1,1 +1,1 @@
-# Hermes plugins package
+# Kopi plugins package

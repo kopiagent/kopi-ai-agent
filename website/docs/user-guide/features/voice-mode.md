@@ -1,20 +1,20 @@
 ---
 sidebar_position: 10
 title: "Voice Mode"
-description: "Real-time voice conversations with KOPI AI AGENT — CLI, Telegram, Discord (DMs, text channels, and voice channels)"
+description: "Real-time voice conversations with Kopi Agent — CLI, Telegram, Discord (DMs, text channels, and voice channels)"
 ---
 
 # Voice Mode
 
-KOPI AI AGENT supports full voice interaction across CLI and messaging platforms. Talk to the agent using your microphone, hear spoken replies, and have live voice conversations in Discord voice channels.
+Kopi Agent supports full voice interaction across CLI and messaging platforms. Talk to the agent using your microphone, hear spoken replies, and have live voice conversations in Discord voice channels.
 
-If you want a practical setup walkthrough with recommended configurations and real usage patterns, see [Use Voice Mode with Hermes](/guides/use-voice-mode-with-hermes).
+If you want a practical setup walkthrough with recommended configurations and real usage patterns, see [Use Voice Mode with Kopi](/guides/use-voice-mode-with-kopi).
 
 ## Prerequisites
 
 Before using voice features, make sure you have:
 
-1. **KOPI AI AGENT installed** — via the install script (see [Installation](/getting-started/installation))
+1. **Kopi Agent installed** — via the install script (see [Installation](/getting-started/installation))
 2. **An LLM provider configured** — run `kopi model` or set your preferred provider credentials in `~/.kopi/.env`
 3. **A working base setup** — run `kopi` to verify the agent responds to text before enabling voice
 
@@ -40,19 +40,19 @@ A paid [KOPI Proxy](/user-guide/features/tool-gateway) subscription supplies the
 
 ```bash
 # CLI voice mode (microphone + audio playback)
-cd ~/.kopi/kopi-ai-agent && uv pip install -e ".[voice]"
+cd ~/.kopi/kopi-agent && uv pip install -e ".[voice]"
 
 # Discord + Telegram messaging (includes discord.py[voice] for VC support)
-cd ~/.kopi/kopi-ai-agent && uv pip install -e ".[messaging]"
+cd ~/.kopi/kopi-agent && uv pip install -e ".[messaging]"
 
 # Premium TTS (ElevenLabs)
-cd ~/.kopi/kopi-ai-agent && uv pip install -e ".[tts-premium]"
+cd ~/.kopi/kopi-agent && uv pip install -e ".[tts-premium]"
 
 # Local TTS (NeuTTS, optional)
 python -m pip install -U neutts[all]
 
 # Everything at once
-cd ~/.kopi/kopi-ai-agent && uv pip install -e ".[all]"
+cd ~/.kopi/kopi-agent && uv pip install -e ".[all]"
 ```
 
 | Extra | Packages | Required For |
@@ -195,7 +195,7 @@ The bot supports two interaction modes on Discord:
 
 **DM (recommended for personal use):** Just open a DM with the bot and type — no @mention needed. Voice replies and all commands work the same as in channels.
 
-**Server channels:** The bot only responds when you @mention it (e.g. `@hermesbyt4 hello`). Make sure you select the **bot user** from the mention popup, not the role with the same name.
+**Server channels:** The bot only responds when you @mention it (e.g. `@kopibyt4 hello`). Make sure you select the **bot user** from the mention popup, not the role with the same name.
 
 :::tip
 To disable the mention requirement in server channels, add to `~/.kopi/.env`:
@@ -487,7 +487,7 @@ brew install portaudio    # macOS
 sudo apt install portaudio19-dev  # Ubuntu
 ```
 
-If you are running Hermes inside Docker on a Linux desktop, the container also needs access to your host audio socket. See the [Docker audio bridge](/user-guide/docker#optional-linux-desktop-audio-bridge) notes for a PulseAudio/PipeWire-compatible setup.
+If you are running Kopi inside Docker on a Linux desktop, the container also needs access to your host audio socket. See the [Docker audio bridge](/user-guide/docker#optional-linux-desktop-audio-bridge) notes for a PulseAudio/PipeWire-compatible setup.
 
 ### Bot doesn't respond in Discord server channels
 

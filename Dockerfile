@@ -21,7 +21,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/kopi/.playwright
 
 # Install system dependencies in one layer, clear APT cache.
 # tini was previously PID 1 to reap orphaned zombie processes (MCP stdio
-# subprocesses, git, bun, etc.) that would otherwise accumulate when hermes
+# subprocesses, git, bun, etc.) that would otherwise accumulate when kopi
 # ran as PID 1. See #15012. Phase 2 of the s6-overlay supervision plan
 # replaces tini with s6-overlay's /init (PID 1 = s6-svscan), which reaps
 # zombies non-blockingly on SIGCHLD and additionally supervises the main
@@ -79,7 +79,7 @@ RUN set -eu; \
     rm /tmp/s6-overlay-*.tar.xz /tmp/s6-overlay.sha256; \
     # #34192: backward-compat shim for orchestration templates that still\
     # reference the legacy /usr/bin/tini entrypoint (e.g. Hostinger's\
-    # 'Hermes WebUI' catalog). The image has moved to s6-overlay /init\
+    # 'Kopi WebUI' catalog). The image has moved to s6-overlay /init\
     # as PID 1 (see ENTRYPOINT below + the migration comment at the top\
     # of this file), but external wrappers pinned to /usr/bin/tini will\
     # crash with 'tini: No such file or directory' on startup. The shim\
@@ -89,7 +89,7 @@ RUN set -eu; \
     ln -sf /init /usr/bin/tini
 
 # Non-root user for runtime; UID can be overridden via KOPI_UID at runtime
-RUN useradd -u 10000 -m -d /opt/data hermes
+RUN useradd -u 10000 -m -d /opt/data kopi
 
 COPY --chmod=0755 --from=uv_source /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/
 
@@ -105,22 +105,22 @@ RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && 
     ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
     ln -sf /usr/local/lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack
 
-WORKDIR /opt/hermes
+WORKDIR /opt/kopi
 
 # ---------- Layer-cached dependency install ----------
 # Copy only package manifests first so npm install + Playwright are cached
 # unless the lockfiles themselves change.
 #
-# ui-tui/packages/hermes-ink/ is copied IN FULL (not just its manifests)
+# ui-tui/packages/kopi-ink/ is copied IN FULL (not just its manifests)
 # because it is referenced as a `file:` workspace dependency from
 # ui-tui/package.json.  Copying the tree up front lets npm resolve the
 # workspace to real content instead of stopping at a bare package.json.
 COPY package.json package-lock.json ./
 COPY web/package.json web/
 COPY ui-tui/package.json ui-tui/
-COPY ui-tui/packages/hermes-ink/ ui-tui/packages/hermes-ink/
+COPY ui-tui/packages/kopi-ink/ ui-tui/packages/kopi-ink/
 # apps/shared/ is copied IN FULL because web/package.json references it as a
-# `file:` workspace dependency (same pattern as hermes-ink above).
+# `file:` workspace dependency (same pattern as kopi-ink above).
 COPY apps/shared/ apps/shared/
 
 # `npm_config_install_links=false` forces npm to install `file:` deps as
@@ -202,7 +202,7 @@ RUN cd web && npm run build && \
 COPY --link --chmod=a+rX,go-w . .
 
 # ---------- Permissions ----------
-# Link kopi-ai-agent itself (editable). Deps are already installed in the
+# Link kopi-agent itself (editable). Deps are already installed in the
 # cached layer above; `--no-deps` makes this a fast egg-link creation with no
 # resolution or downloads.
 RUN uv pip install --no-cache-dir --no-deps -e "."
@@ -213,7 +213,7 @@ RUN uv pip install --no-cache-dir --no-deps -e "."
 
 USER root
 RUN mkdir -p /opt/kopi/bin && \
-    cp /opt/kopi/docker/hermes-exec-shim.sh /opt/kopi/bin/kopi && \
+    cp /opt/kopi/docker/kopi-exec-shim.sh /opt/kopi/bin/kopi && \
     chmod 0755 /opt/kopi/bin/kopi && \
     printf 'docker\n' > /opt/kopi/.install_method
 # The ``.install_method`` stamp is baked next to the running code (the install
@@ -224,7 +224,7 @@ RUN mkdir -p /opt/kopi/bin && \
 # stamp is read first by detect_install_method() and is immune to the share.
 # Start as root so the s6-overlay stage2 hook can usermod/groupmod and chown
 # the data volume. Each supervised service then drops to the kopi user via
-# `s6-setuidgid hermes` in its run script. If KOPI_UID is unset, services
+# `s6-setuidgid kopi` in its run script. If KOPI_UID is unset, services
 # run as the default kopi user (UID 10000).
 
 # ---------- Bake build-time git revision ----------
@@ -259,7 +259,7 @@ COPY docker/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
 
 # stage2-hook handles UID/GID remap, volume chown, config seeding,
 # skills sync — all the work the old entrypoint.sh did before
-# `exec hermes`. Wired in as cont-init.d/01- so it
+# `exec kopi`. Wired in as cont-init.d/01- so it
 # runs before user services start.
 #
 # 02-reconcile-profiles re-creates per-profile gateway s6 service
@@ -267,8 +267,8 @@ COPY docker/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
 # (the /run/service/ scandir is tmpfs and wiped on restart). Phase 4.
 RUN mkdir -p /etc/cont-init.d && \
     printf '#!/command/with-contenv sh\nexec /opt/kopi/docker/stage2-hook.sh\n' \
-        > /etc/cont-init.d/01-hermes-setup && \
-    chmod +x /etc/cont-init.d/01-hermes-setup
+        > /etc/cont-init.d/01-kopi-setup && \
+    chmod +x /etc/cont-init.d/01-kopi-setup
 COPY --chmod=0755 docker/cont-init.d/015-supervise-perms /etc/cont-init.d/015-supervise-perms
 COPY --chmod=0755 docker/cont-init.d/02-reconcile-profiles /etc/cont-init.d/02-reconcile-profiles
 
@@ -312,12 +312,12 @@ ENV KOPI_LAZY_INSTALL_TARGET=/opt/data/lazy-packages
 # `docker exec <c> kopi ...` they default to root, and any file the
 # command writes under $KOPI_HOME (auth.json, .env, config.yaml) ends
 # up root-owned and unreadable to the supervised gateway (UID 10000).
-# The shim lives at /opt/kopi/bin/hermes, sits earliest on PATH, and
-# transparently re-exec's the real venv binary via `s6-setuidgid hermes`
+# The shim lives at /opt/kopi/bin/kopi, sits earliest on PATH, and
+# transparently re-exec's the real venv binary via `s6-setuidgid kopi`
 # when invoked as root. Non-root callers (supervised processes,
-# `--user hermes`, etc.) hit the short-circuit path with no overhead.
+# `--user kopi`, etc.) hit the short-circuit path with no overhead.
 # Recursion is impossible because the shim exec's the venv binary by
-# absolute path (/opt/kopi/.venv/bin/hermes). See the shim source for
+# absolute path (/opt/kopi/.venv/bin/kopi). See the shim source for
 # the opt-out env var (KOPI_DOCKER_EXEC_AS_ROOT=1).
 
 # Pre-s6 entrypoint.sh did `source .venv/bin/activate` which exported
@@ -325,7 +325,7 @@ ENV KOPI_LAZY_INSTALL_TARGET=/opt/data/lazy-packages
 # same for the container's main process, but `docker exec` and our
 # cont-init.d scripts don't pass through the wrapper. Expose the venv
 # bin globally so `docker exec <container> kopi ...` and any
-# subprocess that doesn't activate the venv first still find hermes.
+# subprocess that doesn't activate the venv first still find kopi.
 #
 # /opt/kopi/bin is prepended ahead of the venv so the privilege-drop
 # shim wins PATH resolution. The shim's last act is to exec the venv
@@ -352,7 +352,7 @@ VOLUME [ "/opt/data" ]
 #   docker run <image> sleep infinity   → /init main-wrapper.sh sleep infinity
 #   docker run <image> --tui            → /init main-wrapper.sh --tui
 #
-# main-wrapper.sh handles arg routing (bare-exec vs. hermes
+# main-wrapper.sh handles arg routing (bare-exec vs. kopi
 # subcommand vs. no-args), drops to the kopi user via s6-setuidgid,
 # and exec's the final program so its exit code becomes the container
 # exit code. Without the wrapper-as-ENTRYPOINT, leading-dash args

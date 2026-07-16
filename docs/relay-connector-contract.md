@@ -5,9 +5,9 @@
 > validated it. Evolution during the experimental phase is **additive-only**,
 > gated by `contract_version`. A breaking change updates both repos in lockstep.
 
-This document is the formal interface between the **Hermes gateway** (Python,
+This document is the formal interface between the **Kopi gateway** (Python,
 `gateway/relay/`) and the **connector** (Node/TypeScript,
-`Kopi Ai Agent Pte Ltd/gateway-gateway`). The connector implementer's first action is to
+`NousResearch/gateway-gateway`). The connector implementer's first action is to
 read this file.
 
 The gateway runs a generic `RelayAdapter` that dials **out** to the connector,
@@ -51,6 +51,7 @@ JSON object. Source of truth: `gateway/relay/descriptor.py`.
 | `emoji` | string | no | Display emoji (default 🔌). |
 | `platform_hint` | string | no | System-prompt platform hint. |
 | `pii_safe` | bool | no | Redact PII in session descriptions. |
+| `supports_context` | bool | no | Whether the connector can supply surrounding channel/group **context** for an addressed turn on this platform (Model A on-demand history fetch — Discord/Slack/Matrix; Model B passive buffer — Telegram/Signal/WhatsApp). Default false ⇒ no `context` is attached to inbound events. See §3. |
 
 Most fields are a projection of the gateway's existing `PlatformEntry`; the
 runtime-only fields (`len_unit`, `supports_*`, `markdown_dialect`) come from the
@@ -94,6 +95,24 @@ Frames (connector → gateway, over the WS):
 - `{"type":"inbound", "event": <MessageEvent>, "bufferId"?}`
 - `{"type":"interrupt_inbound", "session_key", "chat_id"}` (§5)
 - `{"type":"passthrough_forward", "forward": <PassthroughForward>, "bufferId"?}` (§5.1)
+
+**Channel context on inbound (design relay-channel-context).** When the source
+platform's descriptor advertised `supports_context` (§2) and the chat is
+multi-party (`chat_type` ∈ group/channel/thread/forum, never `dm`), the
+connector MAY attach two optional, additive fields to the inbound `MessageEvent`:
+
+- `context`: an array of read-only surrounding messages (same channel, oldest→
+  newest) — nearby non-addressed chatter the connector fetched (Model A) or
+  buffered (Model B). REFERENCE ONLY: it never triggers the agent (the trigger
+  decision was already made connector-side on the addressed event alone). The
+  gateway renders it into `MessageEvent.channel_context` (the same read-only
+  injection path history-backfill uses).
+- `context_error`: bool, true when the platform is context-capable but the
+  fetch/buffer failed and the connector fail-opened to an empty `context`
+  (observability marker; surfaced connector-side via the delivery span).
+
+Both absent ⇒ byte-identical to today. A connector that never sends them, or a
+`dm`, or a no-context platform, yields no `channel_context`.
 
 `PassthroughForward` is the wire form of a forwarded passthrough-plane request
 (Class-2/3 webhooks — Discord interactions, Twilio): `{platform, botId, method,
@@ -502,7 +521,7 @@ The composition only ever **narrows** delivery (`deliver ⇔ authorized ∧ visi
 message always reaches their own instance — you don't @mention your own agent).
 A message authored by an unbound user reaches no instance (fail-closed). The
 full design + invariants live in the connector repo
-(`Kopi Ai Agent Pte Ltd/gateway-gateway`); this section is the gateway-facing summary.
+(`NousResearch/gateway-gateway`); this section is the gateway-facing summary.
 
 ### 7.2 Management routes (connector-side, authenticated)
 

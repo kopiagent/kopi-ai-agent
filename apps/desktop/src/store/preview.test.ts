@@ -48,8 +48,8 @@ describe('preview store', () => {
     $previewServerRestart.set(null)
     $activeSessionId.set(null)
     $selectedStoredSessionId.set(null)
-    window.localStorage.clear()
     clearSessionPreviewRegistry()
+    window.localStorage.clear()
   })
 
   it('does not notify status subscribers for restart progress text', () => {
@@ -72,7 +72,7 @@ describe('preview store', () => {
     expect($previewTarget.get()).toEqual(withRenderMode(target, 'preview'))
     expect($paneOpen(PREVIEW_PANE_ID).get()).toBe(true)
     expect(getSessionPreviewRecord('session-1')?.normalized).toEqual(withRenderMode(target, 'preview'))
-    expect(window.localStorage.getItem('hermes.desktop.sessionPreviews.v1')).toContain('/work/demo.html')
+    expect(window.localStorage.getItem('kopi.desktop.sessionPreviews.v1')).toContain('/work/demo.html')
 
     dismissPreviewTarget()
 

@@ -1,23 +1,24 @@
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
+
+import { test } from 'vitest'
 
 import { expandWindowsEnvRefs, parseRegQueryValue, readWindowsUserEnvVar } from './windows-user-env'
 
 // ── parseRegQueryValue ─────────────────────────────────────────────────────
 
 test('parseRegQueryValue extracts a REG_SZ value', () => {
-  const out = ['', 'HKEY_CURRENT_USER\\Environment', '    KOPI_HOME    REG_SZ    F:\\Hermes\\data', ''].join('\r\n')
-  assert.equal(parseRegQueryValue(out, 'KOPI_HOME'), 'F:\\Hermes\\data')
+  const out = ['', 'HKEY_CURRENT_USER\\Environment', '    KOPI_HOME    REG_SZ    F:\\Kopi\\data', ''].join('\r\n')
+  assert.equal(parseRegQueryValue(out, 'KOPI_HOME'), 'F:\\Kopi\\data')
 })
 
 test('parseRegQueryValue matches the name case-insensitively', () => {
-  const out = 'HKEY_CURRENT_USER\\Environment\r\n    Hermes_Home    REG_EXPAND_SZ    %USERPROFILE%\\h\r\n'
+  const out = 'HKEY_CURRENT_USER\\Environment\r\n    Kopi_Home    REG_EXPAND_SZ    %USERPROFILE%\\h\r\n'
   assert.equal(parseRegQueryValue(out, 'KOPI_HOME'), '%USERPROFILE%\\h')
 })
 
 test('parseRegQueryValue preserves spaces inside the value', () => {
-  const out = '    KOPI_HOME    REG_SZ    C:\\Program Files\\Hermes\r\n'
-  assert.equal(parseRegQueryValue(out, 'KOPI_HOME'), 'C:\\Program Files\\Hermes')
+  const out = '    KOPI_HOME    REG_SZ    C:\\Program Files\\Kopi\r\n'
+  assert.equal(parseRegQueryValue(out, 'KOPI_HOME'), 'C:\\Program Files\\Kopi')
 })
 
 test('parseRegQueryValue returns null when the value line is absent', () => {
@@ -34,7 +35,7 @@ test('expandWindowsEnvRefs expands %VAR% case-insensitively', () => {
 })
 
 test('expandWindowsEnvRefs leaves literal paths and unknown refs intact', () => {
-  assert.equal(expandWindowsEnvRefs('F:\\Hermes\\data', {}), 'F:\\Hermes\\data')
+  assert.equal(expandWindowsEnvRefs('F:\\Kopi\\data', {}), 'F:\\Kopi\\data')
   assert.equal(expandWindowsEnvRefs('%NOPE%\\x', {}), '%NOPE%\\x')
 })
 
@@ -59,7 +60,7 @@ test('readWindowsUserEnvVar queries HKCU\\Environment and expands the value', ()
   const exec = (cmd, args) => {
     calls.push([cmd, args])
 
-    return 'HKEY_CURRENT_USER\\Environment\r\n    KOPI_HOME    REG_EXPAND_SZ    %DRIVE%\\Hermes\r\n'
+    return 'HKEY_CURRENT_USER\\Environment\r\n    KOPI_HOME    REG_EXPAND_SZ    %DRIVE%\\Kopi\r\n'
   }
 
   const value = readWindowsUserEnvVar('KOPI_HOME', {
@@ -68,7 +69,7 @@ test('readWindowsUserEnvVar queries HKCU\\Environment and expands the value', ()
     exec
   })
 
-  assert.equal(value, 'F:\\Hermes')
+  assert.equal(value, 'F:\\Kopi')
   assert.deepEqual(calls, [['reg', ['query', 'HKCU\\Environment', '/v', 'KOPI_HOME']]])
 })
 

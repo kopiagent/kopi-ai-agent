@@ -8,7 +8,7 @@ description: "Give the agent its own dedicated email inbox via AgentMail"
 
 # Agentmail
 
-Give the agent its own dedicated email inbox via AgentMail. Send, receive, and manage email autonomously using agent-owned email addresses (e.g. kopi-ai-agent@agentmail.to).
+Give the agent its own dedicated email inbox via AgentMail. Send, receive, and manage email autonomously using agent-owned email addresses (e.g. kopi-agent@agentmail.to).
 
 ## Skill metadata
 
@@ -23,7 +23,7 @@ Give the agent its own dedicated email inbox via AgentMail. Send, receive, and m
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Kopi loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # AgentMail — Agent-Owned Email Inboxes
@@ -62,9 +62,9 @@ mcp_servers:
       AGENTMAIL_API_KEY: "am_your_key_here"
 ```
 
-### 3. Restart Hermes
+### 3. Restart Kopi
 ```bash
-hermes
+kopi
 ```
 All 11 AgentMail tools are now available automatically.
 
@@ -88,8 +88,8 @@ All 11 AgentMail tools are now available automatically.
 
 ### Create an inbox and send an email
 1. Create a dedicated inbox:
-   - Use `create_inbox` with a username (e.g. `kopi-ai-agent`)
-   - The agent gets address: `kopi-ai-agent@agentmail.to`
+   - Use `create_inbox` with a username (e.g. `kopi-agent`)
+   - The agent gets address: `kopi-agent@agentmail.to`
 2. Send an email:
    - Use `send_message` with `inbox_id`, `to`, `subject`, `text`
 3. Check for replies:

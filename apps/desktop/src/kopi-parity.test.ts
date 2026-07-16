@@ -16,12 +16,12 @@ import {
   testMcpServer
 } from './kopi'
 
-describe('Hermes REST parity helpers (hub / mcp / maintenance)', () => {
+describe('Kopi REST parity helpers (hub / mcp / maintenance)', () => {
   let api: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     api = vi.fn().mockResolvedValue({})
-    Object.defineProperty(window, 'hermesDesktop', {
+    Object.defineProperty(window, 'kopiDesktop', {
       configurable: true,
       value: { api }
     })
@@ -29,7 +29,7 @@ describe('Hermes REST parity helpers (hub / mcp / maintenance)', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
-    Reflect.deleteProperty(window, 'hermesDesktop')
+    Reflect.deleteProperty(window, 'kopiDesktop')
   })
 
   it('loads hub sources with a network-tolerant timeout', async () => {

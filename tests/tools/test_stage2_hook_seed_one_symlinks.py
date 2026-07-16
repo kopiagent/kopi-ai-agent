@@ -57,7 +57,7 @@ def test_seed_one_refuses_symlinked_destinations(
         "set -e\n"
         f'KOPI_HOME="{home}"\n'
         f'INSTALL_DIR="{install_dir}"\n'
-        "as_hermes() { \"$@\"; }\n"
+        "as_kopi() { \"$@\"; }\n"
         f"{_path_guard_functions(stage2_text)}\n"
         f"{_seed_one_function(stage2_text)}\n"
         'seed_one ".env" ".env.example"\n'
@@ -96,7 +96,7 @@ def test_seed_one_is_quiet_for_existing_symlinked_files(
         "set -e\n"
         f'KOPI_HOME="{home}"\n'
         f'INSTALL_DIR="{install_dir}"\n'
-        "as_hermes() { \"$@\"; }\n"
+        "as_kopi() { \"$@\"; }\n"
         f"{_path_guard_functions(stage2_text)}\n"
         f"{_seed_one_function(stage2_text)}\n"
         'seed_one ".env" ".env.example"\n'

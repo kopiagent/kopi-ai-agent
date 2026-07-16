@@ -2,11 +2,11 @@
 name: jupyter-live-kernel
 description: "Iterative Python via live Jupyter kernel (hamelnb)."
 version: 1.0.0
-author: KOPI AI AGENT
+author: Kopi Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
-  hermes:
+  kopi:
     tags: [jupyter, notebook, repl, data-science, exploration, iterative]
     category: data-science
 ---

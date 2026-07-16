@@ -603,7 +603,7 @@ def _find_skill(name: str) -> Optional[Dict[str, Any]]:
 
 
 def _find_skill_in_other_profiles(name: str) -> List[Tuple[str, Path]]:
-    """Look for ``name`` under SKILL.md across OTHER Hermes profiles.
+    """Look for ``name`` under SKILL.md across OTHER Kopi profiles.
 
     Returns a list of ``(profile_name, skill_dir)`` pairs. Used to make
     the "Skill X not found" error explain when the user is editing the
@@ -1390,6 +1390,12 @@ def skill_manage(
         try:
             from agent.prompt_builder import clear_skills_system_prompt_cache
             clear_skills_system_prompt_cache(clear_snapshot=True)
+        except Exception:
+            pass
+        # Best-effort Obsidian sediment of skills (opt-in; no-op otherwise).
+        try:
+            from tools.obsidian_sync import trigger_auto_sync
+            trigger_auto_sync("skills")
         except Exception:
             pass
         # Curator telemetry: bump patch_count on edit/patch/write_file (the actions

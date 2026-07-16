@@ -31,7 +31,13 @@ Use `search_files` with `target: "files"` and the resolved vault path. Prefer th
 
 ## Search
 
-Use `search_files` for both filename and content searches. Prefer this over `grep`, `find`, or `ls`.
+**For finding notes by meaning/topic — the usual case — prefer the `obsidian_query`
+tool** (`action: "search"`). It ranks results (BM25), handles Chinese/CJK text, and
+can also do backlinks, Dataview-style frontmatter queries, and link-graph traversal.
+`search_files` is a plain regex/filename sweep with no ranking and misses CJK content.
+
+Use `search_files` only for an exact filename listing or a raw regex sweep where you
+specifically don't want ranking. Prefer it over `grep`, `find`, or `ls`.
 
 - For filenames, use `search_files` with `target: "files"` and a filename `pattern`.
 - For note contents, use `search_files` with `target: "content"`, the content regex as `pattern`, and `file_glob: "*.md"` when you want to restrict matches to markdown notes.

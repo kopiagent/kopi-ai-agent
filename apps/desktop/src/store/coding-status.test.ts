@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { HermesRepoStatus } from '@/global'
+import type { KopiRepoStatus } from '@/global'
 
 import { $repoStatus, refreshRepoStatus } from './coding-status'
 import { $currentCwd } from './session'
 
-const sampleStatus: HermesRepoStatus = {
+const sampleStatus: KopiRepoStatus = {
   branch: 'feature/login',
   defaultBranch: 'main',
   detached: false,
@@ -21,19 +21,19 @@ const sampleStatus: HermesRepoStatus = {
   files: []
 }
 
-function stubProbe(impl: (cwd: string) => Promise<HermesRepoStatus | null>) {
-  ;(window as unknown as { hermesDesktop?: unknown }).kopiDesktop = { git: { repoStatus: impl } }
+function stubProbe(impl: (cwd: string) => Promise<KopiRepoStatus | null>) {
+  ;(window as unknown as { kopiDesktop?: unknown }).kopiDesktop = { git: { repoStatus: impl } }
 }
 
 describe('refreshRepoStatus', () => {
   beforeEach(() => {
     $repoStatus.set(null)
     $currentCwd.set('')
-    delete (window as unknown as { hermesDesktop?: unknown }).kopiDesktop
+    delete (window as unknown as { kopiDesktop?: unknown }).kopiDesktop
   })
 
   afterEach(() => {
-    delete (window as unknown as { hermesDesktop?: unknown }).kopiDesktop
+    delete (window as unknown as { kopiDesktop?: unknown }).kopiDesktop
   })
 
   it('populates $repoStatus from the probe for an explicit cwd', async () => {

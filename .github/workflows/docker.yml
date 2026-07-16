@@ -17,12 +17,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  IMAGE_NAME: nousresearch/kopi-ai-agent
+  IMAGE_NAME: nousresearch/kopi-agent
 
 jobs:
   # Build, test, and optionally push the image for each architecture.
   build:
-    if: github.repository == 'Kopi Ai Agent Pte Ltd/kopi-ai-agent'
+    if: github.repository == 'NousResearch/kopi-agent'
     strategy:
       fail-fast: false
       matrix:
@@ -155,7 +155,7 @@ jobs:
   # On releases: tags :<release_tag_name>.
   # ---------------------------------------------------------------------------
   merge:
-    if: github.repository == 'Kopi Ai Agent Pte Ltd/kopi-ai-agent' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release')
+    if: github.repository == 'NousResearch/kopi-agent' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release')
     runs-on: ubuntu-latest
     needs: [build]
     timeout-minutes: 10

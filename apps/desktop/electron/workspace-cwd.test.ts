@@ -6,11 +6,12 @@
 
 import assert from 'node:assert/strict'
 import path from 'node:path'
-import test from 'node:test'
+
+import { test } from 'vitest'
 
 import { isPackagedInstallPath } from './workspace-cwd'
 
-const installRoot = path.resolve('/opt/Hermes')
+const installRoot = path.resolve('/opt/Kopi')
 
 test('isPackagedInstallPath returns false when not packaged', () => {
   assert.equal(isPackagedInstallPath(installRoot, { isPackaged: false, installRoots: [installRoot] }), false)

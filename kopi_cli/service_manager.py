@@ -129,12 +129,12 @@ def detect_service_manager() -> ServiceManagerKind:
 def _s6_running() -> bool:
     """True when s6-svscan is running as PID 1 in this container.
 
-    Detection has to work for **both** root and the unprivileged hermes
+    Detection has to work for **both** root and the unprivileged kopi
     user (UID 10000). The obvious probe — ``Path('/proc/1/exe').resolve()``
     — only works as root: for any other UID, the symlink at
     ``/proc/1/exe`` is unreadable and ``resolve()`` silently returns the
     path unchanged, so the resolved name is the literal ``"exe"`` and
-    detection always fails. Since every Hermes runtime call inside the
+    detection always fails. Since every Kopi runtime call inside the
     container drops to kopi via ``s6-setuidgid``, that silent failure
     made the entire service-manager runtime-registration path inert in
     production (PR #30136 review).
@@ -424,7 +424,7 @@ def _seed_supervise_skeleton(svc_dir: Path) -> None:
     ``0700``. It also ``mkfifo``s ``<svc>/supervise/control`` with mode
     ``0600``. Because s6-supervise runs as PID 1's effective UID (root)
     these dirs end up root-owned mode 0700, and an unprivileged client
-    (the ``kopi`` user — UID 10000 — running every Hermes runtime
+    (the ``kopi`` user — UID 10000 — running every Kopi runtime
     operation via ``s6-setuidgid``) gets ``EACCES`` on any ``s6-svc``,
     ``s6-svstat``, or ``s6-svwait`` invocation against the slot.
 
@@ -636,7 +636,7 @@ class S6ServiceManager:
              unprivileged gateway process.
           3. Activates the bundled venv.
           4. Drops to the kopi user and exec's
-             ``kopi -p <profile> gateway run`` (or just ``hermes
+             ``kopi -p <profile> gateway run`` (or just ``kopi
              gateway run`` for the default profile — see below).
 
         Special case: ``profile == "default"`` emits ``kopi gateway

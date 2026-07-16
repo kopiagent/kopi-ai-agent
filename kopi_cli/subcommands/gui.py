@@ -17,7 +17,7 @@ def build_gui_parser(subparsers, *, cmd_gui: Callable) -> None:
         aliases=["gui"],
         help="Build and launch the native desktop app",
         description=(
-            "Launch the Hermes Electron desktop app. By default this installs "
+            "Launch the Kopi Electron desktop app. By default this installs "
             "workspace Node dependencies, builds the current OS's unpacked "
             "Electron app, then launches that packaged artifact."
         ),
@@ -44,7 +44,7 @@ def build_gui_parser(subparsers, *, cmd_gui: Callable) -> None:
     )
     gui_parser.add_argument(
         "--kopi-root",
-        help="Override the Hermes source root used by Desktop (sets KOPI_DESKTOP_KOPI_ROOT)",
+        help="Override the Kopi source root used by Desktop (sets KOPI_DESKTOP_KOPI_ROOT)",
     )
     gui_parser.add_argument(
         "--cwd",

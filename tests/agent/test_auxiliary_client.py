@@ -2611,7 +2611,7 @@ class TestAuxiliaryFallbackLayering:
         )
 
     def test_fallback_entry_openai_codex_uses_oauth_pool_without_inline_key(self):
-        """Configured Codex fallback resolves through Hermes auth / credential pool."""
+        """Configured Codex fallback resolves through Kopi auth / credential pool."""
         from agent.auxiliary_client import _resolve_fallback_entry
 
         pool_entry = MagicMock()
@@ -2917,7 +2917,7 @@ class TestTransientTransportRetry:
 
 class TestAuxClientNoSdkRetries:
     """Auxiliary OpenAI clients are constructed with SDK-internal retries
-    disabled so Hermes owns the retry/timeout budget (issue #54465). The SDK
+    disabled so Kopi owns the retry/timeout budget (issue #54465). The SDK
     default (max_retries=2 → 3 attempts) silently triples the effective wall
     time of every aux call against a slow/hung endpoint.
     """
@@ -3241,6 +3241,122 @@ class TestAuxiliaryTaskExtraBody:
         assert result is response
         kwargs = client.chat.completions.create.call_args.kwargs
         assert kwargs["extra_body"]["enable_thinking"] is True
+
+    def test_reasoning_effort_shorthand_folds_into_extra_body(self):
+        """auxiliary.<task>.reasoning_effort becomes extra_body.reasoning."""
+        client = MagicMock()
+        client.base_url = "https://api.example.com/v1"
+        client.chat.completions.create.return_value = MagicMock()
+
+        config = {
+            "auxiliary": {
+                "session_search": {"reasoning_effort": "low"}
+            }
+        }
+
+        with patch("kopi_cli.config.load_config", return_value=config), patch(
+            "agent.auxiliary_client._get_cached_client",
+            return_value=(client, "glm-4.5-air"),
+        ):
+            call_llm(
+                task="session_search",
+                messages=[{"role": "user", "content": "hello"}],
+            )
+
+        kwargs = client.chat.completions.create.call_args.kwargs
+        assert kwargs["extra_body"]["reasoning"] == {"enabled": True, "effort": "low"}
+
+    def test_reasoning_effort_none_disables(self):
+        client = MagicMock()
+        client.base_url = "https://api.example.com/v1"
+        client.chat.completions.create.return_value = MagicMock()
+
+        config = {"auxiliary": {"session_search": {"reasoning_effort": "none"}}}
+
+        with patch("kopi_cli.config.load_config", return_value=config), patch(
+            "agent.auxiliary_client._get_cached_client",
+            return_value=(client, "glm-4.5-air"),
+        ):
+            call_llm(task="session_search", messages=[{"role": "user", "content": "hi"}])
+
+        kwargs = client.chat.completions.create.call_args.kwargs
+        assert kwargs["extra_body"]["reasoning"] == {"enabled": False}
+
+    def test_explicit_extra_body_reasoning_wins_over_shorthand(self):
+        """config extra_body.reasoning beats the reasoning_effort shorthand."""
+        client = MagicMock()
+        client.base_url = "https://api.example.com/v1"
+        client.chat.completions.create.return_value = MagicMock()
+
+        config = {
+            "auxiliary": {
+                "session_search": {
+                    "reasoning_effort": "xhigh",
+                    "extra_body": {"reasoning": {"effort": "none"}},
+                }
+            }
+        }
+
+        with patch("kopi_cli.config.load_config", return_value=config), patch(
+            "agent.auxiliary_client._get_cached_client",
+            return_value=(client, "glm-4.5-air"),
+        ):
+            call_llm(task="session_search", messages=[{"role": "user", "content": "hi"}])
+
+        kwargs = client.chat.completions.create.call_args.kwargs
+        assert kwargs["extra_body"]["reasoning"] == {"effort": "none"}
+
+    def test_invalid_reasoning_effort_ignored_with_warning(self, caplog):
+        client = MagicMock()
+        client.base_url = "https://api.example.com/v1"
+        client.chat.completions.create.return_value = MagicMock()
+
+        config = {"auxiliary": {"session_search": {"reasoning_effort": "warp9"}}}
+
+        with patch("kopi_cli.config.load_config", return_value=config), patch(
+            "agent.auxiliary_client._get_cached_client",
+            return_value=(client, "glm-4.5-air"),
+        ), caplog.at_level(logging.WARNING, logger="agent.auxiliary_client"):
+            call_llm(task="session_search", messages=[{"role": "user", "content": "hi"}])
+
+        kwargs = client.chat.completions.create.call_args.kwargs
+        assert "reasoning" not in (kwargs.get("extra_body") or {})
+        assert any("reasoning_effort" in rec.message for rec in caplog.records)
+
+    def test_empty_reasoning_effort_is_noop(self):
+        """The DEFAULT_CONFIG ships reasoning_effort: '' — must add nothing."""
+        from agent.auxiliary_client import _get_task_extra_body
+
+        config = {"auxiliary": {"session_search": {"reasoning_effort": ""}}}
+        with patch("kopi_cli.config.load_config", return_value=config):
+            assert _get_task_extra_body("session_search") == {}
+
+    def test_anthropic_aux_client_forwards_extra_body_reasoning(self):
+        """_AnthropicCompletionsAdapter passes extra_body.reasoning into
+        build_anthropic_kwargs as reasoning_config."""
+        from agent.auxiliary_client import _AnthropicCompletionsAdapter
+
+        adapter = _AnthropicCompletionsAdapter(MagicMock(), "claude-sonnet-4-6", is_oauth=False)
+
+        with patch("agent.anthropic_adapter.build_anthropic_kwargs",
+                   return_value={"model": "claude-sonnet-4-6", "messages": [], "max_tokens": 64}) as mock_bak, \
+             patch("agent.anthropic_adapter.create_anthropic_message") as mock_create, \
+             patch("agent.transports.get_transport") as mock_gt:
+            mock_gt.return_value.normalize_response.return_value = MagicMock(
+                content="ok", tool_calls=None, reasoning=None, finish_reason="stop",
+                usage=None, provider_data=None,
+            )
+            adapter.create(
+                model="claude-sonnet-4-6",
+                messages=[{"role": "user", "content": "hi"}],
+                max_tokens=64,
+                extra_body={"reasoning": {"enabled": True, "effort": "low"}},
+            )
+
+        assert mock_bak.call_args.kwargs["reasoning_config"] == {
+            "enabled": True, "effort": "low",
+        }
+        mock_create.assert_called_once()
 
     def test_no_warning_when_provider_is_custom(self, monkeypatch, caplog):
         """No warning when the provider is 'custom' — OPENAI_BASE_URL is expected."""
@@ -4050,6 +4166,97 @@ class TestCodexAdapterPromptCacheKey:
         assert "prompt_cache_key" not in captured
 
 
+class TestCodexAdapterGithubResponsesMessageIdDrop:
+    """_CodexCompletionsAdapter must drop codex_message_items ``id`` when
+    talking to Copilot (githubcopilot.com), independent of the main
+    transport's build_kwargs path. Auxiliary calls (context compression,
+    flush_memories, MoA aggregation) route through this adapter instead of
+    agent/transports/codex.py, so they need the same #32716 guard applied
+    separately — Copilot binds replayed ids to a backend "connection" that
+    doesn't survive credential rotation/gateway restarts, and rejects a
+    stale id with HTTP 401 regardless of its length.
+    """
+
+    @staticmethod
+    def _build_adapter(base_url):
+        from agent.auxiliary_client import _CodexCompletionsAdapter
+        from types import SimpleNamespace
+
+        message_item = SimpleNamespace(
+            type="message", role="assistant", status="completed",
+            content=[SimpleNamespace(type="output_text", text="hi")],
+        )
+        events = [
+            SimpleNamespace(type="response.created"),
+            SimpleNamespace(type="response.output_item.done", item=message_item),
+            SimpleNamespace(
+                type="response.completed",
+                response=SimpleNamespace(
+                    status="completed", id="resp_test",
+                    usage=SimpleNamespace(input_tokens=1, output_tokens=1, total_tokens=2),
+                ),
+            ),
+        ]
+
+        class _FakeCreateStream:
+            def __iter__(self): return iter(events)
+            def close(self): pass
+
+        captured_kwargs = {}
+
+        def _create(**kwargs):
+            captured_kwargs.update(kwargs)
+            return _FakeCreateStream()
+
+        real_client = MagicMock()
+        real_client.base_url = base_url
+        real_client.responses.create = _create
+        adapter = _CodexCompletionsAdapter(real_client, "gpt-5.5")
+        return adapter, captured_kwargs
+
+    @staticmethod
+    def _replay_messages():
+        return [
+            {"role": "system", "content": "You are helpful."},
+            {
+                "role": "assistant",
+                "content": "pong",
+                "codex_message_items": [
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "status": "in_progress",
+                        "content": [{"type": "output_text", "text": "pong"}],
+                        "id": "msg_short_but_connection_scoped",
+                        "phase": "final_answer",
+                    }
+                ],
+            },
+            {"role": "user", "content": "continue"},
+        ]
+
+    def test_drops_message_id_for_github_copilot_host(self):
+        adapter, captured = self._build_adapter(base_url="https://api.githubcopilot.com")
+        adapter.create(messages=self._replay_messages())
+        message_item = next(
+            item for item in captured["input"] if item.get("type") == "message"
+        )
+        assert "id" not in message_item
+        assert message_item["phase"] == "final_answer"
+        assert message_item["status"] == "in_progress"
+        assert message_item["content"] == [{"type": "output_text", "text": "pong"}]
+
+    def test_keeps_message_id_for_codex_backend_host(self):
+        adapter, captured = self._build_adapter(
+            base_url="https://chatgpt.com/backend-api/codex"
+        )
+        adapter.create(messages=self._replay_messages())
+        message_item = next(
+            item for item in captured["input"] if item.get("type") == "message"
+        )
+        assert message_item["id"] == "msg_short_but_connection_scoped"
+
+
 class TestVisionAutoSkipsKimiCoding:
     """_resolve_auto vision branch skips providers that have no vision on
     their main endpoint (e.g. Kimi Coding Plan /coding) and falls through
@@ -4429,7 +4636,7 @@ class TestAuxiliaryClientPoisonedCacheEviction:
     Otherwise the next auxiliary call (compression retry, memory flush,
     background review) reuses the closed httpx transport and fails with
     ``Connection error`` even though the main provider route is healthy.
-    See https://github.com/LINYIQ66/kopi-ai-agent/issues/23432.
+    See https://github.com/NousResearch/kopi-ai-agent/issues/23432.
     """
 
     def test_evict_cached_client_instance_drops_direct_match(self):
@@ -4652,7 +4859,7 @@ class TestBuildCallKwargsToolDedup:
     Providers like Google Vertex, Azure, and Bedrock reject requests with
     duplicate tool names (HTTP 400).  This guard converts a hard failure into
     a warning log so agent turns succeed even if an upstream injection path
-    regresses.  See: https://github.com/LINYIQ66/kopi-ai-agent/issues/18478
+    regresses.  See: https://github.com/NousResearch/kopi-ai-agent/issues/18478
     """
 
     def _make_tool(self, name: str) -> dict:
@@ -4736,7 +4943,7 @@ class TestNvidiaBillingHeaders:
         assert model == "nvidia/test-model"
         call_kwargs = mock_openai.call_args[1]
         headers = call_kwargs["default_headers"]
-        assert headers["X-BILLING-INVOKE-ORIGIN"] == "HermesAgent"
+        assert headers["X-BILLING-INVOKE-ORIGIN"] == "KopiAgent"
 
     def test_resolve_provider_client_local_nim_skips_billing_origin_header(self, monkeypatch):
         monkeypatch.setenv("NVIDIA_API_KEY", "nvidia-key")

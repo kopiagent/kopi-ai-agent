@@ -1,4 +1,4 @@
-"""disk_cleanup — ephemeral file cleanup for KOPI AI AGENT.
+"""disk_cleanup — ephemeral file cleanup for Kopi Agent.
 
 Library module wrapping the deterministic cleanup rules written by
 @LVT382009 in PR #12212. The plugin ``__init__.py`` wires these
@@ -365,7 +365,7 @@ def quick() -> Dict[str, Any]:
             new_tracked.append(item)
 
     # Remove empty dirs under KOPI_HOME, but never recurse into known
-    # durable state trees.  Some installs place the Hermes checkout, venv,
+    # durable state trees.  Some installs place the Kopi checkout, venv,
     # and desktop build under KOPI_HOME; a full rglob over that tree can
     # stall the gateway event loop for minutes.
     kopi_home = get_kopi_home()

@@ -95,7 +95,7 @@ def current_secret_scope() -> Optional[Mapping[str, str]]:
 # Membership test is by exact name OR prefix (see _is_global_env). Keep this
 # list tight: when in doubt a value is a profile secret, not a global.
 _GLOBAL_ENV_EXACT = frozenset({
-    # Hermes runtime / deployment
+    # Kopi runtime / deployment
     "KOPI_HOME", "KOPI_PROFILE", "KOPI_GATEWAY_LOCK_DIR",
     "KOPI_MAX_ITERATIONS", "KOPI_MAX_TOKENS", "KOPI_API_TIMEOUT",
     "KOPI_REDACT_SECRETS", "KOPI_NOUS_TIMEOUT_SECONDS",

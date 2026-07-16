@@ -1,7 +1,7 @@
 # Design System: Sanity
 
 
-> **KOPI AI AGENT — Implementation Notes**
+> **Kopi Agent — Implementation Notes**
 >
 > The original site uses proprietary fonts. For self-contained HTML output, use these CDN substitutes:
 > - **Primary:** `Space Grotesk` | **Mono:** `IBM Plex Mono`

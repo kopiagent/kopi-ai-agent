@@ -1,6 +1,6 @@
 # Langfuse Observability Plugin
 
-This plugin ships bundled with Hermes but is **opt-in** — it only loads when
+This plugin ships bundled with Kopi but is **opt-in** — it only loads when
 you explicitly enable it.
 
 ## Enable
@@ -33,7 +33,7 @@ open.
 
 ```bash
 kopi plugins list                 # observability/langfuse should show "enabled"
-kopi chat -q "hello"              # then check Langfuse for a "Hermes turn" trace
+kopi chat -q "hello"              # then check Langfuse for a "Kopi turn" trace
 ```
 
 ## Optional tuning

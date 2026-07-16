@@ -700,7 +700,7 @@ class TestBuildContextFilesPrompt:
         with patch("pathlib.Path.home", return_value=fake_home):
             result = build_context_files_prompt(cwd=str(tmp_path))
         assert "Project Context" in result
-        assert "KOPI AI AGENT" in result
+        assert "Kopi Agent" in result
 
     def test_loads_agents_md(self, tmp_path):
         (tmp_path / "AGENTS.md").write_text("Use Ruff for linting.")
@@ -765,7 +765,7 @@ class TestBuildContextFilesPrompt:
         assert "Top level" in result
         assert "Src-specific" not in result
 
-    # --- .kopi.md / HERMES.md discovery ---
+    # --- .kopi.md / KOPI.md discovery ---
 
     def test_loads_kopi_md(self, tmp_path):
         (tmp_path / ".kopi.md").write_text("Use pytest for testing.")
@@ -774,13 +774,13 @@ class TestBuildContextFilesPrompt:
         assert "Project Context" in result
 
     def test_loads_kopi_md_uppercase(self, tmp_path):
-        (tmp_path / "HERMES.md").write_text("Always use type hints.")
+        (tmp_path / "KOPI.md").write_text("Always use type hints.")
         result = build_context_files_prompt(cwd=str(tmp_path))
         assert "type hints" in result
 
     def test_kopi_md_lowercase_takes_priority(self, tmp_path):
         (tmp_path / ".kopi.md").write_text("From dotfile.")
-        (tmp_path / "HERMES.md").write_text("From uppercase.")
+        (tmp_path / "KOPI.md").write_text("From uppercase.")
         result = build_context_files_prompt(cwd=str(tmp_path))
         assert "From dotfile" in result
         assert "From uppercase" not in result
@@ -821,9 +821,9 @@ class TestBuildContextFilesPrompt:
     def test_kopi_md_beats_agents_md(self, tmp_path):
         """When both exist, .kopi.md wins and AGENTS.md is not loaded."""
         (tmp_path / "AGENTS.md").write_text("Agent guidelines here.")
-        (tmp_path / ".kopi.md").write_text("Hermes project rules.")
+        (tmp_path / ".kopi.md").write_text("Kopi project rules.")
         result = build_context_files_prompt(cwd=str(tmp_path))
-        assert "Hermes project rules" in result
+        assert "Kopi project rules" in result
         assert "Agent guidelines" not in result
 
     def test_agents_md_beats_claude_md(self, tmp_path):
@@ -874,12 +874,12 @@ class TestBuildContextFilesPrompt:
 
     def test_kopi_md_beats_all_others(self, tmp_path):
         """When all four types exist, only .kopi.md is loaded."""
-        (tmp_path / ".kopi.md").write_text("Hermes wins.")
+        (tmp_path / ".kopi.md").write_text("Kopi wins.")
         (tmp_path / "AGENTS.md").write_text("Agents lose.")
         (tmp_path / "CLAUDE.md").write_text("Claude loses.")
         (tmp_path / ".cursorrules").write_text("Cursor loses.")
         result = build_context_files_prompt(cwd=str(tmp_path))
-        assert "Hermes wins" in result
+        assert "Kopi wins" in result
         assert "Agents lose" not in result
         assert "Claude loses" not in result
         assert "Cursor loses" not in result
@@ -896,18 +896,18 @@ class TestBuildContextFilesPrompt:
 # =========================================================================
 
 
-class TestFindHermesMd:
+class TestFindKopiMd:
     def test_finds_in_cwd(self, tmp_path):
         (tmp_path / ".kopi.md").write_text("rules")
         assert _find_kopi_md(tmp_path) == tmp_path / ".kopi.md"
 
     def test_finds_uppercase(self, tmp_path):
-        (tmp_path / "HERMES.md").write_text("rules")
-        assert _find_kopi_md(tmp_path) == tmp_path / "HERMES.md"
+        (tmp_path / "KOPI.md").write_text("rules")
+        assert _find_kopi_md(tmp_path) == tmp_path / "KOPI.md"
 
     def test_prefers_lowercase(self, tmp_path):
         (tmp_path / ".kopi.md").write_text("lower")
-        (tmp_path / "HERMES.md").write_text("upper")
+        (tmp_path / "KOPI.md").write_text("upper")
         assert _find_kopi_md(tmp_path) == tmp_path / ".kopi.md"
 
     def test_walks_to_git_root(self, tmp_path):
@@ -1092,15 +1092,22 @@ class TestPromptBuilderConstants:
         hint = PLATFORM_HINTS["telegram"]
         lowered = hint.lower()
         assert "Telegram has NO table syntax" not in hint
-        assert "rich markdown" in lowered
-        assert "table" in lowered
-        assert "task list" in lowered
-        assert "math" in lowered
+        # Base hint covers MarkdownV2-compatible constructs.
+        assert "MEDIA:" in hint
+        # Rich-messages extension (TELEGRAM_RICH_MESSAGES_HINT) covers the
+        # Bot API 10.1 guidance; it is injected conditionally in
+        # system_prompt.py when rich_messages: true.
+        from agent.prompt_builder import TELEGRAM_RICH_MESSAGES_HINT
+        rich_lowered = TELEGRAM_RICH_MESSAGES_HINT.lower()
+        assert "rich markdown" in rich_lowered
+        assert "table" in rich_lowered
+        assert "task list" in rich_lowered
+        assert "math" in rich_lowered
         # Hint should proactively steer toward structured formatting, not just
         # permit it: bullet + numbered lists for scannable, structured output.
-        assert "bullet" in lowered
-        assert "numbered" in lowered
-        # Local media delivery guidance must remain intact.
+        assert "bullet" in rich_lowered
+        assert "numbered" in rich_lowered
+        # Local media delivery guidance must remain intact in the base hint.
         assert "include MEDIA:" in hint
 
     def test_platform_hints_mattermost(self):
@@ -1427,7 +1434,7 @@ class TestBuildSkillsSystemPromptConditional:
         skill_dir = tmp_path / "skills" / "search" / "duckduckgo"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(
-            "---\nname: duckduckgo\ndescription: Free web search\nmetadata:\n  hermes:\n    fallback_for_toolsets: [web]\n---\n"
+            "---\nname: duckduckgo\ndescription: Free web search\nmetadata:\n  kopi:\n    fallback_for_toolsets: [web]\n---\n"
         )
         result = build_skills_system_prompt(
             available_tools=set(),
@@ -1440,7 +1447,7 @@ class TestBuildSkillsSystemPromptConditional:
         skill_dir = tmp_path / "skills" / "search" / "duckduckgo"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(
-            "---\nname: duckduckgo\ndescription: Free web search\nmetadata:\n  hermes:\n    fallback_for_toolsets: [web]\n---\n"
+            "---\nname: duckduckgo\ndescription: Free web search\nmetadata:\n  kopi:\n    fallback_for_toolsets: [web]\n---\n"
         )
         result = build_skills_system_prompt(
             available_tools=set(),
@@ -1453,7 +1460,7 @@ class TestBuildSkillsSystemPromptConditional:
         skill_dir = tmp_path / "skills" / "iot" / "openhue"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(
-            "---\nname: openhue\ndescription: Hue lights\nmetadata:\n  hermes:\n    requires_toolsets: [terminal]\n---\n"
+            "---\nname: openhue\ndescription: Hue lights\nmetadata:\n  kopi:\n    requires_toolsets: [terminal]\n---\n"
         )
         result = build_skills_system_prompt(
             available_tools=set(),
@@ -1466,7 +1473,7 @@ class TestBuildSkillsSystemPromptConditional:
         skill_dir = tmp_path / "skills" / "iot" / "openhue"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(
-            "---\nname: openhue\ndescription: Hue lights\nmetadata:\n  hermes:\n    requires_toolsets: [terminal]\n---\n"
+            "---\nname: openhue\ndescription: Hue lights\nmetadata:\n  kopi:\n    requires_toolsets: [terminal]\n---\n"
         )
         result = build_skills_system_prompt(
             available_tools=set(),
@@ -1493,7 +1500,7 @@ class TestBuildSkillsSystemPromptConditional:
         skill_dir = tmp_path / "skills" / "search" / "duckduckgo"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(
-            "---\nname: duckduckgo\ndescription: Free web search\nmetadata:\n  hermes:\n    fallback_for_toolsets: [web]\n---\n"
+            "---\nname: duckduckgo\ndescription: Free web search\nmetadata:\n  kopi:\n    fallback_for_toolsets: [web]\n---\n"
         )
         result = build_skills_system_prompt()
         assert "duckduckgo" in result
@@ -1519,7 +1526,7 @@ class TestBuildSkillsSystemPromptConditional:
         skill_dir = tmp_path / "skills" / "general" / "nested-null"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(
-            "---\nname: nested-null\ndescription: Null kopi key\nmetadata:\n  hermes:\n---\n"
+            "---\nname: nested-null\ndescription: Null kopi key\nmetadata:\n  kopi:\n---\n"
         )
         result = build_skills_system_prompt(
             available_tools=set(),

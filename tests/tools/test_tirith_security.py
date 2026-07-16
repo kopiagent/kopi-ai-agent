@@ -1158,7 +1158,7 @@ class TestDiskFailureMarker:
 # KOPI_HOME isolation
 # ---------------------------------------------------------------------------
 
-class TestHermesHomeIsolation:
+class TestKopiHomeIsolation:
     def test_kopi_bin_dir_respects_kopi_home(self):
         """_kopi_bin_dir must use KOPI_HOME, not hardcoded ~/.kopi."""
         from tools.tirith_security import _kopi_bin_dir

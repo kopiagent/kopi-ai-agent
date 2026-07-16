@@ -25,7 +25,7 @@ Publish static sites to &#123;slug&#125;.here.now and store private files in clo
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Kopi loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # here.now
@@ -81,7 +81,7 @@ If the docs fetch fails or times out, continue with the local skill and live API
 
 ```bash
 PUBLISH="${KOPI_SKILL_DIR}/scripts/publish.sh"
-bash "$PUBLISH" {file-or-dir} --client hermes
+bash "$PUBLISH" {file-or-dir} --client kopi
 ```
 
 Outputs the live URL (e.g. `https://bright-canvas-a7k2.here.now/`).
@@ -99,7 +99,7 @@ You can also publish raw files without any HTML. Single files get a rich auto-vi
 
 ```bash
 PUBLISH="${KOPI_SKILL_DIR}/scripts/publish.sh"
-bash "$PUBLISH" {file-or-dir} --slug {slug} --client hermes
+bash "$PUBLISH" {file-or-dir} --slug {slug} --client kopi
 ```
 
 The script auto-loads the `claimToken` from `.herenow/state.json` when updating anonymous sites. Pass `--claim-token {token}` to override.

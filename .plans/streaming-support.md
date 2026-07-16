@@ -1,4 +1,4 @@
-# Streaming LLM Response Support for KOPI AI AGENT
+# Streaming LLM Response Support for Kopi Agent
 
 ## Overview
 

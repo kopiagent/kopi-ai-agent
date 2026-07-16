@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from kopi_cli.console_engine import HermesConsoleEngine, run_console_repl
+from kopi_cli.console_engine import KopiConsoleEngine, run_console_repl
 
 
 EXPECTED_CONSOLE_COMMANDS = {
@@ -232,7 +232,7 @@ MUTATING_CONFIRMATION_SMOKE_COMMANDS = [
 
 
 def test_console_parses_bare_and_kopi_prefixed_commands(_isolate_kopi_home):
-    engine = HermesConsoleEngine()
+    engine = KopiConsoleEngine()
 
     bare = engine.execute("config path")
     prefixed = engine.execute("kopi config path")
@@ -261,7 +261,7 @@ def test_console_status_hides_cli_next_step_footer(
 
     monkeypatch.setattr(status_mod, "show_status", fake_show_status)
 
-    result = HermesConsoleEngine().execute("status")
+    result = KopiConsoleEngine().execute("status")
 
     assert result.status == "ok"
     assert "Sessions" in result.output
@@ -291,7 +291,7 @@ def test_console_status_hides_osc_linked_cli_next_step_footer(
 
     monkeypatch.setattr(status_mod, "show_status", fake_show_status)
 
-    result = HermesConsoleEngine().execute("status")
+    result = KopiConsoleEngine().execute("status")
 
     assert result.status == "ok"
     assert "Sessions" in result.output
@@ -303,7 +303,7 @@ def test_console_status_hides_osc_linked_cli_next_step_footer(
 
 
 def test_console_help_uses_cli_subcommand_summaries():
-    help_text = HermesConsoleEngine().help_text()
+    help_text = KopiConsoleEngine().help_text()
 
     assert "skills list" in help_text
     assert "List installed skills" in help_text
@@ -315,7 +315,7 @@ def test_console_help_uses_cli_subcommand_summaries():
 
 
 def test_console_help_table_keeps_long_summaries_compact():
-    help_text = HermesConsoleEngine().help_text()
+    help_text = KopiConsoleEngine().help_text()
 
     slack_line = next(
         line for line in help_text.splitlines() if line.strip().startswith("slack manifest")
@@ -326,13 +326,13 @@ def test_console_help_table_keeps_long_summaries_compact():
 
 
 def test_console_help_for_command_uses_cli_summary():
-    help_text = HermesConsoleEngine().help_text("skills list")
+    help_text = KopiConsoleEngine().help_text("skills list")
 
     assert help_text == "skills list\nList installed skills"
 
 
 def test_console_registry_covers_non_admin_cli_surface():
-    registered = set(HermesConsoleEngine().commands)
+    registered = set(KopiConsoleEngine().commands)
 
     missing = EXPECTED_CONSOLE_COMMANDS - registered
 
@@ -423,7 +423,7 @@ EXPECTED_HOSTED_CONSOLE_COMMANDS = {
 
 
 def test_hosted_console_registry_exposes_only_hosted_safe_surface():
-    engine = HermesConsoleEngine(context="hosted")
+    engine = KopiConsoleEngine(context="hosted")
     hosted = {
         path for path, command in engine.commands.items() if "hosted" in command.contexts
     }
@@ -458,7 +458,7 @@ def test_hosted_console_registry_exposes_only_hosted_safe_surface():
     ],
 )
 def test_hosted_console_rejects_local_only_or_dangerous_commands(line):
-    result = HermesConsoleEngine(context="hosted").execute(line)
+    result = KopiConsoleEngine(context="hosted").execute(line)
 
     assert result.status == "error"
     assert result.output
@@ -476,7 +476,7 @@ def test_hosted_console_rejects_local_only_or_dangerous_commands(line):
     ],
 )
 def test_hosted_console_allows_guarded_useful_commands_before_confirmation(line):
-    result = HermesConsoleEngine(context="hosted").execute(line)
+    result = KopiConsoleEngine(context="hosted").execute(line)
 
     assert result.status == "confirm_required"
 
@@ -495,7 +495,7 @@ def test_hosted_console_allows_guarded_useful_commands_before_confirmation(line)
     ],
 )
 def test_hosted_console_blocks_known_footgun_arguments_before_confirmation(line):
-    result = HermesConsoleEngine(context="hosted").execute(line)
+    result = KopiConsoleEngine(context="hosted").execute(line)
 
     assert result.status == "error"
     assert result.output
@@ -539,7 +539,7 @@ def test_hosted_console_blocks_known_footgun_arguments_before_confirmation(line)
     ],
 )
 def test_console_rejects_destructive_and_shell_like_commands(line):
-    result = HermesConsoleEngine().execute(line)
+    result = KopiConsoleEngine().execute(line)
 
     assert result.status == "error"
     assert result.output
@@ -547,14 +547,14 @@ def test_console_rejects_destructive_and_shell_like_commands(line):
 
 @pytest.mark.parametrize("line", MUTATING_CONFIRMATION_SMOKE_COMMANDS)
 def test_mutating_console_commands_require_confirmation(line):
-    result = HermesConsoleEngine().execute(line)
+    result = KopiConsoleEngine().execute(line)
 
     assert result.status == "confirm_required"
     assert result.confirmation_message
 
 
 def test_help_lists_supported_commands_and_not_full_cli():
-    result = HermesConsoleEngine().execute("help")
+    result = KopiConsoleEngine().execute("help")
 
     assert result.status == "ok"
     assert "sessions list" in result.output
@@ -564,7 +564,7 @@ def test_help_lists_supported_commands_and_not_full_cli():
 
 
 def test_config_set_requires_confirmation_then_writes(_isolate_kopi_home):
-    engine = HermesConsoleEngine()
+    engine = KopiConsoleEngine()
 
     pending = engine.execute("config set console.test true")
     assert pending.status == "confirm_required"
@@ -590,7 +590,7 @@ def test_sessions_list_and_stats_use_isolated_session_store(_isolate_kopi_home):
     finally:
         db.close()
 
-    engine = HermesConsoleEngine()
+    engine = KopiConsoleEngine()
     listed = engine.execute("sessions list --limit 10")
     stats = engine.execute("sessions stats")
 
@@ -605,7 +605,7 @@ def test_cron_pause_resume_and_run_require_confirmation(_isolate_kopi_home):
     from cron.jobs import create_job, get_job
 
     job = create_job(prompt="say hello", schedule="every 1h", name="alpha")
-    engine = HermesConsoleEngine()
+    engine = KopiConsoleEngine()
 
     pending = engine.execute(f"cron pause {job['id']}")
     assert pending.status == "confirm_required"
@@ -643,8 +643,8 @@ def test_repl_runs_non_interactive_lines_without_prompts(_isolate_kopi_home):
     )
 
     assert code == 0
-    assert "Hermes Console" in stdout.getvalue()
-    assert "hermes>" not in stdout.getvalue()
+    assert "Kopi Console" in stdout.getvalue()
+    assert "kopi>" not in stdout.getvalue()
     assert stderr.getvalue() == ""
 
 
@@ -678,4 +678,4 @@ def test_main_console_subcommand_smoke(_isolate_kopi_home):
     )
 
     assert result.returncode == 0
-    assert "Hermes Console" in result.stdout
+    assert "Kopi Console" in result.stdout

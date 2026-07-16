@@ -1,4 +1,4 @@
-"""Tests for Codex auth — tokens stored in Hermes auth store (~/.kopi/auth.json)."""
+"""Tests for Codex auth — tokens stored in Kopi auth store (~/.kopi/auth.json)."""
 
 import json
 import time
@@ -23,7 +23,7 @@ from kopi_cli.auth import (
 
 
 def _setup_kopi_auth(kopi_home: Path, *, access_token: str = "access", refresh_token: str = "refresh"):
-    """Write Codex tokens into the Hermes auth store."""
+    """Write Codex tokens into the Kopi auth store."""
     kopi_home.mkdir(parents=True, exist_ok=True)
     auth_store = {
         "version": 1,
@@ -753,7 +753,7 @@ def test_import_codex_cli_tokens_missing(tmp_path, monkeypatch):
 
 
 def test_codex_tokens_not_written_to_shared_file(tmp_path, monkeypatch):
-    """Verify _save_codex_tokens writes only to Hermes auth store, not ~/.codex/."""
+    """Verify _save_codex_tokens writes only to Kopi auth store, not ~/.codex/."""
     kopi_home = tmp_path / "kopi"
     codex_home = tmp_path / "codex-cli"
     kopi_home.mkdir(parents=True, exist_ok=True)
@@ -765,10 +765,10 @@ def test_codex_tokens_not_written_to_shared_file(tmp_path, monkeypatch):
 
     _save_codex_tokens({"access_token": "kopi-at", "refresh_token": "kopi-rt"})
 
-    # ~/.codex/auth.json should NOT exist — _save_codex_tokens only touches Hermes store
+    # ~/.codex/auth.json should NOT exist — _save_codex_tokens only touches Kopi store
     assert not (codex_home / "auth.json").exists()
 
-    # Hermes auth store should have the tokens
+    # Kopi auth store should have the tokens
     data = _read_codex_tokens()
     assert data["tokens"]["access_token"] == "kopi-at"
 

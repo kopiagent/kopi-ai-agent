@@ -6,7 +6,7 @@ renders natively:
   * Dashboard / GUI app  -> a form (one field per slot)
   * CLI / TUI / messenger -> a pre-filled ``/blueprint`` slash command
   * Agent                 -> a seed prompt; it asks for any blank/ambiguous slot
-  * Docs catalog          -> a copy-paste command + a ``hermes://`` deep-link
+  * Docs catalog          -> a copy-paste command + a ``kopi://`` deep-link
 
 The single source of truth is the slot schema below. ``blueprint_form_schema``
 emits what a form renderer needs; ``blueprint_slash_command`` emits the flattened
@@ -133,6 +133,45 @@ CATALOG: List[AutomationBlueprint] = [
         ),
         slots=[_TIME("08:00"), _DELIVER],
         tags=("daily", "briefing"),
+    ),
+    AutomationBlueprint(
+        key="obsidian-sediment",
+        title="Obsidian knowledge sync",
+        description="Sediment your accumulated memory and learned skills into "
+        "your Obsidian vault as linked notes, so they show up in the graph.",
+        category="daily",
+        schedule_template="{minute} {hour} * * *",
+        prompt_template=(
+            "Call the obsidian_sync tool with action=export_all to export the "
+            "agent's curated memory and skills into the Obsidian vault as "
+            "linked notes, then briefly report how many notes were written per "
+            "category. If the obsidian tools are unavailable, say so and stop."
+        ),
+        slots=[_TIME("03:00"), _DELIVER],
+        tags=("daily", "obsidian", "knowledge"),
+    ),
+    AutomationBlueprint(
+        key="obsidian-daily-journal",
+        title="Obsidian daily journal",
+        description="Write a short end-of-day journal entry (what happened, "
+        "decisions, open threads) into your Obsidian vault's daily note.",
+        category="daily",
+        schedule_template="{minute} {hour} * * *",
+        prompt_template=(
+            "Write a concise daily journal entry summarizing today: {focus}. "
+            "Then persist it by calling obsidian_sync with action=append_daily, "
+            "passing the summary as 'content' and a short 'title'. Confirm the "
+            "note path. If the obsidian tools are unavailable, say so and stop."
+        ),
+        slots=[
+            _TIME("21:00"),
+            BlueprintSlot(
+                name="focus", type="text", label="What should the journal cover?",
+                default="key events, decisions made, and anything still open",
+            ),
+            _DELIVER,
+        ],
+        tags=("daily", "obsidian", "journal"),
     ),
     AutomationBlueprint(
         key="important-mail",
@@ -535,7 +574,7 @@ def blueprint_slash_command(blueprint: AutomationBlueprint, values: Optional[Dic
 
 
 def blueprint_deeplink(blueprint: AutomationBlueprint, values: Optional[Dict[str, Any]] = None) -> str:
-    """Build the ``hermes://blueprint/<key>?slot=val`` deep-link URL."""
+    """Build the ``kopi://blueprint/<key>?slot=val`` deep-link URL."""
     from urllib.parse import quote, urlencode
 
     values = values or {}
@@ -545,7 +584,7 @@ def blueprint_deeplink(blueprint: AutomationBlueprint, values: Optional[Dict[str
         if val not in (None, ""):
             query[s.name] = str(val)
     qs = ("?" + urlencode(query)) if query else ""
-    return f"hermes://blueprint/{quote(blueprint.key)}{qs}"
+    return f"kopi://blueprint/{quote(blueprint.key)}{qs}"
 
 
 def _humanize_schedule(blueprint: AutomationBlueprint) -> str:

@@ -14,13 +14,13 @@ def test_top_level_skills_flag_defaults_to_chat(monkeypatch):
     monkeypatch.setattr(
         sys,
         "argv",
-        ["kopi", "-s", "kopi-ai-agent-dev,github-auth"],
+        ["kopi", "-s", "kopi-agent-dev,github-auth"],
     )
 
     main_mod.main()
 
     assert captured == {
-        "skills": ["kopi-ai-agent-dev,github-auth"],
+        "skills": ["kopi-agent-dev,github-auth"],
         "command": None,
     }
 
@@ -88,7 +88,7 @@ def test_continue_worktree_and_skills_flags_work_together(monkeypatch):
     monkeypatch.setattr(
         sys,
         "argv",
-        ["kopi", "-c", "-w", "-s", "kopi-ai-agent-dev"],
+        ["kopi", "-c", "-w", "-s", "kopi-agent-dev"],
     )
 
     main_mod.main()
@@ -96,6 +96,6 @@ def test_continue_worktree_and_skills_flags_work_together(monkeypatch):
     assert captured == {
         "continue_last": True,
         "worktree": True,
-        "skills": ["kopi-ai-agent-dev"],
+        "skills": ["kopi-agent-dev"],
         "command": "chat",
     }

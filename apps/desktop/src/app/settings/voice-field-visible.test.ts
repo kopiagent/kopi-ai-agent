@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import type { HermesConfigRecord } from '@/types/kopi'
+import type { KopiConfigRecord } from '@/types/kopi'
 
 import { voiceFieldVisible } from './config-settings'
 
-const cfg = (over: Record<string, unknown> = {}): HermesConfigRecord =>
+const cfg = (over: Record<string, unknown> = {}): KopiConfigRecord =>
   ({
     tts: { provider: 'edge', edge: {}, openai: {} },
     stt: { enabled: true, provider: 'local', local: {}, groq: {} },
     ...over
-  }) as unknown as HermesConfigRecord
+  }) as unknown as KopiConfigRecord
 
 describe('voiceFieldVisible', () => {
   it('always shows top-level + non-provider keys', () => {

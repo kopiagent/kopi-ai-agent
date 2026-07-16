@@ -1,14 +1,14 @@
 ---
 name: teams-meeting-pipeline
-description: "Operate the Teams meeting summary pipeline via Hermes CLI — summarize meetings, inspect pipeline status, replay jobs, manage Microsoft Graph subscriptions."
+description: "Operate the Teams meeting summary pipeline via Kopi CLI — summarize meetings, inspect pipeline status, replay jobs, manage Microsoft Graph subscriptions."
 version: 1.1.0
-author: KOPI AI AGENT + Teknium
+author: Kopi Agent + Teknium
 license: MIT
 prerequisites:
   env_vars: [MSGRAPH_TENANT_ID, MSGRAPH_CLIENT_ID, MSGRAPH_CLIENT_SECRET]
-  commands: [hermes]
+  commands: [kopi]
 metadata:
-  hermes:
+  kopi:
     tags: [Teams, Microsoft Graph, Meetings, Productivity, Operations]
     related_docs:
       - /docs/guides/microsoft-graph-app-registration

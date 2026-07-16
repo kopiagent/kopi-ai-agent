@@ -1,0 +1,56 @@
+# Nous-approved MCP catalog entry.
+# Presence in this directory = approval. Merged via PR review.
+#
+# Schema version 1.
+manifest_version: 1
+
+name: xero
+description: Read and manage Xero accounting data — organisation, contacts, invoices, accounts, financial reports, and tax rates.
+source: https://github.com/XeroAPI/xero-mcp-server
+
+# Official Xero MCP server, published to npm — npx fetches it, nothing to clone
+# or build. Reads XERO_CLIENT_ID / XERO_CLIENT_SECRET from the environment
+# (KOPI passes ~/.kopi/.env through to the server process).
+transport:
+  type: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@xeroapi/xero-mcp-server@latest"
+
+# Xero Custom Connection uses the OAuth2 client_credentials grant, so a client
+# id + secret is all the server needs — no interactive token dance at runtime.
+auth:
+  type: api_key
+  env:
+    - name: XERO_CLIENT_ID
+      prompt: "Xero Client ID (from a Custom Connection app at developer.xero.com)"
+      required: true
+      secret: false
+    - name: XERO_CLIENT_SECRET
+      prompt: "Xero Client Secret"
+      required: true
+      secret: true
+
+# Tool selection at install time:
+# The server exposes 60+ tools. Whether the mutating ones (create-invoice,
+# create-contact, create-manual-journal, delete-timesheet, …) actually work is
+# governed by the SCOPES granted to your Custom Connection, not by this list —
+# grant read-only scopes to keep the agent read-only (see post_install).
+# We leave default_enabled unset so the checklist starts fully pre-checked.
+
+post_install: |
+  This uses Xero's Custom Connection (client_credentials) authentication:
+
+    1. developer.xero.com → My Apps → New app → Integration type = "Custom connection".
+    2. Grant READ-ONLY scopes only — e.g. accounting.settings.read,
+       accounting.contacts.read, accounting.transactions.read,
+       accounting.reports.read — UNLESS you truly need writes. The server exposes
+       create/update/delete tools that act on your REAL ledger; scopes are the
+       only thing that stops the agent from mutating accounting data.
+    3. Authorize the connection to an organisation. Xero's Demo Company is free
+       for testing; real orgs need a paid AU/NZ/UK/US subscription for Custom
+       Connections.
+    4. Copy the Client ID and generate a Client Secret, then enter them above.
+
+  Restart your KOPI session after install so the xero tools load.

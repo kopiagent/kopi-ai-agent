@@ -185,7 +185,7 @@ def sys_executable_path():
 
 
 def test_recovery_self_lock_guard_inactive_when_not_ancestor(tmp_path, monkeypatch):
-    # Windows, but kopi.exe is NOT in the ancestry (launched via `hermes
+    # Windows, but kopi.exe is NOT in the ancestry (launched via `kopi
     # dashboard` from a separate cmd, say). The guard must fall through to the
     # normal install so a genuinely interrupted install still gets healed.
     monkeypatch.setattr(m, "PROJECT_ROOT", tmp_path)

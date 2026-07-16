@@ -11,7 +11,7 @@ import {
   getGlobalModelOptions,
   getMoaModels,
   getRecommendedDefaultModel,
-  saveHermesConfig,
+  saveKopiConfig,
   saveMoaModels,
   setEnvVar,
   setModelAssignment
@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils'
 import { notifyError } from '@/store/notifications'
 import { startManualLocalEndpoint, startManualProviderOAuth } from '@/store/onboarding'
 
-import { invalidateHermesConfig, setHermesConfigCache, useHermesConfigRecord } from '../hooks/use-config-record'
+import { invalidateKopiConfig, setKopiConfigCache, useKopiConfigRecord } from '../hooks/use-config-record'
 import { useOnProfileSwitch } from '../hooks/use-on-profile-switch'
 
 import { CONTROL_TEXT } from './constants'
@@ -80,9 +80,9 @@ export function ModelSettingsSkeleton() {
   )
 }
 
-// Hermes' reasoning levels (VALID_REASONING_EFFORTS); `none` = thinking off.
-// Empty config = Hermes default (medium), shown as Medium.
-const EFFORT_VALUES = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const
+// Kopi' reasoning levels (VALID_REASONING_EFFORTS); `none` = thinking off.
+// Empty config = Kopi default (medium), shown as Medium.
+const EFFORT_VALUES = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const
 
 // agent.service_tier stores "fast"/"priority"/"on" for fast; anything else is
 // normal (mirrors tui_gateway _load_service_tier).
@@ -93,8 +93,8 @@ const isFastTier = (tier: unknown): boolean =>
       .toLowerCase()
   )
 
-// Reuse the composer's effort labels (`xhigh` shows as "Max", else 1:1).
-const effortLabelKey = (v: string) => (v === 'xhigh' ? 'max' : v) as 'high' | 'low' | 'max' | 'medium' | 'minimal'
+// Reuse the composer's effort labels.
+const effortLabelKey = (v: string) => v as 'high' | 'low' | 'max' | 'medium' | 'minimal' | 'ultra' | 'xhigh'
 
 // A provider row is "ready" to pick a model from when it reports models. The
 // backend now surfaces the full `kopi model` universe (every canonical
@@ -184,8 +184,8 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
   const [newMoaPresetName, setNewMoaPresetName] = useState('')
   // agent.* defaults round-trip through the shared config cache (read → write
   // back the whole record), so a save here shows in the MCP/config surfaces.
-  const { data: config } = useHermesConfigRecord()
-  const setConfig = setHermesConfigCache
+  const { data: config } = useKopiConfigRecord()
+  const setConfig = setKopiConfigCache
   const [applying, setApplying] = useState(false)
   const [editingAuxTask, setEditingAuxTask] = useState<null | string>(null)
   const [auxDraft, setAuxDraft] = useState<{ model: string; provider: string }>({ model: '', provider: '' })
@@ -232,7 +232,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
 
       // The config record loads via its own shared query; a model switch can
       // change it server-side (aux slots), so nudge that cache to refetch.
-      void invalidateHermesConfig()
+      void invalidateKopiConfig()
     } catch (err) {
       if (profileEpoch.current === epoch) {
         setError(err instanceof Error ? err.message : String(err))
@@ -298,23 +298,62 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
     return moa.presets[selectedMoaPreset] || moa.presets[moa.default_preset] || Object.values(moa.presets)[0] || null
   }, [moa, selectedMoaPreset])
 
+  // Mirror of `moa` so inline edits compute the next state purely (outside the
+  // setState updater) and hand it straight to the debounced autosave.
+  const moaRef = useRef<MoaConfigResponse | null>(null)
+
+  useEffect(() => {
+    moaRef.current = moa
+  }, [moa])
+
+  const moaSaveTimer = useRef<number | null>(null)
+
+  useEffect(
+    () => () => {
+      if (moaSaveTimer.current) {
+        window.clearTimeout(moaSaveTimer.current)
+      }
+    },
+    []
+  )
+
+  // Quiet debounced persist for inline MoA edits — mirrors the config page's
+  // autosave so slot/aggregator tweaks save themselves, matching the
+  // preset-level ops (set default / add / delete) that already persist on
+  // click. No `applying` spinner, so selecting stays responsive.
+  const scheduleMoaSave = useCallback((next: MoaConfigResponse) => {
+    if (moaSaveTimer.current) {
+      window.clearTimeout(moaSaveTimer.current)
+    }
+
+    moaSaveTimer.current = window.setTimeout(() => {
+      void saveMoaModels(next)
+        .then(setMoa)
+        .catch(err => setError(err instanceof Error ? err.message : String(err)))
+    }, 600)
+  }, [])
+
   const updateMoaPreset = useCallback(
     (updater: (preset: NonNullable<typeof currentMoaPreset>) => NonNullable<typeof currentMoaPreset>) => {
-      setMoa(prev => {
-        if (!prev || !selectedMoaPreset || !prev.presets[selectedMoaPreset]) {
-          return prev
-        }
+      const prev = moaRef.current
 
-        return {
-          ...prev,
-          presets: {
-            ...prev.presets,
-            [selectedMoaPreset]: updater(prev.presets[selectedMoaPreset])
-          }
+      if (!prev || !selectedMoaPreset || !prev.presets[selectedMoaPreset]) {
+        return
+      }
+
+      const next: MoaConfigResponse = {
+        ...prev,
+        presets: {
+          ...prev.presets,
+          [selectedMoaPreset]: updater(prev.presets[selectedMoaPreset])
         }
-      })
+      }
+
+      moaRef.current = next
+      setMoa(next)
+      scheduleMoaSave(next)
     },
-    [selectedMoaPreset]
+    [scheduleMoaSave, selectedMoaPreset]
   )
 
   const updateMoaSlot = useCallback((slot: MoaModelSlot, patch: Partial<MoaModelSlot>): MoaModelSlot => {
@@ -403,7 +442,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       setConfig(next)
 
       try {
-        await saveHermesConfig(next)
+        await saveKopiConfig(next)
       } catch (err) {
         setConfig(prev)
         notifyError(err, m.defaultsFailed)
@@ -671,7 +710,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
           <p className="mt-2 text-xs text-muted-foreground">
             {selectedProviderRow?.auth_type === 'api_key'
               ? `${selectedProviderRow?.name} needs an API key — set it up to choose a model.`
-              : `${selectedProviderRow?.name} signs in through your browser — Hermes runs the flow for you.`}
+              : `${selectedProviderRow?.name} signs in through your browser — Kopi runs the flow for you.`}
           </p>
         )}
         {config && mainModel && (reasoningSupported || fastSupported) && (
@@ -841,12 +880,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       </section>
       {moa && currentMoaPreset && (
         <section>
-          <div className="mb-2.5 flex items-center justify-between">
-            <SectionHeading icon={Cpu} title="Mixture of Agents" />
-            <Button disabled={applying} onClick={() => void saveMoa(moa)} size="sm" variant="textStrong">
-              {applying ? m.applying : t.common.save}
-            </Button>
-          </div>
+          <SectionHeading icon={Cpu} title="Mixture of Agents" />
           <p className="mb-2 text-xs text-muted-foreground">
             Configure named presets that appear as models under the Mixture of Agents provider. The aggregator is the
             acting model.

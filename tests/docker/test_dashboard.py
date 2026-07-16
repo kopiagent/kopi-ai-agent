@@ -170,7 +170,7 @@ def test_dashboard_restarts_after_crash(
         time.sleep(0.5)
     assert first_pid is not None, "Could not capture initial dashboard PID"
 
-    # Kill the dashboard. The dashboard process runs as hermes, so the
+    # Kill the dashboard. The dashboard process runs as kopi, so the
     # kopi user can kill it (same UID).
     docker_exec(container_name, "kill", "-9", first_pid)
 

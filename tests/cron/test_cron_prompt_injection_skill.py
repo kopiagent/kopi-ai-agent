@@ -198,7 +198,7 @@ class TestBuildJobPromptScansSkillContent:
         """A skill that *describes* an exfil command in prose (e.g. a
         security postmortem documenting "the attacker could just
         ``cat ~/.kopi/.env``") must NOT be blocked. This was a real
-        false positive in the bundled `kopi-ai-agent-dev` skill that
+        false positive in the bundled `kopi-agent-dev` skill that
         silently killed every PR-scout cron job for weeks.
 
         Skill bodies are vetted at install time by ``skills_guard.py``;

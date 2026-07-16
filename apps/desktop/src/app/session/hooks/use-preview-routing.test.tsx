@@ -62,11 +62,11 @@ describe('usePreviewRouting', () => {
     $currentCwd.set('/work')
     $messages.set([])
     $previewTarget.set(null)
-    window.localStorage.clear()
     clearSessionPreviewRegistry()
     handleEvent = () => undefined
+    window.localStorage.clear()
 
-    Object.defineProperty(window, 'hermesDesktop', {
+    Object.defineProperty(window, 'kopiDesktop', {
       configurable: true,
       value: {
         normalizePreviewTarget: vi.fn(async (target: string) => previewTarget(target))
@@ -78,9 +78,9 @@ describe('usePreviewRouting', () => {
     cleanup()
     $messages.set([])
     $previewTarget.set(null)
-    window.localStorage.clear()
-    clearSessionPreviewRegistry()
     vi.restoreAllMocks()
+    clearSessionPreviewRegistry()
+    window.localStorage.clear()
   })
 
   it('opens the active session preview from the registry', async () => {
@@ -139,6 +139,6 @@ describe('usePreviewRouting', () => {
     act(() => handleEvent({ payload: { path: './dist/index.html' }, session_id: 'session-1', type: 'tool.complete' }))
 
     expect($previewTarget.get()).toBeNull()
-    expect(window.localStorage.getItem('hermes.desktop.sessionPreviews.v1')).toBeNull()
+    expect(window.localStorage.getItem('kopi.desktop.sessionPreviews.v1')).toBeNull()
   })
 })
