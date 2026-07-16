@@ -162,7 +162,7 @@ Manage skill config from the CLI:
 kopi skills config gif-search
 
 # View all skill config
-kopi config show | grep '^skills\.config'
+kopi config get skills.config --json
 ```
 
 ---

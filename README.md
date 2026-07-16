@@ -84,6 +84,7 @@ kopi              # Interactive CLI — start a conversation
 kopi model        # Choose your LLM provider and model
 kopi tools        # Configure which tools are enabled
 kopi config set   # Set individual config values
+kopi config get   # Print individual config values
 kopi gateway      # Start the messaging gateway (Telegram, Discord, etc.)
 kopi setup        # Run the full setup wizard
 kopi update       # Update to the latest version
