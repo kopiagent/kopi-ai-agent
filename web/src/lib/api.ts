@@ -196,16 +196,6 @@ function pluginPath(name: string): string {
   return name.split("/").map(encodeURIComponent).join("/");
 }
 
-async function getSessionToken(): Promise<string> {
-  if (_sessionToken) return _sessionToken;
-  const injected = window.__KOPI_SESSION_TOKEN__;
-  if (injected) {
-    _sessionToken = injected;
-    return _sessionToken;
-  }
-  throw new Error("Session token not available — page must be served by the KOPI dashboard server");
-}
-
 /**
  * Fetch a single-use ticket for a WebSocket upgrade in gated mode.
  *

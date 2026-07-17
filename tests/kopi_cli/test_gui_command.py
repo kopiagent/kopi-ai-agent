@@ -155,6 +155,28 @@ def test_gui_forwards_desktop_environment_overrides(tmp_path, monkeypatch):
     assert launch_env["KOPI_DESKTOP_CWD"] == str(cwd)
 
 
+def test_gui_from_checkout_defaults_kopi_root_and_unsets_electron_run_as_node(tmp_path, monkeypatch):
+    root = _make_desktop_tree(tmp_path)
+    (root / ".git").mkdir()
+    (root / "kopi_cli").mkdir()
+    (root / "kopi_cli" / "main.py").write_text("", encoding="utf-8")
+    monkeypatch.setattr(cli_main, "PROJECT_ROOT", root)
+    monkeypatch.setenv("ELECTRON_RUN_AS_NODE", "1")
+    packaged_exe = _make_packaged_executable(root, monkeypatch)
+
+    ok = subprocess.CompletedProcess([str(packaged_exe)], 0)
+
+    with patch("kopi_cli.main.shutil.which", return_value=None), \
+         patch("kopi_cli.main.subprocess.run", return_value=ok) as mock_run, \
+         pytest.raises(SystemExit) as exc:
+        cli_main.cmd_gui(_ns(skip_build=True))
+
+    assert exc.value.code == 0
+    launch_env = mock_run.call_args.kwargs["env"]
+    assert launch_env["KOPI_DESKTOP_KOPI_ROOT"] == str(root.resolve())
+    assert "ELECTRON_RUN_AS_NODE" not in launch_env
+
+
 def test_gui_exits_when_npm_missing(tmp_path, monkeypatch, capsys):
     root = _make_desktop_tree(tmp_path)
     monkeypatch.setattr(cli_main, "PROJECT_ROOT", root)

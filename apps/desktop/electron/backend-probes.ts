@@ -48,7 +48,8 @@ function kopiRuntimeImportProbe() {
 }
 
 /**
- * Return true iff the Kopi runtime import probe exits 0.
+ * Return true iff the Kopi CLI module can start far enough to answer
+ * ``--version``.
  *
  * Used to gate the "fallback to system Python with kopi_cli installed"
  * rung of resolveKopiBackend. Without this, a system Python 3.11-3.13
@@ -57,9 +58,10 @@ function kopiRuntimeImportProbe() {
  * site-packages -- and the resolver returns a backend that immediately
  * dies on spawn.
  *
- * The probe intentionally imports kopi_cli.config, not just the top-level
- * package: a broken/empty Windows launcher venv can still see the source tree
- * through PYTHONPATH but lack PyYAML, then die on the first real CLI import.
+ * This intentionally exercises the same ``python -m kopi_cli.main`` entrypoint
+ * the desktop backend will spawn. A shallow import can pass when the source tree
+ * is visible on ``PYTHONPATH`` but runtime dependencies such as Rich are missing,
+ * then the real backend dies before it announces a port.
  *
  * @param {string} pythonPath - Absolute path to a python.exe / python.
  * @param {object} [opts.env] - Additional environment for the probe.
@@ -71,7 +73,7 @@ function canImportKopiCli(pythonPath: string, opts: { env?: Record<string, strin
   }
 
   try {
-    execFileSync(pythonPath, ['-c', kopiRuntimeImportProbe()], {
+    execFileSync(pythonPath, ['-m', 'kopi_cli.main', '--version'], {
       env: { ...process.env, ...(opts.env || {}) },
       stdio: 'ignore',
       timeout: PROBE_TIMEOUT_MS,

@@ -1,4 +1,5 @@
-import { session } from 'electron'
+const electron = require('electron') as typeof import('electron')
+const { session } = electron
 
 const EMBED_SESSION_PARTITION = 'persist:kopi-embed'
 const EMBED_REFERER = 'https://www.youtube.com/'

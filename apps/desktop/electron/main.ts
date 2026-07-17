@@ -7,25 +7,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import {
-  app,
-  BrowserWindow,
-  clipboard,
-  dialog,
-  net as electronNet,
-  ipcMain,
-  Menu,
-  nativeImage,
-  nativeTheme,
-  Notification,
-  powerMonitor,
-  protocol,
-  safeStorage,
-  screen,
-  session,
-  shell,
-  systemPreferences
-} from 'electron'
 import nodePty from 'node-pty'
 
 import { stopBackendChild as stopBackendChildImpl } from './backend-child'
@@ -145,6 +126,27 @@ import { readWindowsUserEnvVar } from './windows-user-env'
 import { isPackagedInstallPath as isPackagedInstallPathUnderRoots } from './workspace-cwd'
 import { readWslWindowsClipboardImage } from './wsl-clipboard-image'
 import { resolvePickerDefaultPath } from './wsl-path-bridge'
+
+const electron = require('electron') as typeof import('electron')
+const {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  net: electronNet,
+  ipcMain,
+  Menu,
+  nativeImage,
+  nativeTheme,
+  Notification,
+  powerMonitor,
+  protocol,
+  safeStorage,
+  screen,
+  session,
+  shell,
+  systemPreferences
+} = electron
 
 const USER_DATA_OVERRIDE = process.env.KOPI_DESKTOP_USER_DATA_DIR
 

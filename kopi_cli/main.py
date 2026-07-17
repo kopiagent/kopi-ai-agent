@@ -5666,12 +5666,25 @@ def cmd_gui(args: argparse.Namespace):
 
     # with_kopi_node_path() copies os.environ when called with no arg.
     env = with_kopi_node_path()
+    # ELECTRON_RUN_AS_NODE is useful for Electron helper scripts but toxic for
+    # launching the app: it makes the Electron binary execute main.ts as plain
+    # Node, so the main process cannot access the electron runtime module.
+    env.pop("ELECTRON_RUN_AS_NODE", None)
     if getattr(args, "fake_boot", False):
         env["KOPI_DESKTOP_BOOT_FAKE"] = "1"
     if getattr(args, "ignore_existing", False):
         env["KOPI_DESKTOP_IGNORE_EXISTING"] = "1"
     if getattr(args, "kopi_root", None):
         env["KOPI_DESKTOP_KOPI_ROOT"] = str(Path(args.kopi_root).expanduser().resolve())
+    elif (
+        "KOPI_DESKTOP_KOPI_ROOT" not in env
+        and (PROJECT_ROOT / ".git").exists()
+        and (PROJECT_ROOT / "kopi_cli" / "main.py").exists()
+    ):
+        # `kopi desktop` from a checkout builds a local packaged app whose stamp
+        # may point at an unpublished/dirty commit. Keep the backend on the same
+        # checkout instead of making the packaged app bootstrap from GitHub raw.
+        env["KOPI_DESKTOP_KOPI_ROOT"] = str(PROJECT_ROOT.resolve())
     if getattr(args, "cwd", None):
         env["KOPI_DESKTOP_CWD"] = str(Path(args.cwd).expanduser().resolve())
     else:

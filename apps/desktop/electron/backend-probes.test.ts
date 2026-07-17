@@ -16,7 +16,7 @@ import { canImportKopiCli, kopiRuntimeImportProbe, verifyKopiCli } from './backe
 
 // Resolve the host's own Node binary -- guaranteed to be on disk and
 // runnable. We use it as both a stand-in for "a python that doesn't
-// have kopi_cli" (since `node -c "import kopi_cli"` will exit
+// have kopi_cli" (since `node -m kopi_cli.main --version` will exit
 // non-zero) and as a way to script verifyKopiCli's success path
 // (a tiny script we write to disk that exits 0 on --version).
 const NODE_BIN = process.execPath
@@ -27,12 +27,10 @@ test('canImportKopiCli returns false when path is falsy', () => {
   assert.equal(canImportKopiCli(undefined), false)
 })
 
-test('canImportKopiCli returns false when interpreter cannot run -c', () => {
-  // node IS an interpreter, but `node -c "import kopi_cli"` is a
-  // SyntaxError -- different exit reason from a real Python's
-  // ModuleNotFoundError, but the predicate is "exit 0 or not" and
-  // both land on "not", which is exactly what we want for the
-  // resolver fall-through.
+test('canImportKopiCli returns false when interpreter cannot run the Kopi CLI module', () => {
+  // node IS an interpreter, but `node -m kopi_cli.main --version` is
+  // not a runnable Kopi CLI. Different exit reason from a real Python's
+  // ModuleNotFoundError, same resolver signal: fall through.
   assert.equal(canImportKopiCli(NODE_BIN), false)
 })
 
