@@ -32,13 +32,17 @@ Run `kopi setup --portal` — one OAuth gets you a model provider and all four T
 ```bash
 kopi config              # View current configuration
 kopi config edit         # Open config.yaml in your editor
+kopi config get KEY      # Print a resolved value
 kopi config set KEY VAL  # Set a specific value
+kopi config unset KEY    # Remove a user-set value
 kopi config check        # Check for missing options (after updates)
 kopi config migrate      # Interactively add missing options
 
 # Examples:
+kopi config get model
 kopi config set model anthropic/claude-opus-4
 kopi config set terminal.backend docker
+kopi config unset terminal.backend
 kopi config set OPENROUTER_API_KEY sk-or-...  # Saves to .env
 ```
 

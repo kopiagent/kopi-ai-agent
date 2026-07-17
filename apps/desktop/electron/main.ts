@@ -1,4 +1,3 @@
-
 import { execFile, execFileSync, spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -8,32 +7,15 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import {
-  app,
-  BrowserWindow,
-  clipboard,
-  dialog,
-  net as electronNet,
-  ipcMain,
-  Menu,
-  nativeImage,
-  nativeTheme,
-  Notification,
-  powerMonitor,
-  protocol,
-  safeStorage,
-  screen,
-  session,
-  shell,
-  systemPreferences
-} from 'electron'
 import nodePty from 'node-pty'
 
 import { stopBackendChild as stopBackendChildImpl } from './backend-child'
 import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
+import { createBackendConnectionState } from './backend-connection-state'
 import { buildDesktopBackendEnv, normalizeKopiHomeRoot } from './backend-env'
 import { canImportKopiCli, verifyKopiCli } from './backend-probes'
 import { waitForDashboardPortAnnouncement } from './backend-ready'
+import { shouldLatchBackendStartFailure } from './backend-start-failure'
 import { detectRemoteDisplay, isWindowsBinaryPathInWsl, isWslEnvironment } from './bootstrap-platform'
 import { runBootstrap } from './bootstrap-runner'
 import {
@@ -65,7 +47,6 @@ import {
 } from './desktop-uninstall'
 import { installEmbedReferer } from './embed-referer'
 import { readDirForIpc } from './fs-read-dir'
-import { resolvePickerDefaultPath } from './wsl-path-bridge'
 import { probeGatewayWebSocket } from './gateway-ws-probe'
 import { scanGitRepos } from './git-repo-scan'
 import {
@@ -84,7 +65,14 @@ import {
   reviewUnstage
 } from './git-review-ops'
 import { gitRootForIpc } from './git-root'
-import { addWorktree, listBaseBranches, listBranches, listWorktrees, removeWorktree, switchBranch } from './git-worktree-ops'
+import {
+  addWorktree,
+  listBaseBranches,
+  listBranches,
+  listWorktrees,
+  removeWorktree,
+  switchBranch
+} from './git-worktree-ops'
 import {
   DATA_URL_READ_MAX_BYTES,
   DEFAULT_FETCH_TIMEOUT_MS,
@@ -95,6 +83,7 @@ import {
   TEXT_PREVIEW_SOURCE_MAX_BYTES
 } from './hardening'
 import { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } from './link-title-window'
+import { ensureMainWindow } from './main-window-lifecycle'
 import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
 import { decideProfileDeleteAction, profileNameFromDeleteRequest, resolveRouteProfile } from './profile-delete-routing'
 import {
@@ -127,10 +116,37 @@ import {
   MIN_WIDTH as WINDOW_MIN_WIDTH
 } from './window-state'
 import { hiddenWindowsChildOptions } from './windows-child-options'
-import { buildPathExtCandidates, chooseUpdaterArgs, getVenvSitePackagesEntries, resolveVenvKopiCommand } from './windows-kopi-path'
+import {
+  buildPathExtCandidates,
+  chooseUpdaterArgs,
+  getVenvSitePackagesEntries,
+  resolveVenvKopiCommand
+} from './windows-kopi-path'
 import { readWindowsUserEnvVar } from './windows-user-env'
 import { isPackagedInstallPath as isPackagedInstallPathUnderRoots } from './workspace-cwd'
 import { readWslWindowsClipboardImage } from './wsl-clipboard-image'
+import { resolvePickerDefaultPath } from './wsl-path-bridge'
+
+const electron = require('electron') as typeof import('electron')
+const {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  net: electronNet,
+  ipcMain,
+  Menu,
+  nativeImage,
+  nativeTheme,
+  Notification,
+  powerMonitor,
+  protocol,
+  safeStorage,
+  screen,
+  session,
+  shell,
+  systemPreferences
+} = electron
 
 const USER_DATA_OVERRIDE = process.env.KOPI_DESKTOP_USER_DATA_DIR
 
@@ -796,14 +812,13 @@ function registerMediaProtocol() {
 }
 
 let mainWindow = null
-let kopiProcess = null
-let connectionPromise = null
+const backendConnectionState = createBackendConnectionState<ReturnType<typeof spawn>, any>()
 // True while connection-config:apply soft-rehomes the primary — suppresses the
 // backend-exit toast so an intentional kill doesn't look like a crash.
 let softRehomeInProgress = false
 // Additional per-profile backends, keyed by profile name. The PRIMARY backend
-// (the desktop's launch profile) stays managed by kopiProcess +
-// connectionPromise + startKopi(); this pool only holds EXTRA profile
+// (the desktop's launch profile) stays managed by backendConnectionState +
+// startKopi(); this pool only holds EXTRA profile
 // backends spawned lazily when a session belongs to a different profile. A user
 // with no named profiles never populates this map, so their experience is
 // byte-for-byte the single-backend behavior.
@@ -2324,6 +2339,7 @@ async function releaseBackendLock(updateRoot, tag) {
 
   // Collect every backend PID the desktop owns: primary window backend + pool.
   const pids = []
+  const kopiProcess = backendConnectionState.getProcess()
 
   if (kopiProcess && Number.isInteger(kopiProcess.pid)) {
     pids.push(kopiProcess.pid)
@@ -2365,8 +2381,10 @@ async function releaseBackendLock(updateRoot, tag) {
     // instead of trusting the initial sweep.
     const stragglers = []
 
-    if (kopiProcess && Number.isInteger(kopiProcess.pid)) {
-      stragglers.push(kopiProcess.pid)
+    const currentKopiProcess = backendConnectionState.getProcess()
+
+    if (currentKopiProcess && Number.isInteger(currentKopiProcess.pid)) {
+      stragglers.push(currentKopiProcess.pid)
     }
 
     for (const entry of backendPool.values()) {
@@ -2721,6 +2739,7 @@ async function applyUpdatesPosixInApp(opts: any) {
   // the update reaper. _kill_stale_dashboard_processes accepts a comma-separated
   // list (a single int still parses for back-compat).
   const desktopChildPids = []
+  const kopiProcess = backendConnectionState.getProcess()
 
   if (kopiProcess && Number.isInteger(kopiProcess.pid)) {
     desktopChildPids.push(kopiProcess.pid)
@@ -3597,9 +3616,35 @@ async function ensureRuntime(backend) {
   return backend
 }
 
+// Assemble a single-file multipart/form-data body (FastAPI `UploadFile`
+// endpoints, e.g. kanban attachments). Hand-rolled because node's http has no
+// FormData and the payload is one file — a dependency would be overkill.
+function multipartBody(upload) {
+  const boundary = `----kopi-${crypto.randomBytes(12).toString('hex')}`
+  const filename = String(upload.filename || 'file').replace(/["\r\n]/g, '_')
+
+  const body = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
+        `Content-Type: ${upload.contentType || 'application/octet-stream'}\r\n\r\n`
+    ),
+    Buffer.from(upload.bytes),
+    Buffer.from(`\r\n--${boundary}--\r\n`)
+  ])
+
+  return { body, contentType: `multipart/form-data; boundary=${boundary}` }
+}
+
 function fetchJson(url, token, options: any = {}) {
   return new Promise((resolve, reject) => {
-    const body = options.body === undefined ? undefined : Buffer.from(JSON.stringify(options.body))
+    const { body, contentType } = options.upload
+      ? multipartBody(options.upload)
+      : {
+          body: options.body === undefined ? undefined : Buffer.from(JSON.stringify(options.body)),
+          contentType: 'application/json'
+        }
+
     const parsed = new URL(url)
     const client = parsed.protocol === 'https:' ? https : http
     const timeoutMs = resolveTimeoutMs(options.timeoutMs, DEFAULT_FETCH_TIMEOUT_MS)
@@ -3615,7 +3660,7 @@ function fetchJson(url, token, options: any = {}) {
       {
         method: options.method || 'GET',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': contentType,
           'X-Kopi-Session-Token': token,
           ...(body ? { 'Content-Length': String(body.length) } : {})
         }
@@ -4576,14 +4621,13 @@ function buildApplicationMenu() {
     submenu: [
       IS_MAC
         ? {
-            accelerator: 'CommandOrControl+W',
-            click: () => {
-              if (previewShortcutActive) {
-                sendClosePreviewRequested()
-              } else {
-                mainWindow?.close()
-              }
-            },
+            // NO accelerator: on macOS a registered ⌘W is consumed by the OS
+            // menu before the web contents ever sees it (and registerAccelerator
+            // false is a no-op on mac — electron#18295). Leaving it off lets the
+            // `before-input-event` handler below intercept ⌘W and route it to the
+            // renderer's close-active-tab. Clicking the item still closes the tab
+            // (or window) via the same request.
+            click: () => sendClosePreviewRequested(),
             label: 'Close'
           }
         : { role: 'quit' }
@@ -4689,9 +4733,12 @@ function installDevToolsShortcut(window) {
 function installPreviewShortcut(window) {
   window.webContents.on('before-input-event', (event, input) => {
     const key = String(input.key || '').toLowerCase()
-    const isPreviewCloseShortcut = key === 'w' && (IS_MAC ? input.meta : input.control) && !input.alt && !input.shift
+    const isCloseTabShortcut = key === 'w' && (IS_MAC ? input.meta : input.control) && !input.alt && !input.shift
 
-    if (!isPreviewCloseShortcut || !previewShortcutActive) {
+    // Always claim ⌘W here (the File>Close item deliberately has no
+    // accelerator, so nothing else does). The renderer decides tab-vs-window
+    // — no `previewShortcutActive` gate, so it works for every closeable tab.
+    if (!isCloseTabShortcut) {
       return
     }
 
@@ -5457,6 +5504,7 @@ function openPortalLoginWindow() {
       if (settled) {
         return
       }
+
       settled = true
 
       if (pollTimer) {
@@ -5543,6 +5591,7 @@ async function discoverCloudAgents(org?: string) {
     const err = new Error(
       'You are not signed in to Kopi Cloud. Open Settings → Gateway, choose Kopi Cloud, and sign in.'
     ) as any
+
     err.needsCloudLogin = true
     throw err
   }
@@ -5911,6 +5960,7 @@ function buildRemoteBlock(remoteUrl, authMode, token, org?: string) {
     authMode,
     token
   }
+
   const orgValue = typeof org === 'string' ? org.trim() : ''
 
   if (orgValue) {
@@ -6124,6 +6174,16 @@ function globalRemoteActive() {
   return modeIsRemoteLike(readDesktopConnectionConfig().mode)
 }
 
+// True when the PRIMARY profile's backend resolves to a remote/cloud host —
+// i.e. resolveRemoteBackend(primaryProfileKey()) would return a descriptor
+// rather than null. Mirrors that function's precedence (per-profile override →
+// env → global) so a startKopi() failure can be classified as remote (never
+// latch — transient, must stay retryable) vs local (latch to break install
+// loops) BEFORE the throwing resolve/mint runs.
+function primaryBackendIsRemote() {
+  return Boolean(profileHasRemoteOverride(primaryProfileKey())) || globalRemoteActive()
+}
+
 // GET a profile's resolved backend (remote pool or local primary), parsed JSON.
 async function fetchJsonForProfile(profile, path) {
   return requestJsonForProfile(profile, path, 'GET')
@@ -6291,12 +6351,9 @@ function stopBackendChild(child) {
 // (so skeletons retrigger) and re-dials. Distinct from hard re-home (profile
 // switch / crash recovery), which still resets boot progress + reloads.
 function resetKopiConnection({ soft = false } = {}) {
-  connectionPromise = null
   backendStartFailure = null
-
+  const kopiProcess = backendConnectionState.invalidate()
   stopBackendChild(kopiProcess)
-
-  kopiProcess = null
 
   if (!soft) {
     resetBootProgressForReconnect()
@@ -6308,7 +6365,8 @@ function resetKopiConnection({ soft = false } = {}) {
 // startKopi() spawns fresh instead of racing the dying one. Shared by the
 // connection-config and profile switch flows.
 async function teardownPrimaryBackendAndWait({ soft = false } = {}) {
-  // Capture the reference before resetKopiConnection() nulls kopiProcess.
+  // Capture the reference before resetKopiConnection() invalidates it.
+  const kopiProcess = backendConnectionState.getProcess()
   const dying = kopiProcess && !kopiProcess.killed ? kopiProcess : null
 
   if (soft) {
@@ -6685,14 +6743,25 @@ async function startKopi() {
     throw backendStartFailure
   }
 
-  if (connectionPromise) {
-    return connectionPromise
+  const existingConnectionPromise = backendConnectionState.getPromise()
+
+  if (existingConnectionPromise) {
+    return existingConnectionPromise
   }
 
-  connectionPromise = (async () => {
+  const connectionAttempt = backendConnectionState.startAttempt()
+
+  // Classify this boot BEFORE the throwing resolve/mint runs: a remote failure
+  // must NOT latch (it's transient — see shouldLatchBackendStartFailure), while
+  // a local failure latches to break install-restart loops.
+  let attemptedRemote = primaryBackendIsRemote()
+
+  const connectionPromise = (async () => {
     await advanceBootProgress('backend.resolve', 'Resolving Kopi backend', 8)
     // Resolve for the desktop's primary profile so a per-profile remote
     // override on the active profile is honored (falls back to env / global).
+    // Re-read once resolved so the classification tracks the value actually used.
+    attemptedRemote = primaryBackendIsRemote()
     const remote = await resolveRemoteBackend(primaryProfileKey())
 
     if (remote) {
@@ -6751,7 +6820,7 @@ async function startKopi() {
     await advanceBootProgress('backend.spawn', `Starting Kopi backend via ${backend.label}`, 84)
     rememberLog(`Starting Kopi backend via ${backend.label}`)
 
-    kopiProcess = spawn(
+    const kopiProcess = spawn(
       backend.command,
       backend.args,
       hiddenWindowsChildOptions({
@@ -6781,6 +6850,13 @@ async function startKopi() {
       })
     )
 
+    const processOwner = backendConnectionState.attachProcess(connectionAttempt, kopiProcess)
+
+    if (!processOwner) {
+      stopBackendChild(kopiProcess)
+      throw new Error('Kopi backend start was superseded by a newer connection attempt.')
+    }
+
     kopiProcess.stdout.on('data', rememberLog)
     kopiProcess.stderr.on('data', rememberLog)
     let backendReady = false
@@ -6791,6 +6867,13 @@ async function startKopi() {
     })
 
     kopiProcess.once('error', error => {
+      if (!backendConnectionState.clearForCurrentProcess(processOwner)) {
+        rememberLog(`Ignoring stale Kopi backend error: ${error.message}`)
+        rejectBackendStart?.(new Error('Kopi backend start was superseded by a newer connection attempt.'))
+
+        return
+      }
+
       rememberLog(`Kopi backend failed to start: ${error.message}`)
       updateBootProgress(
         {
@@ -6801,15 +6884,21 @@ async function startKopi() {
         },
         { allowDecrease: true }
       )
-      kopiProcess = null
-      connectionPromise = null
       sendBackendExit({ code: null, signal: null, error: error.message })
       rejectBackendStart?.(error)
     })
     kopiProcess.once('exit', (code, signal) => {
+      if (!backendConnectionState.clearForCurrentProcess(processOwner)) {
+        rememberLog(`Ignoring stale Kopi backend exit (${signal || code})`)
+
+        if (!backendReady) {
+          rejectBackendStart?.(new Error('Kopi backend start was superseded by a newer connection attempt.'))
+        }
+
+        return
+      }
+
       rememberLog(`Kopi backend exited (${signal || code})`)
-      kopiProcess = null
-      connectionPromise = null
       sendBackendExit({ code, signal })
 
       if (!backendReady) {
@@ -6850,8 +6939,7 @@ async function startKopi() {
     backendStartFailure = null
 
     const authToken = await adoptServedDashboardToken(baseUrl, token, {
-      // The exit/error handlers null kopiProcess when the child dies.
-      childAlive: () => kopiProcess !== null && kopiProcess.exitCode === null && !kopiProcess.killed,
+      childAlive: () => kopiProcess.exitCode === null && !kopiProcess.killed,
       rememberLog
     })
 
@@ -6874,8 +6962,21 @@ async function startKopi() {
       ...getWindowState()
     }
   })().catch(error => {
+    if (!backendConnectionState.clearPromiseForAttempt(connectionAttempt)) {
+      throw error
+    }
+
     const message = error instanceof Error ? error.message : String(error)
-    backendStartFailure = error instanceof Error ? error : new Error(message)
+
+    // Only latch LOCAL boot failures. A remote failure (lapsed session / mint
+    // timeout / host briefly unreachable across sleep) is transient and has no
+    // child 'exit' handler to clear the cache — latching it would wedge the app
+    // on "session expired" until a full restart, defeating reconnect, the
+    // "Sign out & sign in" reload, and the wake-recovery revalidate path.
+    if (shouldLatchBackendStartFailure({ attemptedRemote })) {
+      backendStartFailure = error instanceof Error ? error : new Error(message)
+    }
+
     updateBootProgress(
       {
         error: message,
@@ -6885,9 +6986,10 @@ async function startKopi() {
       },
       { allowDecrease: true }
     )
-    connectionPromise = null
     throw error
   })
+
+  backendConnectionState.setPromise(connectionAttempt, connectionPromise)
 
   return connectionPromise
 }
@@ -6906,13 +7008,16 @@ async function startKopi() {
 function wireCommonWindowHandlers(win, { zoom = true }: { zoom?: boolean } = {}) {
   installPreviewShortcut(win)
   installDevToolsShortcut(win)
+
   if (zoom) {
     installZoomShortcuts(win)
-    // Re-apply persisted zoom on show/restore (Windows drops webContents zoom on
-    // minimize/restore) and on first load (reloads / crash recovery).
+    // Re-apply persisted zoom on show/restore/cross-display move (Windows can
+    // drop webContents zoom after minimize or a monitor-scale change) and on
+    // first load (reloads / crash recovery).
     installZoomReassertOnWindowEvents(win, () => restorePersistedZoomLevel(win))
     win.webContents.once('did-finish-load', () => restorePersistedZoomLevel(win))
   }
+
   installContextMenu(win)
   win.webContents.setWindowOpenHandler(details => {
     openExternalUrl(details.url)
@@ -7234,10 +7339,17 @@ function createWindow() {
   mainWindow.on('unmaximize', schedulePersistWindowState)
   mainWindow.on('close', () => schedulePersistWindowState.flush())
 
-  // The overlay rides the main window — closing the app's primary window must
-  // tear it down too (otherwise it strands as an orphan that blocks
-  // window-all-closed from quitting on Windows/Linux).
-  mainWindow.on('closed', () => closePetOverlay())
+  // the closed wrapper remains truthy, so clear only the window this callback owns.
+  const createdMainWindow = mainWindow
+  mainWindow.on('closed', () => {
+    closePetOverlay()
+
+    if (mainWindow === createdMainWindow) {
+      mainWindow = null
+      // the replacement renderer must register before queued links can be delivered.
+      _rendererReadyForDeepLink = false
+    }
+  })
 
   wireCommonWindowHandlers(mainWindow, zoomWiringForWindowKind('chat'))
 
@@ -7308,7 +7420,7 @@ function createWindow() {
 
 ipcMain.handle('kopi:connection', async (_event, profile) => ensureBackend(profile))
 // Reconnect-after-wake recovery. A REMOTE primary backend has no child process,
-// so the 'exit'/'error' handlers that would clear a dead connectionPromise never
+// so the 'exit'/'error' handlers that would clear a dead connection promise never
 // fire — once the remote becomes unreachable across a sleep/wake the renderer
 // re-dials the same dead descriptor forever and the composer stays stuck on
 // "Starting Kopi…". Before the renderer's backoff loop reconnects, it asks us
@@ -7316,6 +7428,8 @@ ipcMain.handle('kopi:connection', async (_event, profile) => ensureBackend(profi
 // not, we drop the cache so the next getConnection() rebuilds it. Local backends
 // self-heal via their child 'exit' handler, so we never touch them here.
 ipcMain.handle('kopi:connection:revalidate', async () => {
+  const connectionPromise = backendConnectionState.getPromise()
+
   if (!connectionPromise) {
     return { ok: true, rebuilt: false }
   }
@@ -7325,7 +7439,7 @@ ipcMain.handle('kopi:connection:revalidate', async () => {
   try {
     conn = await connectionPromise
   } catch {
-    // The cached boot already rejected (its own catch nulls connectionPromise);
+    // The cached boot already rejected (its own catch clears the promise);
     // nothing to revalidate — the next getConnection() builds fresh.
     return { ok: true, rebuilt: false }
   }
@@ -7343,7 +7457,7 @@ ipcMain.handle('kopi:connection:revalidate', async () => {
   } catch {
     // Unreachable remote: drop the stale cache so the renderer's next reconnect
     // tick rebuilds a fresh, reachable descriptor. resetKopiConnection only
-    // nulls connectionPromise for a remote (no child to SIGTERM).
+    // clears the connection promise for a remote (no child to SIGTERM).
     rememberLog('Cached remote Kopi backend failed liveness probe; dropping stale connection.')
     resetKopiConnection()
 
@@ -7870,6 +7984,12 @@ ipcMain.handle('kopi:api', async (_event, request) => {
   // session so the cookie attaches automatically. Token/local modes keep using
   // the static session-token header.
   if (connection.authMode === 'oauth') {
+    // The OAuth path rides electron.net with JSON headers; multipart isn't
+    // wired there. Fail loudly rather than corrupting the upload.
+    if (request?.upload) {
+      throw new Error('File uploads are not supported against OAuth-gated remote backends yet.')
+    }
+
     return fetchJsonViaOauthSession(url, {
       method: request?.method,
       body: request?.body,
@@ -7880,6 +8000,7 @@ ipcMain.handle('kopi:api', async (_event, request) => {
   return fetchJson(url, connection.token, {
     method: request?.method,
     body: request?.body,
+    upload: request?.upload,
     timeoutMs
   })
 })
@@ -8380,6 +8501,28 @@ ipcMain.handle('kopi:fs:reveal', async (_event, targetPath) => {
   }
 })
 
+// Open a DIRECTORY in the OS file manager, creating it first if needed. Unlike
+// `reveal` (which selects an existing item and silently no-ops on a missing
+// path — the "Open plugins folder" Windows bug), this is for the plugins door,
+// which often doesn't exist on first use. `shell.openPath` returns '' on
+// success or an error string; both mkdir + openPath failures are surfaced.
+ipcMain.handle('kopi:fs:openDir', async (_event, dirPath) => {
+  const dir = String(dirPath || '').trim()
+
+  if (!dir) {
+    return { ok: false, error: 'no path' }
+  }
+
+  try {
+    await fs.promises.mkdir(dir, { recursive: true })
+    const error = await shell.openPath(path.normalize(dir))
+
+    return error ? { ok: false, error } : { ok: true }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+})
+
 // Rename a file/folder in place. The renderer passes the existing path + a new
 // base name; the destination is resolved in the SAME parent dir so a rename can
 // never move the item elsewhere or traverse out. Rejects on a name collision.
@@ -8466,9 +8609,7 @@ ipcMain.handle('kopi:git:branchSwitch', async (_event, repoPath, branch) =>
 
 ipcMain.handle('kopi:git:branchList', async (_event, repoPath) => listBranches(repoPath, resolveGitBinary()))
 
-ipcMain.handle('kopi:git:baseBranchList', async (_event, repoPath) =>
-  listBaseBranches(repoPath, resolveGitBinary())
-)
+ipcMain.handle('kopi:git:baseBranchList', async (_event, repoPath) => listBaseBranches(repoPath, resolveGitBinary()))
 
 // Compact repo status (branch, ahead/behind, change counts + files) for the
 // composer coding rail. Returns null on a non-repo / remote backend so the rail
@@ -8995,13 +9136,15 @@ if (!_gotSingleInstanceLock) {
 
     if (url) {
       handleDeepLink(url)
-    } else if (mainWindow) {
-      if (mainWindow.isMinimized()) {
-        mainWindow.restore()
-      }
-
-      mainWindow.focus()
     }
+
+    ensureMainWindow(mainWindow, {
+      isReady: app.isReady(),
+      createWindow,
+      focusWindow,
+      // deep-link delivery focuses a live window after its renderer is ready.
+      focusExisting: !url
+    })
   })
 }
 
@@ -9098,7 +9241,7 @@ app.on('before-quit', () => {
     disposeTerminalSession(id)
   }
 
-  stopBackendChild(kopiProcess)
+  stopBackendChild(backendConnectionState.getProcess())
   stopAllPoolBackends()
 })
 

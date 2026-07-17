@@ -17,7 +17,12 @@ import path from 'node:path'
 
 import { test } from 'vitest'
 
-import { buildPathExtCandidates, chooseUpdaterArgs, getVenvSitePackagesEntries, resolveVenvKopiCommand } from './windows-kopi-path'
+import {
+  buildPathExtCandidates,
+  chooseUpdaterArgs,
+  getVenvSitePackagesEntries,
+  resolveVenvKopiCommand
+} from './windows-kopi-path'
 
 test('buildPathExtCandidates: Windows tries PATHEXT extensions before the empty extension', () => {
   const extensions = buildPathExtCandidates('.COM;.EXE;.BAT;.CMD', true)

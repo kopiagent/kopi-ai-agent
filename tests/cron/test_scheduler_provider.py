@@ -88,7 +88,7 @@ def test_desktop_ticker_calls_tick_then_stops():
         t = threading.Thread(
             target=_start_desktop_cron_ticker,
             args=(stop,),
-            kwargs={"interval": 0},
+            kwargs={"interval": 0, "startup_delay": 0},
             daemon=True,
         )
         t.start()

@@ -68,6 +68,7 @@ kopi model          # Choose your LLM provider and model
 kopi tools          # Configure which tools are enabled
 kopi gateway setup  # Set up messaging platforms
 kopi config set     # Set individual config values
+kopi config get     # Inspect individual config values
 kopi setup          # Or run the full setup wizard to configure everything at once
 ```
 

@@ -1,9 +1,9 @@
 {
   "upstream": "https://github.com/NousResearch/hermes-agent.git",
-  "synced_to_commit": "6997dc81c",
+  "synced_to_commit": "56e2ba5e7",
   "synced_date": "2026-07-15",
   "merge_base": "c1b46d9",
-  "sync_tag": "hermes-sync-6997dc81c",
+  "sync_tag": "hermes-sync-56e2ba5e7",
   "rebrand_transform": "case-preserving hermes->kopi; plus post-pass hermes-agent/kopi-agent -> kopi-ai-agent (package/repo name)",
   "merge_method": "3-way merge with base = c1b46d9 (kopi's TRUE initial rebranded commit, the real common ancestor), theirs = T(hermes@new_HEAD), ours = kopi main. CRITICAL: base MUST be c1b46d9, not a synthetic T(fork) — a too-new base silently drops upstream code as 'ours deleted it'.",
   "conflict_policy": "website/** + i18n kept KOPI's; README.md/install.sh kept KOPI's; .env.example kept KOPI PROXY block + upstream providers; everything else took upstream.",

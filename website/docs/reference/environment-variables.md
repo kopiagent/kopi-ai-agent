@@ -345,7 +345,7 @@ For cloud sandbox backends, persistence is filesystem-oriented. `TERMINAL_LIFETI
 | `TWILIO_PHONE_NUMBER` | Twilio phone number in E.164 format (shared with telephony skill) |
 | `SMS_WEBHOOK_URL` | Public URL for Twilio signature validation — must match the webhook URL in Twilio Console (required) |
 | `SMS_WEBHOOK_PORT` | Webhook listener port for inbound SMS (default: `8080`) |
-| `SMS_WEBHOOK_HOST` | Webhook bind address (default: `0.0.0.0`) |
+| `SMS_WEBHOOK_HOST` | Webhook bind address (default: `127.0.0.1`) |
 | `SMS_INSECURE_NO_SIGNATURE` | Set to `true` to disable Twilio signature validation (local dev only — not for production) |
 | `SMS_ALLOWED_USERS` | Comma-separated E.164 phone numbers allowed to chat |
 | `SMS_ALLOW_ALL_USERS` | Allow all SMS senders without an allowlist |
@@ -717,7 +717,6 @@ Advanced per-platform knobs for throttling the outbound message batcher. Most us
 | `KOPI_IGNORE_USER_CONFIG` | Skip `~/.kopi/config.yaml` and use built-in defaults (credentials in `.env` still load). Equivalent to `--ignore-user-config`. |
 | `KOPI_IGNORE_RULES` | Skip auto-injection of `AGENTS.md`, `SOUL.md`, `.cursorrules`, memory, and preloaded skills. Equivalent to `--ignore-rules`. |
 | `KOPI_SAFE_MODE` | Troubleshooting mode: disable ALL customizations — skips plugin discovery, MCP server loading, and shell-hook registration. Set automatically by `--safe-mode` (which also sets the two flags above). |
-| `KOPI_MD_NAMES` | Comma-separated list of rules-file names to auto-inject (default: `AGENTS.md,CLAUDE.md,.cursorrules,SOUL.md`). |
 | `KOPI_TOOL_PROGRESS` | Deprecated compatibility variable for tool progress display. Prefer `display.tool_progress` in `config.yaml`. |
 | `KOPI_TOOL_PROGRESS_MODE` | Deprecated compatibility variable for tool progress mode. Prefer `display.tool_progress` in `config.yaml`. |
 | `KOPI_HUMAN_DELAY_MODE` | Response pacing: `off`/`natural`/`custom` |
@@ -747,7 +746,6 @@ Advanced per-platform knobs for throttling the outbound message batcher. Most us
 | `KOPI_WRITE_SAFE_ROOT` | Optional directory prefix that restricts `write_file`/`patch` writes; paths outside require approval. Supports multiple directories separated by `os.pathsep` (`:` on Unix, `;` on Windows). |
 | `KOPI_DISABLE_LAZY_INSTALLS` | Internal bridge var set automatically in the official Docker image to prevent runtime dependency installs into the immutable `/opt/kopi` tree. The user-facing equivalent is `security.allow_lazy_installs: false` in `config.yaml`; do not set this in `.env`. |
 | `KOPI_DISABLE_FILE_STATE_GUARD` | Set to `1` to turn off the "file changed since you read it" guard on `patch`/`write_file`. |
-| `KOPI_CORE_TOOLS` | Comma-separated override for the canonical core tool list (advanced; rarely needed). |
 | `KOPI_BUNDLED_SKILLS` | Comma-separated override for the list of bundled skills loaded at startup. |
 | `KOPI_OPTIONAL_SKILLS` | Comma-separated list of optional-skill names to auto-install on first run. |
 | `KOPI_DEBUG_INTERRUPT` | Set to `1` to log detailed interrupt/cancel tracing to `agent.log`. |

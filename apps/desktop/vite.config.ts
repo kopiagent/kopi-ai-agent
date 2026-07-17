@@ -58,7 +58,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@kopi/plugin-sdk': path.resolve(__dirname, './src/sdk/index.ts'),
       '@kopi/shared': path.resolve(__dirname, '../shared/src'),
+      '@assistant-ui/tap': path.resolve(__dirname, '../../node_modules/@assistant-ui/tap'),
       react: path.resolve(__dirname, '../../node_modules/react'),
       'react-dom': path.resolve(__dirname, '../../node_modules/react-dom'),
       'react/jsx-dev-runtime': path.resolve(__dirname, '../../node_modules/react/jsx-dev-runtime.js'),

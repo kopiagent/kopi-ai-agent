@@ -1,13 +1,14 @@
 {
   "name": "kopi-ai-agent",
-  "version": "1.0.0",
+  "version": "1.20",
   "description": "An AI agent with advanced tool-calling capabilities, featuring a flexible toolsets system for organizing and managing tools.",
   "private": true,
   "workspaces": [
     "apps/*",
     "ui-tui",
     "ui-tui/packages/*",
-    "web"
+    "web",
+    "tests-js"
   ],
   "scripts": {
     "postinstall": "echo '✅ Browser tools ready. Run: python run_agent.py --help'",
@@ -21,7 +22,8 @@
     "audit:fix:root": "npm audit fix --workspaces=false",
     "audit:fix:web": "npm audit fix --workspace web",
     "audit:fix:tui": "npm audit fix --workspace ui-tui",
-    "check": "npm run check --ws"
+    "check": "npm run --ws check",
+    "fix": "npm run --ws fix"
   },
   "repository": {
     "type": "git",
@@ -37,11 +39,14 @@
     "agent-browser": "^0.26.0"
   },
   "overrides": {
+    "@assistant-ui/tap": "0.9.4",
     "lodash": "4.18.1",
-    "@assistant-ui/store": "0.2.13",
     "yauzl": "^3.3.1"
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@assistant-ui/tap": "0.9.4"
   }
 }

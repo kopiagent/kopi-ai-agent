@@ -196,16 +196,6 @@ function pluginPath(name: string): string {
   return name.split("/").map(encodeURIComponent).join("/");
 }
 
-async function getSessionToken(): Promise<string> {
-  if (_sessionToken) return _sessionToken;
-  const injected = window.__KOPI_SESSION_TOKEN__;
-  if (injected) {
-    _sessionToken = injected;
-    return _sessionToken;
-  }
-  throw new Error("Session token not available — page must be served by the KOPI dashboard server");
-}
-
 /**
  * Fetch a single-use ticket for a WebSocket upgrade in gated mode.
  *
@@ -762,7 +752,7 @@ export const api = {
   getToolsets: (profile?: string) =>
     fetchJSON<ToolsetInfo[]>(`/api/tools/toolsets${profileQuery(profile)}`),
   toggleToolset: (name: string, enabled: boolean, profile?: string) =>
-    fetchJSON<{ ok: boolean; name: string; enabled: boolean }>(
+    fetchJSON<{ ok: boolean; name: string; platform: string; enabled: boolean }>(
       `/api/tools/toolsets/${encodeURIComponent(name)}`,
       {
         method: "PUT",
@@ -1025,6 +1015,11 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+  authMcpServer: (name: string) =>
+    fetchJSON<McpTestResult>(
+      `/api/mcp/servers/${encodeURIComponent(name)}/auth`,
+      { method: "POST" },
+    ),
   removeMcpServer: (name: string) =>
     fetchJSON<{ ok: boolean }>(`/api/mcp/servers/${encodeURIComponent(name)}`, {
       method: "DELETE",
@@ -1437,7 +1432,7 @@ export interface McpServer {
   command: string | null;
   args: string[];
   env: Record<string, string>;
-  auth: string | null;
+  auth: "header" | "oauth" | null;
   enabled: boolean;
   tools: string[] | null;
 }
@@ -1472,13 +1467,16 @@ export interface McpCatalogDiagnostic {
 }
 
 
+export type McpHttpAuth = "none" | "header" | "oauth";
+
 export interface McpServerCreate {
   name: string;
   url?: string;
   command?: string;
   args?: string[];
   env?: Record<string, string>;
-  auth?: string;
+  auth?: McpHttpAuth;
+  bearer_token?: string;
 }
 
 export interface McpTestResult {
@@ -2227,6 +2225,8 @@ export interface ToolsetInfo {
   name: string;
   label: string;
   description: string;
+  platform: string;
+  platform_label: string;
   enabled: boolean;
   configured: boolean;
   tools: string[];
@@ -2331,6 +2331,8 @@ export interface AuxiliaryModelsResponse {
 export interface MoaModelSlot {
   provider: string;
   model: string;
+  /** Optional per-slot reasoning effort — round-tripped, not edited here. */
+  reasoning_effort?: string;
 }
 
 export interface MoaConfigResponse {
@@ -2342,6 +2344,10 @@ export interface MoaConfigResponse {
     reference_temperature: number;
     aggregator_temperature: number;
     max_tokens: number;
+    /** Optional advisor output cap — round-tripped, not edited here. */
+    reference_max_tokens?: number | null;
+    /** Fan-out cadence (per_iteration | user_turn) — round-tripped. */
+    fanout?: string;
     enabled: boolean;
   }>;
   reference_models: MoaModelSlot[];
