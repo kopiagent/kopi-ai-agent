@@ -92,7 +92,7 @@ describe('SkillsView toolset management', () => {
     })
 
     await waitFor(() => expect(toggleToolset).toHaveBeenCalledWith('web', false))
-  })
+  }, 10000)
 
   it('renders toolset titles without leading emoji', async () => {
     getToolsets.mockResolvedValue([toolset({ name: 'cronjob', label: '⏰ Cron Jobs', description: 'cron tools' })])

@@ -254,12 +254,12 @@ function StreamingHarness() {
 
     const second = window.setTimeout(() => {
       setMessages([userMessage(), assistantMessage('first chunk second chunk')])
-    }, 500)
+    }, 1500)
 
     const complete = window.setTimeout(() => {
       setMessages([userMessage(), assistantMessage('first chunk second chunk', false)])
       setIsRunning(false)
-    }, 700)
+    }, 1700)
 
     return () => {
       window.clearTimeout(first)
@@ -411,7 +411,7 @@ describe('assistant-ui streaming renderer', () => {
     expect(container.textContent).not.toContain('second chunk')
     expect(screen.queryByRole('status', { name: 'Kopi is loading a response' })).toBeNull()
 
-    await wait(500)
+    await wait(1500)
 
     await waitFor(() => {
       expect(container.textContent).toContain('first chunk second chunk')
