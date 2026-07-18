@@ -16,13 +16,16 @@ from kopi_constants import (
     get_default_kopi_root,
     get_kopi_dir,
     get_kopi_home,
+    get_process_kopi_home,
     heal_kopi_managed_node,
     kopi_managed_node_tree_present,
     iter_kopi_node_dirs,
     is_container,
     node_tool_runnable,
     parse_reasoning_effort,
+    reset_kopi_home_override,
     secure_parent_dir,
+    set_kopi_home_override,
     with_kopi_node_path,
 )
 
@@ -114,6 +117,38 @@ class TestGetKopiHome:
         monkeypatch.setattr(kopi_constants, "_profile_fallback_warned", False)
 
         assert get_kopi_home() == local_appdata / "kopi"
+
+
+class TestGetProcessKopiHome:
+    """Tests for get_process_kopi_home() — process launch scope.
+
+    Contract: resolve only the process env / platform default, and never
+    follow the context-local override that per-task profile scoping installs
+    via set_kopi_home_override().
+    """
+
+    def test_env_set_returns_that_path(self, tmp_path, monkeypatch):
+        home = tmp_path / "launch-home"
+        monkeypatch.setenv("KOPI_HOME", str(home))
+        assert get_process_kopi_home() == home
+
+    def test_env_unset_returns_platform_default(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("KOPI_HOME", raising=False)
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        assert get_process_kopi_home() == tmp_path / ".kopi"
+
+    def test_ignores_context_local_override(self, tmp_path, monkeypatch):
+        launch_home = tmp_path / "launch-home"
+        profile_home = tmp_path / "profiles" / "coder"
+        monkeypatch.setenv("KOPI_HOME", str(launch_home))
+        token = set_kopi_home_override(profile_home)
+        try:
+            # get_kopi_home() follows the override; the process-scoped
+            # variant must not.
+            assert get_kopi_home() == profile_home
+            assert get_process_kopi_home() == launch_home
+        finally:
+            reset_kopi_home_override(token)
 
 
 class TestKopiManagedNode:

@@ -29,6 +29,7 @@ if os.name == "posix":
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
+from gateway.config import coerce_systemd_watchdog_seconds, load_gateway_config
 from gateway.status import terminate_pid
 from gateway.restart import (
     DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT,
@@ -2624,8 +2625,16 @@ def _kopi_home_for_target_user(target_home_dir: str) -> str:
       /root/.kopi/profiles/coder     → /home/alice/.kopi/profiles/coder
       /opt/custom-kopi               → /opt/custom-kopi  (kept as-is)
     """
-    current_kopi = get_kopi_home().resolve()
-    current_default = (Path.home() / ".kopi").resolve()
+    current_kopi_raw = os.environ.get("KOPI_HOME", "").strip()
+    current_kopi = (
+        Path(current_kopi_raw).expanduser()
+        if current_kopi_raw
+        else get_kopi_home()
+    )
+    # Keep explicit custom paths lexical. Resolving a non-existent custom path
+    # can rewrite it through host-specific path mappings, which would bake a
+    # different KOPI_HOME into the generated service unit.
+    current_default = Path.home() / ".kopi"
     target_default = Path(target_home_dir) / ".kopi"
 
     # Default ~/.kopi → remap to target user's default
@@ -2703,6 +2712,44 @@ def _stable_service_working_dir() -> str:
     return str(PROJECT_ROOT)
 
 
+def _systemd_watchdog_seconds(kopi_home: str | Path | None = None) -> int:
+    """Resolve the managed-overlay-aware watchdog setting for a service home."""
+    override_token = None
+    reset_home_override = None
+    if kopi_home is not None:
+        from kopi_constants import (
+            reset_kopi_home_override,
+            set_kopi_home_override,
+        )
+
+        override_token = set_kopi_home_override(kopi_home)
+        reset_home_override = reset_kopi_home_override
+    try:
+        config = load_gateway_config()
+        return coerce_systemd_watchdog_seconds(
+            getattr(config, "systemd_watchdog_seconds", 0)
+        )
+    except Exception:
+        logger.debug(
+            "Could not resolve effective systemd watchdog configuration",
+            exc_info=True,
+        )
+        return 0
+    finally:
+        if override_token is not None and reset_home_override is not None:
+            reset_home_override(override_token)
+
+
+def _systemd_watchdog_service_fields(
+    kopi_home: str | Path | None = None,
+) -> tuple[str, str]:
+    """Return systemd service fields for the effective gateway config."""
+    seconds = _systemd_watchdog_seconds(kopi_home)
+    if seconds <= 0:
+        return "simple", ""
+    return "notify", f"NotifyAccess=main\nWatchdogSec={seconds}s\n"
+
+
 def generate_systemd_unit(system: bool = False, run_as_user: str | None = None) -> str:
     python_path = get_python_path()
     working_dir = _stable_service_working_dir()
@@ -2732,18 +2779,19 @@ def generate_systemd_unit(system: bool = False, run_as_user: str | None = None) 
         "/sbin",
         "/bin",
     ]
-    # systemd's TimeoutStopSec must exceed the gateway's drain_timeout so
-    # there's budget left for post-interrupt cleanup (tool subprocess kill,
-    # adapter disconnect, session DB close) before systemd escalates to
-    # SIGKILL on the cgroup — otherwise bash/sleep tool-call children left
-    # by a force-interrupted agent get reaped by systemd instead of us
-    # (#8202). 30s of headroom covers the worst case we've observed.
+    # Preserve 30s for post-drain cleanup before systemd escalates, with a
+    # 60s minimum for installs that use the default immediate drain. Positive
+    # drain values extend the deadline directly instead of inheriting a second
+    # 60s floor, so a configured 45s drain yields 75s rather than 90s.
     _drain_timeout = int(_get_restart_drain_timeout() or 0)
-    restart_timeout = max(60, _drain_timeout) + 30
+    restart_timeout = max(60, _drain_timeout + 30)
 
     if system:
         username, group_name, home_dir = _system_service_identity(run_as_user)
         kopi_home = _kopi_home_for_target_user(home_dir)
+        systemd_type, systemd_watchdog_directives = _systemd_watchdog_service_fields(
+            kopi_home
+        )
         profile_arg = _profile_arg_for_target_user(kopi_home, home_dir)
         # Remap all paths that may resolve under the calling user's home
         # (e.g. /root/) to the target user's home so the service can
@@ -2766,8 +2814,8 @@ Wants=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
-Type=simple
-User={username}
+Type={systemd_type}
+{systemd_watchdog_directives}User={username}
 Group={group_name}
 ExecStart={python_path} -m kopi_cli.main{f" {profile_arg}" if profile_arg else ""} gateway run
 WorkingDirectory={working_dir}
@@ -2794,6 +2842,9 @@ WantedBy=multi-user.target
 """
 
     kopi_home = str(get_kopi_home().resolve())
+    systemd_type, systemd_watchdog_directives = _systemd_watchdog_service_fields(
+        kopi_home
+    )
     profile_arg = _profile_arg(kopi_home)
     path_entries.extend(_build_user_local_paths(Path.home(), path_entries))
     path_entries.extend(_build_wsl_interop_paths(path_entries))
@@ -2806,8 +2857,8 @@ Wants=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
-Type=simple
-ExecStart={python_path} -m kopi_cli.main{f" {profile_arg}" if profile_arg else ""} gateway run
+Type={systemd_type}
+{systemd_watchdog_directives}ExecStart={python_path} -m kopi_cli.main{f" {profile_arg}" if profile_arg else ""} gateway run
 WorkingDirectory={working_dir}
 Environment="PATH={sane_path}"
 Environment="VIRTUAL_ENV={venv_dir}"
@@ -3982,7 +4033,17 @@ def generate_launchd_plist() -> str:
     
     <key>KeepAlive</key>
     <true/>
-    
+
+    <!-- ThrottleInterval raises launchd's default 10s minimum respawn interval
+         to 30s so a crash-looping gateway can't hammer launchd into a rapid
+         respawn storm; ExitTimeOut gives the gateway 25s of graceful-drain
+         headroom before launchd escalates from SIGTERM to SIGKILL on stop. -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>ExitTimeOut</key>
+    <integer>25</integer>
+
     <key>StandardOutPath</key>
     <string>{log_dir}/gateway.log</string>
     
@@ -4855,6 +4916,64 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False, fo
         _exit_diag("atexit.hook", sys_exc=repr(sys.exc_info()))
 
     _atexit.register(_atexit_hook)
+
+    # Portable, app-level respawn-storm circuit breaker. launchd/systemd have
+    # their own throttles, but this backstop works on every platform (and covers
+    # supervisors that lack a respawn floor). Configured via
+    # ``gateway.respawn_storm`` in config.yaml (``max_starts`` / ``window_seconds``);
+    # the env vars ``KOPI_GATEWAY_MAX_STARTS`` /
+    # ``KOPI_GATEWAY_START_WINDOW_S`` override for escape-hatch use.
+    # Set max_starts <= 0 to disable. Best-effort: a bookkeeping failure must
+    # never block startup.
+    try:
+        import time as _time
+
+        from gateway.status import record_start_and_check_storm
+
+        # Defaults mirror config.yaml DEFAULT_CONFIG ``gateway.respawn_storm``.
+        _max_starts = 5
+        _win = 120.0
+        try:
+            from kopi_cli.config import load_config
+
+            _cfg = load_config()
+            _gw = _cfg.get("gateway") if isinstance(_cfg, dict) else None
+            _rs = _gw.get("respawn_storm") if isinstance(_gw, dict) else None
+            if isinstance(_rs, dict):
+                if isinstance(_rs.get("max_starts"), int):
+                    _max_starts = _rs["max_starts"]
+                if isinstance(_rs.get("window_seconds"), (int, float)):
+                    _win = float(_rs["window_seconds"])
+        except Exception:
+            pass
+        # Env vars override config for escape-hatch use.
+        try:
+            _env_starts = os.getenv("KOPI_GATEWAY_MAX_STARTS")
+            if _env_starts is not None:
+                _max_starts = int(_env_starts)
+        except ValueError:
+            pass
+        try:
+            _env_win = os.getenv("KOPI_GATEWAY_START_WINDOW_S")
+            if _env_win is not None:
+                _win = float(_env_win)
+        except ValueError:
+            pass
+        _storm = (
+            record_start_and_check_storm(max_starts=_max_starts, window_s=_win)
+            if _max_starts > 0
+            else None
+        )
+        if _storm is not None:
+            logger.warning(
+                "Gateway (re)started %d times in %.0fs — backing off %.0fs to break a respawn storm.",
+                _storm.count,
+                _storm.window_s,
+                _storm.backoff_s,
+            )
+            _time.sleep(_storm.backoff_s)
+    except Exception as _be:
+        logger.debug("respawn-storm breaker check failed (non-fatal): %s", _be)
 
     success = False
     try:

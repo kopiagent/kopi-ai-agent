@@ -46,6 +46,7 @@ from agent.prompt_builder import (
     drain_truncation_warnings,
 )
 from agent.runtime_cwd import resolve_context_cwd
+from kopi_constants import get_kopi_home
 from utils import is_truthy_value
 
 
@@ -395,7 +396,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     if active_profile == "default":
         stable_parts.append(
             "Active Kopi profile: default. Other profiles (if any) live "
-            "under ~/.kopi/profiles/<name>/. Each profile has its own "
+            "under " + str(get_kopi_home()) + "/profiles/<name>/. Each profile has its own "
             "skills/, plugins/, cron/, and memories/ that affect a different "
             "session than this one. Do not modify another profile's "
             "skills/plugins/cron/memories unless the user explicitly directs "
@@ -404,9 +405,9 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     else:
         stable_parts.append(
             f"Active Kopi profile: {active_profile}. This session reads "
-            f"and writes ~/.kopi/profiles/{active_profile}/. The default "
-            f"profile's data lives at ~/.kopi/skills/, ~/.kopi/plugins/, "
-            f"~/.kopi/cron/, ~/.kopi/memories/ — those belong to a "
+            f"and writes {get_kopi_home()}/profiles/{active_profile}/. The default "
+            f"profile's data lives at {get_kopi_home()}/skills/, {get_kopi_home()}/plugins/, "
+            f"{get_kopi_home()}/cron/, {get_kopi_home()}/memories/ — those belong to a "
             f"different session run from a different shell. Do NOT modify "
             f"another profile's skills/plugins/cron/memories unless the user "
             f"explicitly directs you to. The cross-profile write guard will "
