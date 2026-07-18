@@ -5,6 +5,7 @@ import http from 'node:http'
 import https from 'node:https'
 import os from 'node:os'
 import path from 'node:path'
+import tls from 'node:tls'
 import { pathToFileURL } from 'node:url'
 
 import nodePty from 'node-pty'
@@ -107,6 +108,7 @@ import {
   sandboxPreflight
 } from './update-relaunch'
 import { isOfficialSshRemote, OFFICIAL_REPO_HTTPS_URL } from './update-remote'
+import { spawnUpdaterProcess } from './updater-process'
 import { fetchMarketplaceThemes, searchMarketplaceThemes } from './vscode-marketplace'
 import {
   computeWindowOptions,
@@ -122,6 +124,7 @@ import {
   getVenvSitePackagesEntries,
   resolveVenvKopiCommand
 } from './windows-kopi-path'
+import { installWindowsSystemCaTrust } from './windows-system-ca'
 import { readWindowsUserEnvVar } from './windows-user-env'
 import { isPackagedInstallPath as isPackagedInstallPathUnderRoots } from './workspace-cwd'
 import { readWslWindowsClipboardImage } from './wsl-clipboard-image'
@@ -2522,7 +2525,7 @@ async function applyUpdates(opts = {}) {
 
     // Detached so the updater outlives this process — it needs us GONE before
     // `kopi update` will run (the venv shim is locked while we live).
-    const child = spawn(updater, updaterArgs, {
+    const child = spawnUpdaterProcess(updater, updaterArgs, {
       cwd: KOPI_HOME,
       env: {
         ...process.env,
@@ -2530,11 +2533,8 @@ async function applyUpdates(opts = {}) {
         PATH: pathWithKopiManagedNode(venvBin)
       },
       detached: true,
-      stdio: 'ignore',
-      windowsHide: false
+      stdio: 'ignore'
     })
-
-    child.unref()
 
     // Write the update-in-progress marker IMMEDIATELY — before the 2.5s
     // quit dwell. The Tauri updater won't write its own marker for several
@@ -2600,7 +2600,7 @@ async function handOffWindowsBootstrapRecovery(reason) {
 
   await releaseBackendLockForUpdate(updateRoot)
 
-  const child = spawn(updater, updaterArgs, {
+  const child = spawnUpdaterProcess(updater, updaterArgs, {
     cwd: KOPI_HOME,
     env: {
       ...process.env,
@@ -2608,11 +2608,8 @@ async function handOffWindowsBootstrapRecovery(reason) {
       PATH: pathWithKopiManagedNode(venvBin)
     },
     detached: true,
-    stdio: 'ignore',
-    windowsHide: false
+    stdio: 'ignore'
   })
-
-  child.unref()
 
   // Same marker pre-write as applyUpdates — see comment there. The recovery
   // hand-off has the same window where the renderer can respawn a backend
@@ -2722,8 +2719,13 @@ async function applyUpdatesPosixInApp(opts: any) {
   // Put the Kopi-managed Node and the venv on PATH so `kopi desktop`'s
   // npm build can find them on a machine with no system Node. Windows portable
   // Node lives directly under %LOCALAPPDATA%\kopi\node, not node\bin.
+  // PYTHONUNBUFFERED: `kopi update` writes to a pipe here, so CPython
+  // block-buffers stdout and long quiet steps (the pre-update backup can zip
+  // multi-GB archives for minutes) stream nothing to the progress UI — users
+  // read the silence as a hang and cancel a healthy update.
   const env: Record<string, string> = {
     KOPI_HOME,
+    PYTHONUNBUFFERED: '1',
     PATH: pathWithKopiManagedNode(path.join(updateRoot, 'venv', 'bin'))
   }
 
@@ -9156,6 +9158,16 @@ app.on('open-url', (event, url) => {
 })
 
 app.whenReady().then(() => {
+  const systemCa = installWindowsSystemCaTrust(tls)
+
+  if (systemCa.applied) {
+    rememberLog(
+      `[tls] trusting ${systemCa.systemCertificateCount} Windows system CA certificate(s) for backend connections`
+    )
+  } else if (systemCa.error) {
+    rememberLog(`[tls] could not load Windows system CA certificates: ${systemCa.error}`)
+  }
+
   if (IS_MAC) {
     Menu.setApplicationMenu(buildApplicationMenu())
   } else {

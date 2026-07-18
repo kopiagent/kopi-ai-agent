@@ -214,6 +214,10 @@ _KOPI_BEHAVIORAL_VARS = frozenset({
     "KOPI_KANBAN_CLAIM_LOCK",
     "KOPI_KANBAN_DISPATCH_IN_GATEWAY",
     "KOPI_TENANT",
+    # Honcho host selection changes which nested config block wins. A local
+    # shell override leaked "myhost" into the full suite and flipped 20
+    # otherwise-unrelated config tests away from the default "kopi" host.
+    "KOPI_HONCHO_HOST",
     # Dashboard OAuth auth gate (PR #30156). When set, the bundled
     # dashboard-auth `nous` plugin auto-registers itself on plugin discovery,
     # which is triggered by any `/api/status` call. That leaks a provider
@@ -341,6 +345,13 @@ def _hermetic_environment(tmp_path, monkeypatch):
     # 2. Blank behavioral KOPI_* vars that could change test semantics.
     for name in _KOPI_BEHAVIORAL_VARS:
         monkeypatch.delenv(name, raising=False)
+
+    # Honcho's fallback host/config resolution legitimately reads the user's
+    # global ~/.honcho/config.json. Keep HOME stable (subprocess tests depend
+    # on it), but pin the host so ordinary tests cannot inherit a developer's
+    # defaultHost and silently select the wrong nested config block. Tests of
+    # custom host resolution override/delete this explicitly.
+    monkeypatch.setenv("KOPI_HONCHO_HOST", "kopi")
 
     # 3. Redirect KOPI_HOME to a per-test tempdir. Code that reads
     #    ``~/.kopi/*`` via ``get_kopi_home()`` now gets the tempdir.

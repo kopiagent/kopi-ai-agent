@@ -264,11 +264,14 @@ def _resolve_mcp_server_config(config: dict) -> dict:
     """
     from tools.mcp_tool import _interpolate_env_vars
 
-    try:
-        from kopi_cli.env_loader import load_kopi_dotenv
-        load_kopi_dotenv()
-    except Exception:  # pragma: no cover — defensive
-        pass
+    from agent.secret_scope import current_secret_scope
+
+    if current_secret_scope() is None:
+        try:
+            from kopi_cli.env_loader import load_kopi_dotenv
+            load_kopi_dotenv()
+        except Exception:  # pragma: no cover — defensive
+            pass
     return _interpolate_env_vars(config)
 
 

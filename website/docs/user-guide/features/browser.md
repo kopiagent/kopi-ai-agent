@@ -443,7 +443,7 @@ Get a text-based snapshot of the current page's accessibility tree. Returns inte
 - **`full=false`** (default): Compact view showing only interactive elements
 - **`full=true`**: Complete page content
 
-Snapshots over 8000 characters are automatically summarized by an LLM.
+Snapshots over 15,000 characters are automatically truncated or summarized by an LLM (the same per-page budget as `web_extract`). When that happens, the complete snapshot is saved to `~/.kopi/cache/web/` and the tool output includes the file path plus a ready-to-use `read_file` call, so the agent can page through the full accessibility tree — including element refs beyond the cut — without re-snapshotting.
 
 ### `browser_click`
 
@@ -517,6 +517,8 @@ browser_console(expression="JSON.stringify(performance.timing)")
 ```
 
 When a CDP supervisor is active for the current session (typical for any session that's run `browser_navigate` against a CDP-capable backend), evaluation runs over the supervisor's persistent WebSocket — no subprocess startup cost. Falls through to the standard agent-browser CLI path otherwise. Behaviour is identical either way; only latency changes.
+
+Evaluation is unrestricted by default — the agent can use `fetch`, read storage, query form values, and run any DOM extraction. Requests targeting private/internal addresses are still blocked on non-local backends (the SSRF guard is independent of this setting). If you browse hostile pages with a logged-in profile and want a strict denylist over sensitive JS primitives (cookies, storage, clipboard, network calls, form values), opt in with `browser.restrict_evaluate: true` in `config.yaml`. Note the denylist matches primitive *names*, so it also blocks legitimate expressions that merely contain words like `fetch` or `cookie`.
 
 ### `browser_cdp`
 
@@ -655,7 +657,7 @@ If paid features aren't available on your plan, Kopi automatically falls back �
 ## Limitations
 
 - **Text-based interaction** — relies on accessibility tree, not pixel coordinates
-- **Snapshot size** — large pages may be truncated or LLM-summarized at 8000 characters
+- **Snapshot size** — large pages may be truncated or LLM-summarized at 15,000 characters (matching `web_extract`); the complete snapshot is saved to `~/.kopi/cache/web/` and the output points at it for `read_file` paging
 - **Session timeout** — cloud sessions expire based on your provider's plan settings
 - **Cost** — cloud sessions consume provider credits; sessions are automatically cleaned up when the conversation ends or after inactivity. Use `/browser connect` for free local browsing.
 - **No file downloads** — cannot download files from the browser
