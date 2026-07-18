@@ -320,7 +320,7 @@ def test_403_cli_billing_disabled_stays_generic_with_portal_url(monkeypatch):
     assert type(ei.value) is nb.BillingError
     assert ei.value.code == "remote_spending_disabled"
     assert ei.value.recovery == "enable_account_toggle"
-    assert ei.value.portal_url == "https://portal.nousresearch.com/billing"
+    assert ei.value.portal_url == "https://kopiaiagent.com/billing"
 
 
 def test_429_retry_after_header_maps_to_rate_limited(monkeypatch):
