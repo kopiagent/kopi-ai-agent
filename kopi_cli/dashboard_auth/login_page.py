@@ -34,40 +34,42 @@ from kopi_cli.dashboard_auth import list_session_providers
 # are doubled (``{{`` / ``}}``).
 _LOGIN_HTML_TEMPLATE = """\
 <!doctype html>
-<html lang="en">
+<html lang="en" data-prefix="{prefix}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in — Kopi Agent</title>
 <style>
-  /* Brand fonts shipped by @nous-research/ui — same files the SPA loads. */
+  /* Brand fonts shipped by @nous-research/ui — same files the SPA loads.
+     ``{{prefix}}`` is the normalised X-Forwarded-Prefix (see prefix.py) so
+     the page works behind a path-prefix reverse proxy (e.g. /i/<customer>). */
   @font-face {{
     font-family: 'Collapse';
     font-style: normal;
     font-weight: 400;
     font-display: swap;
-    src: url('/fonts/Collapse-Regular.woff2') format('woff2');
+    src: url('{prefix}/fonts/Collapse-Regular.woff2') format('woff2');
   }}
   @font-face {{
     font-family: 'Collapse';
     font-style: normal;
     font-weight: 700;
     font-display: swap;
-    src: url('/fonts/Collapse-Bold.woff2') format('woff2');
+    src: url('{prefix}/fonts/Collapse-Bold.woff2') format('woff2');
   }}
   @font-face {{
     font-family: 'Rules Compressed';
     font-style: normal;
     font-weight: 400;
     font-display: swap;
-    src: url('/fonts/RulesCompressed-Regular.woff2') format('woff2');
+    src: url('{prefix}/fonts/RulesCompressed-Regular.woff2') format('woff2');
   }}
   @font-face {{
     font-family: 'Rules Compressed';
     font-style: normal;
     font-weight: 600;
     font-display: swap;
-    src: url('/fonts/RulesCompressed-Medium.woff2') format('woff2');
+    src: url('{prefix}/fonts/RulesCompressed-Medium.woff2') format('woff2');
   }}
 
   :root {{
@@ -412,6 +414,9 @@ auth gate (not recommended on untrusted networks).</p>
 _PASSWORD_FORM_SCRIPT = """\
 <script>
 (function () {
+  // Reverse-proxy path prefix (e.g. "/i/acme"), injected server-side into
+  // <html data-prefix>. Empty string when served at the root.
+  var P = document.documentElement.getAttribute('data-prefix') || '';
   function handle(form) {
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
@@ -425,7 +430,7 @@ _PASSWORD_FORM_SCRIPT = """\
         password: (form.querySelector('input[name=password]') || {}).value || '',
         next: (form.querySelector('input[name=next]') || {}).value || ''
       };
-      fetch('/auth/password-login', {
+      fetch(P + '/auth/password-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -433,7 +438,9 @@ _PASSWORD_FORM_SCRIPT = """\
       }).then(function (resp) {
         if (resp.ok) {
           return resp.json().then(function (data) {
-            window.location.assign((data && data.next) || '/');
+            // data.next is an app-internal path ("/..."); re-attach the
+            // proxy prefix so the browser lands inside the prefixed app.
+            window.location.assign(P + ((data && data.next) || '/'));
           });
         }
         var msg = resp.status === 429
@@ -455,7 +462,7 @@ _PASSWORD_FORM_SCRIPT = """\
 """
 
 
-def render_login_html(*, next_path: str = "") -> str:
+def render_login_html(*, next_path: str = "", prefix: str = "") -> str:
     """Return the full HTML for ``GET /login``.
 
     ``next_path`` — when set, the post-login landing path the user
@@ -464,10 +471,21 @@ def render_login_html(*, next_path: str = "") -> str:
     end-to-end. The caller (``routes.login_page``) is responsible for
     validating ``next_path`` against the same-origin rules before we
     emit it; we still HTML-escape it as defence in depth.
+
+    ``prefix`` — the normalised ``X-Forwarded-Prefix`` (e.g.
+    ``"/i/acme"``) or ``""`` at root. Applied to every absolute URL the
+    page emits (font assets, OAuth hrefs, the password-login fetch and
+    post-login navigation via ``<html data-prefix>``) so the page works
+    behind a path-prefix reverse proxy. Callers must pass a value that
+    already went through :func:`kopi_cli.dashboard_auth.prefix.normalise_prefix`
+    (its charset excludes quotes/angle brackets); we still HTML-escape.
     """
+    safe_prefix = html.escape(prefix or "", quote=True)
     providers = list_session_providers()
     if not providers:
-        return _EMPTY_HTML
+        # _EMPTY_HTML is a plain string (CSS braces unescaped), so thread
+        # the prefix via targeted replace instead of str.format.
+        return _EMPTY_HTML.replace("url('/fonts/", f"url('{safe_prefix}/fonts/")
 
     if next_path:
         # URL-encode then HTML-escape. The URL-encode step matches the
@@ -488,13 +506,14 @@ def render_login_html(*, next_path: str = "") -> str:
         else:
             buttons.append(
                 f'      <a class="provider-btn" '
-                f'href="/auth/login?provider={html.escape(p.name, quote=True)}{next_qs}">'
+                f'href="{safe_prefix}/auth/login?provider={html.escape(p.name, quote=True)}{next_qs}">'
                 f'Sign in with {html.escape(p.display_name)}</a>'
             )
     script = _PASSWORD_FORM_SCRIPT if needs_password_script else ""
     return _LOGIN_HTML_TEMPLATE.format(
         provider_buttons="\n".join(buttons),
         password_script=script,
+        prefix=safe_prefix,
     )
 
 

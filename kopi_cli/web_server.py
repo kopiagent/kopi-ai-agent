@@ -2772,6 +2772,41 @@ async def get_office_state():
     return {"agents": agents, "count": len(agents), "ts": time.time()}
 
 
+@app.get("/api/healthz")
+async def healthz():
+    """Liveness probe for containers/k8s.
+
+    Constant-time and dependency-free on purpose: /api/status awaits a
+    remote gateway health probe, which makes it unsuitable as a liveness
+    check (a slow/down gateway would get the dashboard pod killed).
+    """
+    return {"ok": True, "ts": time.time()}
+
+
+@app.get("/api/readyz")
+async def readyz():
+    """Readiness probe: can this dashboard actually serve users?
+
+    Checks the built SPA bundle is present and KOPI_HOME is writable
+    (fresh PVC mounts, permission mishaps after UID remap). Returns 503
+    with the problem list so `kubectl describe` shows the reason.
+    """
+    problems: list[str] = []
+    if not (WEB_DIST / "index.html").exists():
+        problems.append(f"web bundle missing: {WEB_DIST}/index.html")
+    try:
+        home = get_kopi_home()
+        home.mkdir(parents=True, exist_ok=True)
+        probe = home / ".readyz-probe"
+        probe.write_text(str(time.time()), encoding="utf-8")
+        probe.unlink()
+    except Exception as exc:
+        problems.append(f"KOPI_HOME not writable: {exc}")
+    if problems:
+        return JSONResponse({"ok": False, "problems": problems}, status_code=503)
+    return {"ok": True}
+
+
 @app.get("/api/status")
 async def get_status(profile: Optional[str] = None):
     status_scope = None

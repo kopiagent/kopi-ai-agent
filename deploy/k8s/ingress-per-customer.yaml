@@ -1,0 +1,50 @@
+# Per-customer path routing — one host, one TLS cert, no wildcard DNS.
+#
+#   https://app.example.com/i/acme/...  ->  Service "kopi" (dashboard :9119)
+#
+# Written for the NGINX Ingress Controller (one-click install from the
+# DigitalOcean Marketplace on DOKS; the controller's Service auto-provisions
+# a DO Load Balancer). Replace `acme` with the customer id when templating; the intended
+# layout is one namespace per customer, so the Service/PVC names in kopi.yaml
+# stay unchanged and only the namespace + this Ingress path vary.
+#
+# How the sub-path works end to end:
+#   1. `rewrite-target: /$2` strips the `/i/acme` prefix, so the dashboard
+#      still sees clean paths (`/`, `/assets/...`, `/api/...`).
+#   2. `X-Forwarded-Prefix: /i/acme` tells the dashboard it is being served
+#      behind a prefix — `mount_spa()` rewrites index.html asset URLs and
+#      sets `window.__KOPI_BASE_PATH__` so the SPA fetches through the
+#      prefix. No rebuild needed.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kopi
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-Forwarded-Prefix "/i/acme";
+    # Dashboard uses WebSockets (/api/ws, /api/pty) — keep timeouts generous.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [app.example.com]
+      secretName: app-example-com-tls # one cert for the shared host
+  rules:
+    - host: app.example.com
+      http:
+        paths:
+          - path: /i/acme(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: kopi
+                port:
+                  name: web
+# ---
+# Portability note: this is standard networking.k8s.io/v1 + NGINX annotations —
+# it works unchanged on any managed K8s (DOKS, GKE, AKS, ACK) as long as the
+# NGINX Ingress Controller is installed. Cloud-specific L7 controllers (ALB
+# et al.) often cannot inject X-Forwarded-Prefix per rule — keep NGINX for
+# this per-customer prefix pattern.

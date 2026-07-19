@@ -138,8 +138,14 @@ async def login_page(request: Request) -> HTMLResponse:
     next_path = _validate_post_login_target(
         request.query_params.get("next", "")
     )
+    # Thread the reverse-proxy path prefix (X-Forwarded-Prefix) into the
+    # page so fonts / OAuth hrefs / the password-login fetch all resolve
+    # under the proxied prefix (e.g. /i/<customer>).
     return HTMLResponse(
-        render_login_html(next_path=next_path),
+        render_login_html(
+            next_path=next_path,
+            prefix=_prefix(request),
+        ),
         headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
     )
 

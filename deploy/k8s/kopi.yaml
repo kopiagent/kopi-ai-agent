@@ -1,0 +1,186 @@
+# Kopi Agent on Kubernetes — gateway + dashboard in one pod.
+#
+# Why one pod with two containers (instead of two Deployments):
+# both services read/write the same KOPI_HOME state directory (the compose
+# file mounts the same ~/.kopi into both). A single pod lets them share one
+# ReadWriteOnce PVC; two Deployments would need ReadWriteMany storage.
+#
+# Ports / probes:
+#   dashboard  :9119  GET /api/healthz  (liveness, constant-time, no auth)
+#                     GET /api/readyz   (readiness: SPA bundle + writable KOPI_HOME)
+#   gateway    :8642  GET /health       (liveness/readiness; unauthenticated)
+#                     The gateway only listens when API_SERVER_HOST is set —
+#                     this manifest enables it for probing. If you don't want
+#                     the API server, remove those env vars and switch the
+#                     gateway probes to the exec form commented below.
+#
+# Security:
+#   - The dashboard binds 0.0.0.0 inside the pod (required for kubelet HTTP
+#     probes and the Service). Non-loopback binds enforce the dashboard auth
+#     gate; /api/healthz and /api/readyz are on the no-auth allowlist, so
+#     probes work before login. Put user traffic behind an Ingress with TLS.
+#   - API_SERVER_KEY is mandatory when the API server is exposed; it comes
+#     from the Secret below. /health does not require the key.
+#   - The image's s6-overlay /init must start as root (it remaps the runtime
+#     user via KOPI_UID/KOPI_GID and chowns the volume, then drops privileges
+#     per service) — so no runAsNonRoot at the pod level.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kopi-secrets
+type: Opaque
+stringData:
+  # CHANGE ME before deploying to customers.
+  api-server-key: "replace-with-a-long-random-key"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kopi-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kopi
+  labels:
+    app: kopi
+spec:
+  replicas: 1                 # state lives on one PVC — do not scale this out
+  strategy:
+    type: Recreate            # RWO volume: old pod must release it first
+  selector:
+    matchLabels:
+      app: kopi
+  template:
+    metadata:
+      labels:
+        app: kopi
+    spec:
+      volumes:
+        - name: kopi-data
+          persistentVolumeClaim:
+            claimName: kopi-data
+      containers:
+        # ------------------------------------------------------------
+        # Gateway: messaging platforms + OpenAI-compatible API server
+        # ------------------------------------------------------------
+        - name: gateway
+          image: kopi-agent:latest   # push to your registry and pin a tag
+          args: ["gateway", "run"]   # routed by the image ENTRYPOINT (/init + main-wrapper.sh)
+          env:
+            - name: KOPI_UID
+              value: "10000"
+            - name: KOPI_GID
+              value: "10000"
+            - name: API_SERVER_HOST
+              value: "0.0.0.0"       # enables :8642, which the probes below use
+            - name: API_SERVER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kopi-secrets
+                  key: api-server-key
+          ports:
+            - name: api
+              containerPort: 8642
+          volumeMounts:
+            - name: kopi-data
+              mountPath: /opt/data
+          # Gateway boot (profile reconcile, platform connects) can take a
+          # while on first start — give it 5 minutes before liveness applies.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: api
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: api
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: api
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Without the API server, use process-level probes instead:
+          #   livenessProbe:
+          #     exec:
+          #       command: ["pgrep", "-f", "gateway run"]
+          #     periodSeconds: 30
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              memory: "2Gi"
+        # ------------------------------------------------------------
+        # Dashboard: web UI on :9119
+        # ------------------------------------------------------------
+        - name: dashboard
+          image: kopi-agent:latest
+          args: ["dashboard", "--host", "0.0.0.0", "--no-open"]
+          env:
+            - name: KOPI_UID
+              value: "10000"
+            - name: KOPI_GID
+              value: "10000"
+          ports:
+            - name: web
+              containerPort: 9119
+          volumeMounts:
+            - name: kopi-data
+              mountPath: /opt/data
+          startupProbe:
+            httpGet:
+              path: /api/healthz
+              port: web
+            periodSeconds: 5
+            failureThreshold: 36    # up to 3 minutes to come up
+          livenessProbe:
+            httpGet:
+              path: /api/healthz
+              port: web
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/readyz     # 503s with a problem list if the SPA
+              port: web             # bundle is missing or KOPI_HOME isn't writable
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kopi
+  labels:
+    app: kopi
+spec:
+  type: ClusterIP   # front with an Ingress (TLS + auth) for customer access
+  selector:
+    app: kopi
+  ports:
+    - name: web
+      port: 9119
+      targetPort: web
+    - name: api
+      port: 8642
+      targetPort: api

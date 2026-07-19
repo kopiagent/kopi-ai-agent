@@ -37,6 +37,12 @@ PUBLIC_API_PATHS: frozenset[str] = frozenset({
     # liveness probe in
     # ``docs/agent-dashboard-public-url-contract.md`` (NAS side).
     "/api/status",
+    # Container-orchestrator probes (k8s liveness/readiness, compose
+    # healthcheck). /api/healthz is a constant-time "process is serving"
+    # check; /api/readyz additionally verifies the SPA bundle and a
+    # writable KOPI_HOME. Both return no state beyond ok/problem strings.
+    "/api/healthz",
+    "/api/readyz",
     # Read-only config-defaults / schema feeds for the SPA's Config page.
     "/api/config/defaults",
     "/api/config/schema",

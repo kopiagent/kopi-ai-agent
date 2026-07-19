@@ -217,6 +217,11 @@ USER root
 RUN mkdir -p /opt/kopi/bin && \
     cp /opt/kopi/docker/kopi-exec-shim.sh /opt/kopi/bin/kopi && \
     chmod 0755 /opt/kopi/bin/kopi && \
+    # Belt-and-braces: the COPY above uses --chmod=a+rX, where capital X only
+    # keeps an existing exec bit — a checkout that lost the bit (e.g.
+    # core.filemode=false) would otherwise ship a non-executable
+    # main-wrapper.sh and /init dies with "Permission denied" (exit 126).
+    chmod 0755 /opt/kopi/docker/*.sh && \
     printf 'docker\n' > /opt/kopi/.install_method
 # The ``.install_method`` stamp is baked next to the running code (the install
 # tree), NOT into $KOPI_HOME. $KOPI_HOME (/opt/data) is a shared data

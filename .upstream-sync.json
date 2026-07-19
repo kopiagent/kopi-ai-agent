@@ -10,7 +10,8 @@
   "post_merge_checks": [
     "restore kopi-own files the 3-way deletes (base has them, upstream doesn't): compare merge deletions vs upstream's real deletions",
     "kopi-agent -> kopi-ai-agent naming pass (skip skills/** and -memory/-setup/-dev/-skill-authoring suffixes)",
-    "integrity scan: non-customized files should match T(upstream) modulo brand"
+    "integrity scan: non-customized files should match T(upstream) modulo brand",
+    "rebrand must NOT touch real npm registry package names (hermes-parser, hermes-estree, ...) in package-lock.json / package.json deps — they 404 on npm if renamed"
   ],
   "history": [
     "f8361d29c approx fork tag region (byte-match, UNRELIABLE — do not use as base)",
