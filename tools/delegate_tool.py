@@ -225,33 +225,25 @@ def mark_main_turn_end(agent: Any) -> None:
         pass
 
 
-def note_tool_activity(agent: Any, tool_name: str) -> None:
-    """Record that ``agent`` just started running ``tool_name``, for /office.
+def _note_status(agent: Any, status: str, tool_name: Optional[str] = None) -> None:
+    """Update the /office status for ``agent`` (subagent or root session).
 
-    Single choke point (called from agent_runtime_helpers.invoke_tool), so it
-    covers the main session and every subagent on both execution paths. If the
-    agent matches a live subagent record we update that record's status;
-    otherwise it is the root/main session and we update ``_main_activity``.
-    Best-effort: never raises, never blocks tool execution.
+    With ``tool_name`` the record shows the live tool and bumps tool_count;
+    without it the tool field is cleared so the page shows the bare status
+    verb (thinking / waiting). Best-effort: never raises, never blocks.
     """
     try:
-        status = _status_for_tool(tool_name)
         with _active_subagents_lock:
             matched = None
             for record in _active_subagents.values():
                 if record.get("agent") is agent:
                     matched = record
                     break
-            if matched is not None:
-                matched["status"] = status
-                matched["tool"] = tool_name
-                matched["tool_count"] = matched.get("tool_count", 0) + 1
-                matched["ts"] = time.time()
-            else:
+            if matched is None:
                 key = id(agent)
-                activity = _main_activities.get(key)
-                if activity is None:
-                    activity = {
+                matched = _main_activities.get(key)
+                if matched is None:
+                    matched = {
                         "subagent_id": f"main-{os.getpid()}-{key:x}",
                         "parent_id": None,
                         "depth": 0,
@@ -262,14 +254,45 @@ def note_tool_activity(agent: Any, tool_name: str) -> None:
                         "tool_count": 0,
                         "status": status,
                     }
-                    _main_activities[key] = activity
-                activity["status"] = status
-                activity["tool"] = tool_name
-                activity["tool_count"] = activity.get("tool_count", 0) + 1
-                activity["ts"] = time.time()
+                    _main_activities[key] = matched
+            matched["status"] = status
+            if tool_name is not None:
+                matched["tool"] = tool_name
+                matched["tool_count"] = matched.get("tool_count", 0) + 1
+            else:
+                matched.pop("tool", None)
+            matched["ts"] = time.time()
         _write_office_snapshot()
     except Exception:
         pass
+
+
+def note_tool_activity(agent: Any, tool_name: str) -> None:
+    """Record that ``agent`` just started running ``tool_name``, for /office.
+
+    Single choke point (called from agent_runtime_helpers.invoke_tool), so it
+    covers the main session and every subagent on both execution paths.
+    """
+    _note_status(agent, _status_for_tool(tool_name), tool_name)
+
+
+def note_llm_activity(agent: Any) -> None:
+    """Record that ``agent`` just issued an LLM request, for /office.
+
+    Called right before each API call in the conversation loop, so between
+    tool calls the NPC walks back to the whiteboard instead of forever showing
+    the last tool it ran.
+    """
+    _note_status(agent, "thinking")
+
+
+def note_waiting_activity(agent: Any) -> None:
+    """Record that ``agent`` is blocked in a retry/rate-limit backoff wait.
+
+    The office page parks waiting NPCs at the coffee machine, making stuck or
+    throttled agents visible at a glance.
+    """
+    _note_status(agent, "waiting")
 
 
 def set_spawn_paused(paused: bool) -> bool:
@@ -289,6 +312,29 @@ def is_spawn_paused() -> bool:
         return _spawn_paused
 
 
+_own_proc_start: Optional[str] = None
+
+
+def _proc_start_token(pid: int) -> Optional[str]:
+    """Best-effort process-identity token: the pid's start timestamp.
+
+    Lets snapshot readers distinguish "this pid is still the writer" from
+    "the writer died and an unrelated process reused its pid" (which would
+    otherwise keep ghost NPCs on the /office page forever). Returns None
+    where `ps` is unavailable (e.g. Windows) — readers then fall back to a
+    plain liveness check.
+    """
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "lstart="],
+            capture_output=True, text=True, timeout=2,
+        )
+        return out.stdout.strip() or None
+    except Exception:
+        return None
+
+
 def _write_office_snapshot() -> None:
     """Mirror this process's live subagents to a shared file so cross-process
     readers can see them.
@@ -300,6 +346,7 @@ def _write_office_snapshot() -> None:
     register/unregister; ``/api/office/state`` globs + merges these files.
     Best-effort — never raises, never blocks delegation.
     """
+    global _own_proc_start
     try:
         from kopi_constants import get_kopi_home
         d = get_kopi_home() / "office"
@@ -310,10 +357,13 @@ def _write_office_snapshot() -> None:
                 for r in _active_subagents.values()
             ]
             agents.extend(dict(activity) for activity in _main_activities.values())
+        if _own_proc_start is None:
+            _own_proc_start = _proc_start_token(os.getpid()) or ""
         path = d / f"subagents-{os.getpid()}.json"
         tmp = f"{path}.tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"pid": os.getpid(), "ts": time.time(), "agents": agents},
+            json.dump({"pid": os.getpid(), "ts": time.time(),
+                       "proc_start": _own_proc_start or None, "agents": agents},
                       f, ensure_ascii=False)
         os.replace(tmp, path)
     except Exception:

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, buildWsUrl, type OfficeAgent } from "@/lib/api";
 
 /**
@@ -22,8 +22,54 @@ import { api, buildWsUrl, type OfficeAgent } from "@/lib/api";
 const VW = 520;
 const VH = 340;
 
-// ---- palette ---------------------------------------------------------------
-const C = {
+// ---- themes: switchable background palette + NPC skins ----------------------
+// Everything the renderer colors with lives in a theme. To add a new style,
+// append an entry to OFFICE_THEMES — the picker (top-right of the page) lists
+// them automatically and the choice persists in localStorage.
+//
+// Reserved extension points (not used by the built-in themes yet):
+//  - NpcSkin.sheet: real spritesheet skins — drawChar falls back to procedural
+//    pixels until a sheet renderer is dropped into the marked branch.
+//  - OfficeTheme.backdrop: a full-image room backdrop replacing the procedural
+//    furniture pass (see the marked spot at the top of render()).
+interface NpcSkin {
+  hair: string; shirt: string; tone: string;
+  /** Reserved: spritesheet skin (image + frame size); see drawChar. */
+  sheet?: { src: string; frameW: number; frameH: number };
+}
+interface Palette {
+  pageBg: string; pageGrassA: string; pageGrassB: string;
+  wall: string; wallShadow: string; wallTrim: string;
+  floorA: string; floorB: string; floorLine: string;
+  rug: string; rugEdge: string; rugGold: string;
+  desk: string; deskHi: string; deskEdge: string;
+  wood: string; woodLight: string; woodDark: string;
+  screenOff: string; screenOn: string; metal: string; metalDark: string;
+  plant: string; plantLight: string; plantDark: string; plantPot: string;
+  text: string; sub: string; boss: string; line: string;
+  cream: string; berry: string; sky: string; shadow: string; light: string;
+}
+interface OfficeTheme {
+  id: string;
+  name: string;
+  palette: Palette;
+  skins: NpcSkin[];
+  /** Reserved: full-image room backdrop (drawn instead of procedural furniture). */
+  backdrop?: { src: string };
+}
+
+const DAY_SKINS: NpcSkin[] = [
+  { hair: "#4a3526", shirt: "#5a86c4", tone: "#f3d9b0" },
+  { hair: "#1f1c1a", shirt: "#5aa469", tone: "#f0cfa0" },
+  { hair: "#8a5a2b", shirt: "#c0684a", tone: "#f6ddb8" },
+  { hair: "#6b3fa0", shirt: "#8a6fc0", tone: "#efd3ad" },
+  { hair: "#c08a2a", shirt: "#3fa3a3", tone: "#f7e0bd" },
+  { hair: "#2b2b2b", shirt: "#c94f7c", tone: "#eccaa0" },
+  { hair: "#5a3a1a", shirt: "#4b6bb0", tone: "#f2d6ac" },
+  { hair: "#7a7a7a", shirt: "#b0863f", tone: "#f0d2a6" },
+];
+
+const DAY_PALETTE: Palette = {
   pageBg: "#789f6b",
   pageGrassA: "#87ad72",
   pageGrassB: "#6f965e",
@@ -61,18 +107,55 @@ const C = {
   light: "rgba(255,229,143,0.16)",
 };
 
-// ---- original NPC skins (pluggable) ----------------------------------------
-interface Skin { hair: string; shirt: string; tone: string; }
-const SKINS: Skin[] = [
-  { hair: "#4a3526", shirt: "#5a86c4", tone: "#f3d9b0" },
-  { hair: "#1f1c1a", shirt: "#5aa469", tone: "#f0cfa0" },
-  { hair: "#8a5a2b", shirt: "#c0684a", tone: "#f6ddb8" },
-  { hair: "#6b3fa0", shirt: "#8a6fc0", tone: "#efd3ad" },
-  { hair: "#c08a2a", shirt: "#3fa3a3", tone: "#f7e0bd" },
-  { hair: "#2b2b2b", shirt: "#c94f7c", tone: "#eccaa0" },
-  { hair: "#5a3a1a", shirt: "#4b6bb0", tone: "#f2d6ac" },
-  { hair: "#7a7a7a", shirt: "#b0863f", tone: "#f0d2a6" },
+const NIGHT_PALETTE: Palette = {
+  ...DAY_PALETTE,
+  pageBg: "#2e4141",
+  pageGrassA: "#3a4f4a",
+  pageGrassB: "#31443f",
+  wall: "#8f8874",
+  wallShadow: "#767059",
+  wallTrim: "#6d5138",
+  floorA: "#8a6d47",
+  floorB: "#7d613c",
+  floorLine: "#63492a",
+  rug: "#6d4038",
+  rugEdge: "#4e2e28",
+  rugGold: "#8f7142",
+  desk: "#7d5232",
+  deskHi: "#8f6540",
+  deskEdge: "#523321",
+  wood: "#6d4028",
+  woodLight: "#84543a",
+  woodDark: "#452a1c",
+  screenOff: "#1a3542",
+  screenOn: "#9fe3e8",
+  metal: "#6c7672",
+  metalDark: "#414847",
+  plant: "#3a6b3c",
+  plantLight: "#578548",
+  plantDark: "#26522e",
+  text: "#241b12",
+  sub: "#4e4230",
+  boss: "#8f5732",
+  line: "rgba(230,220,180,0.35)",
+  cream: "#f0e4bd",
+  sky: "#27405c",
+  shadow: "rgba(10,8,6,0.32)",
+  light: "rgba(140,180,255,0.10)",
+};
+
+const OFFICE_THEMES: OfficeTheme[] = [
+  { id: "day", name: "Day ☀", palette: DAY_PALETTE, skins: DAY_SKINS },
+  { id: "night", name: "Night ☾", palette: NIGHT_PALETTE, skins: DAY_SKINS },
 ];
+const THEME_STORE_KEY = "kopi.office.theme";
+
+// Live theme bindings — every draw call reads these each frame, so swapping
+// them re-skins the whole scene on the next requestAnimationFrame.
+let C: Palette = DAY_PALETTE;
+let SKINS: NpcSkin[] = DAY_SKINS;
+function applyOfficeTheme(t: OfficeTheme) { C = t.palette; SKINS = t.skins; }
+
 function skinFor(id: string): number {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
@@ -81,16 +164,24 @@ function skinFor(id: string): number {
 
 // ---- status → workstation --------------------------------------------------
 // (When the backend later reports the live tool, richer mapping slots in here.)
-type StationType = "computer" | "bookshelf" | "whiteboard" | "server";
+type StationType = "computer" | "bookshelf" | "whiteboard" | "server" | "coffee";
 function stationFor(status: string): StationType {
   switch ((status || "").toLowerCase()) {
     case "reading": return "bookshelf";
     case "searching": return "bookshelf";
     case "thinking": return "whiteboard";
     case "running": return "server";
+    case "waiting": return "coffee"; // retry/rate-limit backoff → coffee break
     default: return "computer"; // writing / working / active
   }
 }
+// A status must persist this long before the NPC walks to its new station —
+// fast think→tool→think loops would otherwise send everyone pacing nonstop.
+const STATION_HYSTERESIS_MS = 2500;
+// Once an NPC starts a walk, it stays at the new station at least this long
+// before it may leave again. Guarantees a readable pause (icon + labels) even
+// when the underlying status flips right after arrival (short waits/retries).
+const STATION_MIN_DWELL_MS = 4000;
 const VERB: Record<string, string> = {
   writing: "typing", running: "running", reading: "reading",
   searching: "searching", thinking: "thinking", waiting: "waiting", done: "done",
@@ -117,6 +208,7 @@ const STATIONS: Record<StationType, { x: number; y: number }[]> = {
   bookshelf: [{ x: 70, y: 150 }, { x: 70, y: 210 }, { x: 70, y: 270 }],
   whiteboard: [{ x: 250, y: 100 }, { x: 300, y: 100 }],
   server: [{ x: 470, y: 165 }, { x: 470, y: 235 }],
+  coffee: [{ x: 140, y: 290 }, { x: 182, y: 290 }], // beside the coffee machine (160,283)
 };
 const ENTRANCE = { x: 500, y: 315 };
 const MAIN_AISLE_Y = 300;
@@ -130,11 +222,40 @@ function compactLabel(text: string): string {
   return chars.slice(0, 8).join("");
 }
 
+// Vertical corridors NPCs travel through so they never clip through desks,
+// the bookshelf, or the server rack: the gaps beside/between furniture columns
+// (bookshelf ends at x≈88, desk columns span x±20 around 250/320/390, the
+// server rack spans x≈450–490).
+const CORRIDORS_X = [105, 215, 285, 355, 425];
+function corridorNear(x: number): number {
+  return CORRIDORS_X.reduce((best, c) => (Math.abs(c - x) < Math.abs(best - x) ? c : best));
+}
+function corridorFor(station: StationType, seat: { x: number; y: number }): number {
+  switch (station) {
+    case "computer": return seat.x + 35;  // gap right of each desk column
+    case "bookshelf": return 105;         // clear lane right of the shelf
+    case "server": return 425;            // clear lane left of the rack
+    case "coffee": return seat.x;         // seats sit just off the main aisle
+    default: return corridorNear(seat.x); // whiteboard: nearest desk gap
+  }
+}
+// Step out of the furniture zone into the main aisle via the nearest corridor;
+// NPCs already on/below the aisle just walk straight down to it.
+function outToAisle(from: { x: number; y: number }): { x: number; y: number }[] {
+  if (from.y < MAIN_AISLE_Y - 4) {
+    const c = corridorNear(from.x);
+    return [{ x: c, y: from.y }, { x: c, y: MAIN_AISLE_Y }];
+  }
+  return [{ x: from.x, y: MAIN_AISLE_Y }];
+}
+
 function pathToSeat(from: { x: number; y: number }, to: { x: number; y: number }, station: StationType) {
-  const laneY = station === "whiteboard" ? BACK_AISLE_Y : MAIN_AISLE_Y;
+  const c = corridorFor(station, to);
   const raw = [
-    { x: from.x, y: MAIN_AISLE_Y },
-    ...(laneY !== MAIN_AISLE_Y ? [{ x: to.x, y: MAIN_AISLE_Y }, { x: to.x, y: laneY }] : [{ x: to.x, y: MAIN_AISLE_Y }]),
+    ...outToAisle(from),
+    ...(station === "whiteboard"
+      ? [{ x: c, y: MAIN_AISLE_Y }, { x: c, y: BACK_AISLE_Y }, { x: to.x, y: BACK_AISLE_Y }]
+      : [{ x: c, y: MAIN_AISLE_Y }, { x: c, y: to.y }]),
     { x: to.x, y: to.y },
   ];
   return raw.filter((p, i) => i === 0 || Math.hypot(p.x - raw[i - 1].x, p.y - raw[i - 1].y) > 2);
@@ -142,7 +263,7 @@ function pathToSeat(from: { x: number; y: number }, to: { x: number; y: number }
 
 function pathToExit(from: { x: number; y: number }) {
   const raw = [
-    { x: from.x, y: MAIN_AISLE_Y },
+    ...outToAisle(from),
     { x: ENTRANCE.x, y: MAIN_AISLE_Y },
     ENTRANCE,
   ];
@@ -166,6 +287,52 @@ interface Npc {
   gone: boolean;
   removeAt: number;
   bob: number;
+  // Station-change hysteresis: the station this NPC wants to move to, and
+  // since when. The render loop commits the walk only after the pending
+  // station has been stable for STATION_HYSTERESIS_MS.
+  pendingStation: StationType | null;
+  pendingSince: number;
+  stationSince: number; // when the current station was assigned (min-dwell)
+}
+
+// Pick a free seat at a station (module-scoped so both the data layer and the
+// render loop's hysteresis commit can use it).
+function freeSeat(npcs: Map<string, Npc>, station: StationType, exceptId: string) {
+  const taken = new Set<string>();
+  npcs.forEach((n) => {
+    if (n.id !== exceptId && n.station === station && !n.gone) taken.add(n.seatKey);
+  });
+  const seats = STATIONS[station];
+  for (let i = 0; i < seats.length; i++) {
+    const key = `${station}:${i}`;
+    if (!taken.has(key)) return { key, seat: seats[i] };
+  }
+  // overflow: fan extra workers out beside the seats instead of stacking
+  // them all on seat 0
+  for (let i = 0; i < 64; i++) {
+    const key = `${station}:ovf${i}`;
+    if (!taken.has(key)) {
+      const base = seats[i % seats.length];
+      const ring = Math.floor(i / seats.length) + 1;
+      return {
+        key,
+        seat: { x: base.x + (i % 2 ? -14 : 14) * ring, y: base.y + 10 },
+      };
+    }
+  }
+  return { key: `${station}:0`, seat: seats[0] };
+}
+
+// Send an NPC walking to a free seat at `station`.
+function walkTo(npcs: Map<string, Npc>, n: Npc, station: StationType) {
+  const { key, seat } = freeSeat(npcs, station, n.id);
+  n.station = station;
+  n.seatKey = key;
+  n.path = pathToSeat({ x: n.x, y: n.y }, seat, station);
+  n.tx = seat.x;
+  n.ty = seat.y;
+  n.pendingStation = null;
+  n.stationSince = performance.now();
 }
 
 export default function OfficePage() {
@@ -173,26 +340,23 @@ export default function OfficePage() {
   const npcsRef = useRef<Map<string, Npc>>(new Map());
   const emptyRef = useRef(true);
 
+  // ---- theme: persisted pick, applied to the live palette/skin bindings ----
+  const [themeId, setThemeId] = useState<string>(() => {
+    try { return localStorage.getItem(THEME_STORE_KEY) ?? OFFICE_THEMES[0].id; }
+    catch { return OFFICE_THEMES[0].id; }
+  });
+  const theme = OFFICE_THEMES.find((t) => t.id === themeId) ?? OFFICE_THEMES[0];
+  applyOfficeTheme(theme); // render loop picks it up on the next frame
+  useEffect(() => {
+    try { localStorage.setItem(THEME_STORE_KEY, themeId); } catch { /* noop */ }
+  }, [themeId]);
+
   // ---- data layer: seed via REST, then realtime via /api/events WS ----
   useEffect(() => {
     let stopped = false;
     let ws: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
-
-    const freeSeats = (station: StationType, exceptId: string) => {
-      const taken = new Set<string>();
-      npcsRef.current.forEach((n) => {
-        if (n.id !== exceptId && n.station === station && !n.gone) taken.add(n.seatKey);
-      });
-      const seats = STATIONS[station];
-      for (let i = 0; i < seats.length; i++) {
-        const key = `${station}:${i}`;
-        if (!taken.has(key)) return { key, seat: seats[i] };
-      }
-      // overflow: reuse last seat
-      return { key: `${station}:0`, seat: seats[0] };
-    };
 
     // The first seed on page load/refresh reflects agents that may have been
     // running for a while already — they should appear seated immediately,
@@ -212,18 +376,23 @@ export default function OfficePage() {
           existing.tool = a.tool || "";
           existing.gone = false;
           existing.removeAt = 0;
-          if (wasLeaving || (existing.status !== a.status && existing.station !== station)) {
-            // status changed → walk to a seat in the new station
-            const { key, seat } = freeSeats(station, existing.id);
-            existing.station = station;
-            existing.seatKey = key;
-            existing.path = pathToSeat({ x: existing.x, y: existing.y }, seat, station);
-            existing.tx = seat.x;
-            existing.ty = seat.y;
-          }
           existing.status = a.status;
+          if (wasLeaving) {
+            // came back while walking out → head straight to the new seat
+            walkTo(npcsRef.current, existing, station);
+          } else if (station !== existing.station) {
+            // don't walk immediately: fast think→tool→think loops would send
+            // NPCs pacing nonstop. Mark the wish; the render loop commits it
+            // once it has been stable for STATION_HYSTERESIS_MS.
+            if (existing.pendingStation !== station) {
+              existing.pendingStation = station;
+              existing.pendingSince = now;
+            }
+          } else {
+            existing.pendingStation = null; // status flipped back → stay put
+          }
         } else {
-          const { key, seat } = freeSeats(station, a.subagent_id);
+          const { key, seat } = freeSeat(npcsRef.current, station, a.subagent_id);
           npcsRef.current.set(a.subagent_id, {
             id: a.subagent_id,
             goal: a.goal || "(task)",
@@ -240,6 +409,8 @@ export default function OfficePage() {
             facing: -1,
             gone: false, removeAt: 0,
             bob: (skinFor(a.subagent_id) * 17) % 100,
+            pendingStation: null, pendingSince: 0,
+            stationSince: now,
           });
         }
       });
@@ -305,6 +476,10 @@ export default function OfficePage() {
     };
     resize();
     window.addEventListener("resize", resize);
+    // Track parent-container size changes too (sidebar collapse, pane drag) —
+    // window resize alone misses them.
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null;
+    if (ro && canvas.parentElement) ro.observe(canvas.parentElement);
 
     // --- furniture ---
     const rect = (x: number, y: number, w: number, h: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
@@ -423,6 +598,41 @@ export default function OfficePage() {
       rect(x + 34, y, 3, 40, C.woodDark); rect(x, y + 19, 70, 3, C.woodDark);
       rect(x + 2, y + 2, 66, 2, "#c6edf0");
     };
+    const drawDoor = () => {
+      // Door on the right wall by the entrance, so walk-ins come through
+      // something instead of materializing at the room edge.
+      rect(VW - 18, 278, 10, 44, "#5a3322");           // frame notch
+      rect(VW - 17, 280, 8, 40, "#8a5a34");            // door panel
+      rect(VW - 16, 283, 6, 2, "rgba(255,255,255,0.16)");
+      rect(VW - 16, 292, 6, 1, "#6e3f29");             // panel seam
+      rect(VW - 16, 306, 6, 1, "#6e3f29");
+      rect(VW - 16, 298, 2, 2, "#e3c05c");             // knob
+      rect(486, 306, 28, 9, "#744235");                // doormat
+      rect(488, 307, 24, 7, "#b9664f");
+      rect(490, 309, 20, 3, "#d2a455");
+    };
+    const drawStones = () => {
+      // Stepping stones on the grass leading away from the door.
+      for (let i = 0; i < 6; i++) {
+        const px = VW - 8 + i * 14, py = 306 + i * 5 + (i % 2 ? 2 : 0);
+        rect(px, py + 1, 10, 6, "rgba(54,32,18,0.18)");
+        rect(px, py, 10, 6, "#cbb17a");
+        rect(px + 1, py + 1, 8, 4, "#e0c98e");
+      }
+    };
+    const drawClock = (x: number, y: number, t: number) => {
+      rect(x - 8, y - 8, 16, 16, C.woodDark);
+      rect(x - 7, y - 7, 14, 14, "#fff6da");
+      rect(x - 6, y - 6, 12, 1, "rgba(255,255,255,0.4)");
+      rect(x - 1, y - 6, 1, 2, "#8a5b3c"); rect(x - 1, y + 4, 1, 2, "#8a5b3c");
+      rect(x - 6, y - 1, 2, 1, "#8a5b3c"); rect(x + 4, y - 1, 2, 1, "#8a5b3c");
+      const mA = ((t / 800) % 60) / 60 * Math.PI * 2 - Math.PI / 2;
+      const hA = ((t / 800) % 720) / 720 * Math.PI * 2 - Math.PI / 2;
+      ctx.strokeStyle = "#6c5b3c"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(hA) * 3, y + Math.sin(hA) * 3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(mA) * 5, y + Math.sin(mA) * 5); ctx.stroke();
+      rect(x, y - 1, 1, 1, "#b94a4c");
+    };
     const drawWallDecor = () => {
       rect(42, 24, 54, 31, C.woodDark); rect(45, 27, 48, 25, "#f9dc99");
       rect(51, 43, 34, 5, "#8fbf68"); rect(60, 34, 9, 9, "#c94d43"); rect(70, 31, 6, 12, "#5f8f55");
@@ -468,13 +678,18 @@ export default function OfficePage() {
         ctx.strokeStyle = "#9b6a3e"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x - 1, y - 24, 3, 0, Math.PI * 2); ctx.stroke(); rect(x + 2, y - 21, 4, 1, "#9b6a3e");
       } else if (s === "thinking") {
         pixelText("?", x, y - 21, 9, "#8a5b3c");
+      } else if (s === "waiting") {
+        // mug icon: agent is parked in a retry/rate-limit backoff
+        rect(x - 3, y - 27, 5, 6, "#8a5b3c"); rect(x - 2, y - 26, 3, 2, "#774531"); rect(x + 2, y - 26, 2, 3, "#8a5b3c");
       } else if (s === "running") {
         rect(x - 5, y - 26, 10, 6, C.metalDark); rect(x - 3, y - 24, 6, 2, pulse); rect(x - 1, y - 20, 2, 2, C.metalDark);
       } else {
         rect(x - 5, y - 26, 10, 7, C.metalDark); rect(x - 4, y - 25, 8, 5, pulse);
       }
     };
-    const drawLabel = (x: number, y: number, top: string, bottom: string) => {
+    // Goal name tag above the head — drawn seated AND while walking, so an
+    // NPC in transit is never anonymous.
+    const drawGoalChip = (x: number, y: number, top: string) => {
       const g = compactLabel(top);
       const labelW = Math.min(42, Math.max(24, Array.from(g).length * 5));
       rect(x - labelW / 2 - 1, y - 42, labelW + 2, 12, "#6e3f29");
@@ -482,6 +697,9 @@ export default function OfficePage() {
       rect(x - labelW / 2 + 2, y - 34, labelW - 4, 1, "#d5ad64");
       ctx.fillStyle = C.text; ctx.font = "6px monospace"; ctx.textAlign = "center";
       ctx.fillText(g, x, y - 35);
+    };
+    const drawLabel = (x: number, y: number, top: string, bottom: string) => {
+      drawGoalChip(x, y, top);
       const footTrunc = bottom.length > 22 ? bottom.slice(0, 21) + "…" : bottom;
       const footW = Math.min(70, Math.max(30, footTrunc.length * 4));
       rect(x - footW / 2, y + 17, footW, 8, "rgba(255,244,204,0.82)");
@@ -489,7 +707,12 @@ export default function OfficePage() {
     };
 
     // --- character (procedural skin) ---
-    const drawChar = (x: number, y: number, skin: Skin, t: number, moving: boolean, action: string, bobSeed: number) => {
+    const drawChar = (x: number, y: number, skin: NpcSkin, t: number, moving: boolean, action: string, bobSeed: number, facing = 0) => {
+      if (skin.sheet) {
+        // Reserved: spritesheet skins. When a theme ships `sheet` art, blit the
+        // right frame here (walk cycle by t/facing, action pose when seated)
+        // instead of the procedural pixels below.
+      }
       const walk = moving ? Math.sin(t / 90) : 0;
       const bob = moving ? Math.abs(Math.sin(t / 90)) * 1.2 : Math.sin(t / 380 + bobSeed) * 1.0;
       const by = y - bob;
@@ -511,20 +734,28 @@ export default function OfficePage() {
       rect(x - 4, by - 11, 8, 8, skin.tone);
       rect(x - 4, by - 13, 8, 5, skin.hair);
       rect(x - 5, by - 10, 1, 3, skin.hair); rect(x + 4, by - 10, 1, 3, skin.hair);
-      // eyes (face direction)
-      ctx.fillStyle = "#333";
-      const ex = action ? 0 : 0;
+      // eyes follow the walk direction
+      const ex = moving ? facing : 0;
       rect(x - 2 + ex, by - 8, 1, 1, "#333"); rect(x + 1 + ex, by - 8, 1, 1, "#333");
       // action bubble
       if (action === "think") { ctx.fillStyle = "#fff7dc"; ctx.fillRect(x + 5, by - 16, 9, 7); ctx.fillStyle = C.sub; ctx.font = "6px monospace"; ctx.textAlign = "center"; ctx.fillText("…", x + 9, by - 11); }
       if (action === "search") { ctx.strokeStyle = "#c08f4a"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x + 8, by - 12, 3, 0, Math.PI * 2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x + 10, by - 10); ctx.lineTo(x + 12, by - 8); ctx.stroke(); }
       if (action === "read") { rect(x - 9, by - 2, 5, 6, "#5f72a8"); rect(x - 4, by - 2, 1, 6, "#e8d79d"); }
+      if (action === "coffee") {
+        // waiting = coffee break: mug in hand with rising steam
+        rect(x + 5, by, 4, 5, "#fff3cf");
+        rect(x + 9, by + 1, 1, 2, "#b0863f");
+        rect(x + 6, by + 1, 2, 2, "#774531");
+        const s2 = Math.floor(t / 300) % 2;
+        rect(x + 6, by - 5 - s2, 1, 3, "#fff4d6");
+      }
     };
     const actionFor = (status: string): string => {
       switch ((status || "").toLowerCase()) {
         case "reading": return "read";
         case "searching": return "search";
         case "thinking": return "think";
+        case "waiting": return "coffee";
         case "writing": case "running": default: return "type";
       }
     };
@@ -540,12 +771,15 @@ export default function OfficePage() {
       drawGrass(w, h, t);
       ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
 
+      drawStones();
       drawOfficeShell();
       drawFloor();
       drawRug();
       drawWindowLight();
       drawWindow(354, 14);
       drawWallDecor();
+      drawClock(310, 40, t);
+      drawDoor();
       // sign
       rect(149, 18, 124, 34, C.woodDark);
       rect(153, 21, 116, 28, C.boss);
@@ -556,7 +790,7 @@ export default function OfficePage() {
       drawWhiteboard(275);
       drawBookshelf(70, 210);
       drawServer(470, 200, t);
-      drawPlant(496, 61); drawCoffee(160, 300, t);
+      drawPlant(496, 61); drawCoffee(160, 283, t); // coffee sits just off the main aisle so walkers don't clip it
       STATIONS.computer.forEach((s) => { drawChair(s.x, s.y); drawDeskWithPC(s.x, s.y, true, t); });
 
       const now = performance.now();
@@ -579,6 +813,15 @@ export default function OfficePage() {
       // NPCs
       const toDelete: string[] = [];
       [...npcs.values()].sort((a, b) => a.y - b.y).forEach((n) => {
+        // commit a station change once the wish is stable AND the NPC has
+        // dwelled at its current station long enough to be readable
+        if (
+          !n.gone && n.pendingStation &&
+          now - n.pendingSince >= STATION_HYSTERESIS_MS &&
+          now - n.stationSince >= STATION_MIN_DWELL_MS
+        ) {
+          walkTo(npcs, n, n.pendingStation);
+        }
         const next = n.path[0] ?? { x: n.tx, y: n.ty };
         const dx = next.x - n.x, dy = next.y - n.y;
         const dist = Math.hypot(dx, dy);
@@ -595,12 +838,15 @@ export default function OfficePage() {
         }
         if (n.gone && (n.path.length === 0 || now >= n.removeAt)) { toDelete.push(n.id); return; }
         const atSeat = !moving && !n.gone;
-        drawChar(n.x, n.y, SKINS[n.skin], t, moving, atSeat ? actionFor(n.status) : "", n.bob);
-        // label + verb (only when seated, to reduce clutter while walking)
+        drawChar(n.x, n.y, SKINS[n.skin % SKINS.length], t, moving, atSeat ? actionFor(n.status) : "", n.bob, n.facing);
+        // seated: status icon + goal tag + tool/verb foot label.
+        // walking: keep the goal tag so the NPC stays identifiable in transit.
         if (atSeat) {
           drawStatusIcon(n.x, n.y, n.status, n.tool);
           const foot = n.tool ? formatToolLabel(n.tool) : (VERB[n.status?.toLowerCase()] ?? n.status);
           drawLabel(n.x, n.y, n.goal, foot);
+        } else if (!n.gone) {
+          drawGoalChip(n.x, n.y, n.goal);
         }
       });
       toDelete.forEach((id) => npcs.delete(id));
@@ -625,12 +871,34 @@ export default function OfficePage() {
       raf = requestAnimationFrame(render);
     };
     raf = requestAnimationFrame(render);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); ro?.disconnect(); };
   }, []);
 
   return (
-    <div style={{ position: "absolute", inset: 0, background: C.pageBg }}>
+    <div style={{ position: "absolute", inset: 0, background: theme.palette.pageBg }}>
       <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%", imageRendering: "pixelated" }} />
+      {/* theme picker — new entries in OFFICE_THEMES show up here automatically */}
+      <div style={{ position: "absolute", top: 10, right: 12, display: "flex", gap: 6 }}>
+        {OFFICE_THEMES.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setThemeId(t.id)}
+            style={{
+              font: "bold 11px monospace",
+              padding: "3px 8px",
+              cursor: "pointer",
+              color: t.id === themeId ? theme.palette.text : theme.palette.cream,
+              background: t.id === themeId ? theme.palette.cream : "rgba(40,28,16,0.55)",
+              border: `2px solid ${theme.palette.woodDark}`,
+              borderRadius: 3,
+              imageRendering: "pixelated",
+            }}
+            title={`切换到 ${t.name}`}
+          >
+            {t.name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

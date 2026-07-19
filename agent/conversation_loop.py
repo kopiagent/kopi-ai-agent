@@ -1439,6 +1439,14 @@ def run_conversation(
 
                 from kopi_cli.middleware import run_llm_execution_middleware
 
+                # Pixel-office: flip the NPC back to "thinking" for the model
+                # phase; without this it keeps showing the last tool it ran.
+                try:
+                    from tools.delegate_tool import note_llm_activity
+                    note_llm_activity(agent)
+                except Exception:
+                    pass
+
                 response = run_llm_execution_middleware(
                     api_kwargs,
                     _perform_api_call,
@@ -1688,6 +1696,11 @@ def run_conversation(
                     logger.warning(f"Invalid API response (retry {retry_count}/{max_retries}): {', '.join(error_details)} | Provider: {provider_name}")
                     
                     # Sleep in small increments to stay responsive to interrupts
+                    try:
+                        from tools.delegate_tool import note_waiting_activity
+                        note_waiting_activity(agent)  # pixel-office: park at the coffee machine
+                    except Exception:
+                        pass
                     sleep_end = time.time() + wait_time
                     _backoff_touch_counter = 0
                     while time.time() < sleep_end:
@@ -4338,6 +4351,11 @@ def run_conversation(
                 )
                 # Sleep in small increments so we can respond to interrupts quickly
                 # instead of blocking the entire wait_time in one sleep() call
+                try:
+                    from tools.delegate_tool import note_waiting_activity
+                    note_waiting_activity(agent)  # pixel-office: park at the coffee machine
+                except Exception:
+                    pass
                 sleep_end = time.time() + wait_time
                 _backoff_touch_counter = 0
                 while time.time() < sleep_end:

@@ -20,7 +20,7 @@ If you prefer a real POSIX environment (for the dashboard's embedded terminal, `
 Open **PowerShell** (or Windows Terminal) and run:
 
 ```powershell
-iex (irm https://raw.githubusercontent.com/NousResearch/kopi-agent/main/scripts/install.ps1)
+iex (irm https://raw.githubusercontent.com/NousResearch/kopi-ai-agent/main/scripts/install.ps1)
 ```
 
 No admin rights required. The installer goes to `%LOCALAPPDATA%\kopi\` and adds `kopi` to your **User PATH** — open a new terminal after it finishes.
@@ -28,7 +28,7 @@ No admin rights required. The installer goes to `%LOCALAPPDATA%\kopi\` and adds 
 **Installer options** (requires the scriptblock form to pass parameters):
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/NousResearch/kopi-agent/main/scripts/install.ps1))) -NoVenv -SkipSetup -Branch main
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/NousResearch/kopi-ai-agent/main/scripts/install.ps1))) -NoVenv -SkipSetup -Branch main
 ```
 
 | Parameter | Default | Purpose |
@@ -39,13 +39,13 @@ No admin rights required. The installer goes to `%LOCALAPPDATA%\kopi\` and adds 
 | `-NoVenv` | off | Skip venv creation (advanced — you manage Python yourself) |
 | `-SkipSetup` | off | Skip the post-install `kopi setup` wizard |
 | `-KopiHome` | `%LOCALAPPDATA%\kopi` | Override data directory |
-| `-InstallDir` | `%LOCALAPPDATA%\kopi\kopi-agent` | Override code location |
+| `-InstallDir` | `%LOCALAPPDATA%\kopi\kopi-ai-agent` | Override code location |
 
 The installer auto-retries flaky git fetches and strips BOM from any downloaded `install.ps1` payload, so a UTF-8 BOM picked up during HTTP transit no longer breaks the `[scriptblock]::Create((irm ...))` form.
 
 ### Desktop installer (alternative)
 
-A thin GUI installer is also available — useful if you'd rather double-click an `.exe` than open PowerShell. Download Kopi Desktop, run the installer, and on first launch the GUI calls `install.ps1` under the hood to provision Python (via `uv`), Node, PortableGit, and the rest of the dependency bootstrap described below. After the first run, the desktop app and the PowerShell-installed `kopi` CLI share the same `%LOCALAPPDATA%\kopi\kopi-agent` install and `%LOCALAPPDATA%\kopi` data directory — switch between the GUI and the CLI freely.
+A thin GUI installer is also available — useful if you'd rather double-click an `.exe` than open PowerShell. Download Kopi Desktop, run the installer, and on first launch the GUI calls `install.ps1` under the hood to provision Python (via `uv`), Node, PortableGit, and the rest of the dependency bootstrap described below. After the first run, the desktop app and the PowerShell-installed `kopi` CLI share the same `%LOCALAPPDATA%\kopi\kopi-ai-agent` install and `%LOCALAPPDATA%\kopi` data directory — switch between the GUI and the CLI freely.
 
 Use the desktop installer when you want a familiar Windows install experience or you're handing Kopi to a non-developer; use the PowerShell one-liner when you're already in a terminal.
 
@@ -71,11 +71,11 @@ Top-to-bottom, in order:
 2. **Installs Python 3.11** via `uv`. No existing Python needed.
 3. **Installs Node.js 22** (winget if available, else a portable Node tarball unpacked under `%LOCALAPPDATA%\kopi\node`). Used for the browser tool and the WhatsApp bridge.
 4. **Installs portable Git** — if `git` is already on PATH the installer uses it; otherwise it downloads a trimmed, self-contained **PortableGit** (~45 MB, from the official `git-for-windows` release) to `%LOCALAPPDATA%\kopi\git`. No admin, no Windows installer registry, no interference with anything else on the box.
-5. **Clones the repo** to `%LOCALAPPDATA%\kopi\kopi-agent` and creates a virtualenv inside it.
+5. **Clones the repo** to `%LOCALAPPDATA%\kopi\kopi-ai-agent` and creates a virtualenv inside it.
 6. **Tiered `uv pip install`** — tries `.[all]` first, falls back to progressively smaller sets (`[messaging,dashboard,ext]` → `[messaging]` → `.`) if a `git+https` dep flakes on rate-limited GitHub. Prevents "single flake drops you to a bare install" failure mode.
 7. **Auto-installs messaging SDKs** keyed off `.env` — if `TELEGRAM_BOT_TOKEN` / `DISCORD_BOT_TOKEN` / `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN` / `WHATSAPP_ENABLED` are present, runs `python -m ensurepip --upgrade` and targeted `pip install` calls so each platform's SDK is actually importable.
 8. **Sets `KOPI_GIT_BASH_PATH`** to the resolved `bash.exe` so Kopi finds it deterministically in fresh shells.
-9. **Adds `%LOCALAPPDATA%\kopi\kopi-agent\venv\Scripts` to User PATH and sets `KOPI_HOME=%LOCALAPPDATA%\kopi`** — exposes the `kopi` command (and points it at your data dir) after you open a new terminal.
+9. **Adds `%LOCALAPPDATA%\kopi\kopi-ai-agent\venv\Scripts` to User PATH and sets `KOPI_HOME=%LOCALAPPDATA%\kopi`** — exposes the `kopi` command (and points it at your data dir) after you open a new terminal.
 10. **Runs `kopi setup`** — the normal first-run wizard (model, provider, toolsets). Skip with `-SkipSetup`.
 
 :::tip Skip provider hunting on Windows
@@ -202,13 +202,13 @@ Services require admin rights to install and tie the gateway's lifecycle to mach
 
 | Path | Contents |
 |---|---|
-| `%LOCALAPPDATA%\kopi\kopi-agent\` | Git checkout + venv. `venv\Scripts\kopi.exe` is the command added to User PATH. Safe to `Remove-Item -Recurse` and reinstall. |
+| `%LOCALAPPDATA%\kopi\kopi-ai-agent\` | Git checkout + venv. `venv\Scripts\kopi.exe` is the command added to User PATH. Safe to `Remove-Item -Recurse` and reinstall. |
 | `%LOCALAPPDATA%\kopi\git\` | PortableGit (only if the installer provisioned it). |
 | `%LOCALAPPDATA%\kopi\node\` | Portable Node.js (only if the installer provisioned it). |
 | `%LOCALAPPDATA%\kopi\bin\` | Kopi's managed `uv.exe` (the Python manager it uses for updates). |
 | `%LOCALAPPDATA%\kopi\` (root) | Your config, auth, skills, sessions, logs (`config.yaml`, `.env`, `skills\`, `sessions\`, `logs\`, …). **Survives reinstalls.** |
 
-On native Windows the installer sets `KOPI_HOME=%LOCALAPPDATA%\kopi`, so your data and the disposable install live under the **same** `%LOCALAPPDATA%\kopi` root: the install/runtime is the `kopi-agent\`, `git\`, `node\`, and `bin\` subdirectories, while your data files sit directly in `%LOCALAPPDATA%\kopi`. Reinstalling only replaces the `kopi-agent\` checkout, so your data survives — but because the two share a root, **don't** `Remove-Item -Recurse %LOCALAPPDATA%\kopi` if you want to keep your data; delete the `kopi-agent\` subdirectory instead. Your data directory is identical in shape to a Linux `~/.kopi`, so you can mirror it between machines.
+On native Windows the installer sets `KOPI_HOME=%LOCALAPPDATA%\kopi`, so your data and the disposable install live under the **same** `%LOCALAPPDATA%\kopi` root: the install/runtime is the `kopi-ai-agent\`, `git\`, `node\`, and `bin\` subdirectories, while your data files sit directly in `%LOCALAPPDATA%\kopi`. Reinstalling only replaces the `kopi-ai-agent\` checkout, so your data survives — but because the two share a root, **don't** `Remove-Item -Recurse %LOCALAPPDATA%\kopi` if you want to keep your data; delete the `kopi-ai-agent\` subdirectory instead. Your data directory is identical in shape to a Linux `~/.kopi`, so you can mirror it between machines.
 
 **Override `KOPI_HOME`:** set the environment variable to point at a different data dir (e.g. `%USERPROFILE%\.kopi` to match a Linux/WSL layout). Works the same as on Linux.
 
@@ -224,12 +224,12 @@ The browser tool uses `agent-browser` (a Node helper) to drive Chromium. On Wind
 
 ### PATH after install
 
-The installer adds `%LOCALAPPDATA%\kopi\kopi-agent\venv\Scripts` to your **User PATH** via `[Environment]::SetEnvironmentVariable`. Existing terminals don't pick this up — open a new PowerShell window (or Windows Terminal tab) after installation. Close-and-reopen, don't `$env:PATH += …` by hand unless you know what you're doing.
+The installer adds `%LOCALAPPDATA%\kopi\kopi-ai-agent\venv\Scripts` to your **User PATH** via `[Environment]::SetEnvironmentVariable`. Existing terminals don't pick this up — open a new PowerShell window (or Windows Terminal tab) after installation. Close-and-reopen, don't `$env:PATH += …` by hand unless you know what you're doing.
 
 Verify:
 
 ```powershell
-Get-Command kopi        # should print C:\Users\<you>\AppData\Local\kopi\kopi-agent\venv\Scripts\kopi.exe
+Get-Command kopi        # should print C:\Users\<you>\AppData\Local\kopi\kopi-ai-agent\venv\Scripts\kopi.exe
 kopi --version
 ```
 
@@ -262,7 +262,7 @@ From PowerShell:
 kopi uninstall
 ```
 
-That's the clean path — removes the schtasks entry, Startup folder shortcut, `kopi.cmd` shim, deletes `%LOCALAPPDATA%\kopi\kopi-agent\`, and trims the User PATH. It leaves the rest of `%LOCALAPPDATA%\kopi\` alone (your config, auth, skills, sessions, logs) in case you're reinstalling.
+That's the clean path — removes the schtasks entry, Startup folder shortcut, `kopi.cmd` shim, deletes `%LOCALAPPDATA%\kopi\kopi-ai-agent\`, and trims the User PATH. It leaves the rest of `%LOCALAPPDATA%\kopi\` alone (your config, auth, skills, sessions, logs) in case you're reinstalling.
 
 To nuke everything:
 

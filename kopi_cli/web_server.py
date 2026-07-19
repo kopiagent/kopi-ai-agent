@@ -2621,6 +2621,37 @@ def _collect_profile_gateway_topology() -> Dict[str, Any]:
     return {"profiles": profile_names, "gateway_mode": mode, "gateways": gateways}
 
 
+# pid → (lstart token, checked_at). Snapshot liveness is verified against the
+# process *start time*, not just the pid, so a pid recycled by an unrelated
+# process doesn't keep ghost NPCs on the office stage forever. Cached because
+# the office watcher re-reads snapshots every ~600ms and `ps` is a subprocess.
+_office_pid_tokens: dict = {}
+_OFFICE_PID_TOKEN_TTL = 30.0
+# Synthetic snapshots (scripts/office_demo.py) have no live pid; honor them
+# for a bounded window so demos survive the writer process exiting.
+_OFFICE_DEMO_TTL = 600.0
+
+
+def _office_pid_start_token(pid: int) -> "str | None":
+    """Return the pid's start-time token (cached ~30s). None if unavailable."""
+    now = time.time()
+    cached = _office_pid_tokens.get(pid)
+    if cached and (now - cached[1]) < _OFFICE_PID_TOKEN_TTL:
+        return cached[0]
+    token = None
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "lstart="],
+            capture_output=True, text=True, timeout=2,
+        )
+        token = out.stdout.strip() or None
+    except Exception:
+        token = None
+    _office_pid_tokens[pid] = (token, now)
+    return token
+
+
 def _read_office_agents() -> list:
     """Merge live-subagent snapshots across all agent processes.
 
@@ -2642,13 +2673,31 @@ def _read_office_agents() -> list:
                 continue
             pid = data.get("pid")
             ts = data.get("ts", 0)
+            if data.get("demo"):
+                # Synthetic demo snapshot: no live process to check.
+                if (now - ts) < _OFFICE_DEMO_TTL:
+                    agents.extend(data.get("agents", []))
+                elif (now - ts) > _OFFICE_DEMO_TTL + 300:
+                    try:
+                        snap.unlink()
+                    except OSError:
+                        pass
+                continue
             alive = False
             if isinstance(pid, int):
                 try:
                     os.kill(pid, 0)
                     alive = True
-                except (OSError, ProcessLookupError):
+                except PermissionError:
+                    alive = True  # EPERM: alive, just owned by another user
+                except OSError:
                     alive = False
+                if alive:
+                    expected = data.get("proc_start")
+                    if expected:
+                        actual = _office_pid_start_token(pid)
+                        if actual is not None and actual != expected:
+                            alive = False  # pid was recycled by another process
             if alive or (now - ts) < 20:
                 for a in data.get("agents", []):
                     # Main turns and subagents both own explicit lifecycle
