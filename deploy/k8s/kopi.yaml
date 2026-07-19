@@ -32,6 +32,11 @@ type: Opaque
 stringData:
   # CHANGE ME before deploying to customers.
   api-server-key: "replace-with-a-long-random-key"
+  # The customer's KOPI Proxy key (issued at website registration; one key
+  # per customer/container). The 03-kopi-key init hook persists it into the
+  # PVC's .env on first boot. Leave empty to let the container auto-provision
+  # a free-quota key on first start.
+  kopi-proxy-api-key: ""
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -84,6 +89,12 @@ spec:
                 secretKeyRef:
                   name: kopi-secrets
                   key: api-server-key
+            - name: KOPI_PROXY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kopi-secrets
+                  key: kopi-proxy-api-key
+                  optional: true
           ports:
             - name: api
               containerPort: 8642
@@ -134,6 +145,12 @@ spec:
               value: "10000"
             - name: KOPI_GID
               value: "10000"
+            - name: KOPI_PROXY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kopi-secrets
+                  key: kopi-proxy-api-key
+                  optional: true
           ports:
             - name: web
               containerPort: 9119

@@ -48,6 +48,12 @@ services:
     environment:
       - KOPI_UID=${KOPI_UID:-10000}
       - KOPI_GID=${KOPI_GID:-10000}
+      # Per-customer KOPI Proxy key (from your website registration). The
+      # 03-kopi-key init hook persists it into the data volume's .env on
+      # first boot; if unset, the container auto-provisions a free-quota key.
+      - KOPI_PROXY_API_KEY=${KOPI_PROXY_API_KEY:-}
+      # Optional: point at a different deployment / API version (default /v1).
+      - KOPI_PROXY_BASE_URL=${KOPI_PROXY_BASE_URL:-}
       # To expose the OpenAI-compatible API server beyond localhost,
       # uncomment BOTH lines (API_SERVER_KEY is mandatory for auth):
       # - API_SERVER_HOST=0.0.0.0
@@ -92,6 +98,8 @@ services:
     environment:
       - KOPI_UID=${KOPI_UID:-10000}
       - KOPI_GID=${KOPI_GID:-10000}
+      - KOPI_PROXY_API_KEY=${KOPI_PROXY_API_KEY:-}
+      - KOPI_PROXY_BASE_URL=${KOPI_PROXY_BASE_URL:-}
     # Localhost-only. For remote access, tunnel via `ssh -L 9119:localhost:9119`.
     # KOPI_DASHBOARD_PORT keeps side-by-side instances from colliding under
     # host networking.

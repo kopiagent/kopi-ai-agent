@@ -31,6 +31,12 @@ PROJECT_ROOT = Path(__file__).parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# The KOPI fork locks CANONICAL_PROVIDERS down to the kopi-proxy provider at
+# import time (kopi_cli/models.py). Upstream tests exercise the full provider
+# universe, so restore it for the whole suite. Must be set before any test
+# (or fixture) imports kopi_cli.models.
+os.environ.setdefault("KOPI_ALL_PROVIDERS", "1")
+
 
 # ── Per-file process isolation ──────────────────────────────────────────────
 # Tests run via ``scripts/run_tests_parallel.py``, which spawns a fresh

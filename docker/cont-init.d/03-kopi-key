@@ -1,0 +1,49 @@
+#!/command/with-contenv sh
+# ============================================================================
+# Seed the per-customer KOPI Proxy API key at container boot.
+#
+# Key resolution order (first hit wins):
+#   1. $KOPI_HOME/.env already has KOPI_PROXY_API_KEY — keep it (idempotent
+#      across restarts; a customer's provisioned key survives upgrades via
+#      the data volume).
+#   2. KOPI_PROXY_API_KEY env var (docker run -e / compose / k8s Secret) —
+#      persist it into $KOPI_HOME/.env so the key lives with the data volume.
+#   3. Neither — fall back to scripts/auto-provision.sh, which registers a
+#      free-quota key against ${KOPI_PROXY_BASE_URL:-https://kopiaiagent.com/v1}
+#      and fails soft (the container still starts; models just need a key).
+#
+# The image itself never contains a key: it is injected per customer at
+# deploy time. Runs after 01-kopi-setup (volume chown/UID remap), so files
+# written here are re-owned to the runtime user explicitly.
+# ============================================================================
+set -eu
+
+KOPI_HOME="${KOPI_HOME:-/opt/data}"
+ENV_FILE="$KOPI_HOME/.env"
+KOPI_UID="${KOPI_UID:-10000}"
+KOPI_GID="${KOPI_GID:-10000}"
+
+if [ -f "$ENV_FILE" ] && grep -q '^KOPI_PROXY_API_KEY=' "$ENV_FILE" 2>/dev/null; then
+    echo "[03-kopi-key] key already present in $ENV_FILE"
+    exit 0
+fi
+
+if [ -n "${KOPI_PROXY_API_KEY:-}" ]; then
+    mkdir -p "$KOPI_HOME"
+    {
+        echo "# KOPI Proxy key injected from container environment $(date -u +%Y-%m-%dT%H:%MZ)"
+        echo "KOPI_PROXY_API_KEY=$KOPI_PROXY_API_KEY"
+    } >> "$ENV_FILE"
+    chown "$KOPI_UID:$KOPI_GID" "$ENV_FILE" 2>/dev/null || true
+    chmod 600 "$ENV_FILE" 2>/dev/null || true
+    echo "[03-kopi-key] persisted injected key to $ENV_FILE"
+    exit 0
+fi
+
+echo "[03-kopi-key] no key injected — trying auto-provision"
+/opt/kopi/scripts/auto-provision.sh || true
+if [ -f "$ENV_FILE" ]; then
+    chown "$KOPI_UID:$KOPI_GID" "$ENV_FILE" 2>/dev/null || true
+    chmod 600 "$ENV_FILE" 2>/dev/null || true
+fi
+exit 0

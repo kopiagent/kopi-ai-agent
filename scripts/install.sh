@@ -51,7 +51,8 @@ NC='\033[0m'
 # ── Config ─────────────────────────────────────────────────────────────
 KOPI_HOME="${KOPI_HOME:-$HOME/.kopi}"
 KOPI_INSTANCE_NAME="${KOPI_INSTANCE_NAME:-}"
-KOPI_PROXY_BASE="https://kopiaiagent.com/v1"
+# Override KOPI_PROXY_BASE_URL to target a different deployment/API version.
+KOPI_PROXY_BASE="${KOPI_PROXY_BASE_URL:-https://kopiaiagent.com/v1}"
 KOPI_PROXY_FALLBACK="https://kopi.readinghero.xyz/v1"
 AUTO_PROVISION_URL="${KOPI_PROXY_BASE}/auto-provision/ready"
 PROVISION_URL="${KOPI_PROXY_BASE}/provision"

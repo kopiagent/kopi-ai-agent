@@ -3,14 +3,16 @@
 # KOPI AI AGENT — Auto-Provision (client-side)
 # ============================================================================
 # Called at the end of install.sh to automatically get an API key.
-# POSTs to KOPI Proxy → creates client with 5M token quota → saves to .env
+# POSTs to KOPI Proxy → creates client with 50K free token quota → saves to .env
 # ============================================================================
 
 set -e
 
 KOPI_HOME="${KOPI_HOME:-$HOME/.kopi}"
-PROVISION_URL="https://kopiaiagent.com/v1/auto-provision/ready"
-VERIFY_URL="https://kopiaiagent.com/v1/models"
+# Override KOPI_PROXY_BASE_URL to target a different deployment/API version.
+KOPI_PROXY_BASE_URL="${KOPI_PROXY_BASE_URL:-https://kopiaiagent.com/v1}"
+PROVISION_URL="${KOPI_PROXY_BASE_URL}/auto-provision/ready"
+VERIFY_URL="${KOPI_PROXY_BASE_URL}/models"
 ENV_FILE="$KOPI_HOME/.env"
 
 # Don't overwrite existing keys
@@ -34,7 +36,7 @@ RESPONSE=$(curl -s -f -X POST "$PROVISION_URL" \
 }
 
 API_KEY=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('api_key',''))" 2>/dev/null)
-QUOTA=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('quota_display',''))" 2>/dev/null || echo "5M tokens")
+QUOTA=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('quota_display',''))" 2>/dev/null || echo "50K tokens")
 
 if [ -z "$API_KEY" ]; then
     echo "⚠️  Auto-provision returned empty key — response: $RESPONSE"

@@ -1533,6 +1533,7 @@ def list_authenticated_providers(
     force_fresh_nous_tier: bool = False,
     max_models: int | None = None,
     current_model: str = "",
+    current_api_key: str = "",
     refresh: bool = False,
     probe_custom_providers: bool = True,
     probe_current_custom_provider: bool = False,
@@ -2219,7 +2220,11 @@ def list_authenticated_providers(
             try:
                 from kopi_cli.models import fetch_api_models
 
-                _live_models = fetch_api_models("", str(current_base_url).strip().rstrip("/"))
+                # Authenticate the probe: endpoints like the KOPI Proxy 401
+                # an unauthenticated /models, which used to collapse this row
+                # to just the current model.
+                _probe_key = current_api_key or os.environ.get("OPENAI_API_KEY", "")
+                _live_models = fetch_api_models(_probe_key, str(current_base_url).strip().rstrip("/"))
                 if _live_models:
                     _models = _live_models
             except Exception:
@@ -2479,6 +2484,23 @@ def list_authenticated_providers(
                 _row["models"] = [current_model, *_models]
                 _row["total_models"] = _row.get("total_models", len(_models)) + 1
             break
+
+    # KOPI provider lock: authenticated rows above are emitted from detected
+    # env keys / auth-store logins regardless of CANONICAL_PROVIDERS, so the
+    # canonical trim in kopi_cli/models.py alone doesn't clean this picker.
+    # Keep only the locked provider(s), the user's own custom endpoints, and
+    # whatever is currently active (never hide the row in use).
+    try:
+        from kopi_cli.models import KOPI_PROVIDER_LOCK as _kopi_lock
+    except ImportError:
+        _kopi_lock = None
+    if _kopi_lock:
+        results = [
+            r for r in results
+            if str(r.get("slug", "")).lower() in _kopi_lock
+            or r.get("is_user_defined")
+            or r.get("is_current")
+        ]
 
     # Sort: current provider first, then by model count descending
     results.sort(key=lambda r: (not r["is_current"], -r["total_models"]))

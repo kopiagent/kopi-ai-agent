@@ -278,6 +278,9 @@ RUN mkdir -p /etc/cont-init.d && \
     chmod +x /etc/cont-init.d/01-kopi-setup
 COPY --chmod=0755 docker/cont-init.d/015-supervise-perms /etc/cont-init.d/015-supervise-perms
 COPY --chmod=0755 docker/cont-init.d/02-reconcile-profiles /etc/cont-init.d/02-reconcile-profiles
+# 03-kopi-key seeds the per-customer KOPI Proxy API key (env var → volume
+# .env, else auto-provision). The image itself never contains a key.
+COPY --chmod=0755 docker/cont-init.d/03-kopi-key /etc/cont-init.d/03-kopi-key
 
 # ---------- Runtime ----------
 ENV KOPI_WEB_DIST=/opt/kopi/kopi_cli/web_dist

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import copy
+import os
+import ssl
+import sys
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterable
@@ -83,6 +86,37 @@ class _CrossOriginRequestSanitizer(urllib.request.BaseHandler):
     https_request = _sanitize
 
 
+# Lazily-built TLS context for plain default HTTPS handlers. Mirrors
+# kopi_cli.auth._resolve_verify: an explicit CA-bundle env var wins; on macOS
+# pin certifi (python.org/Homebrew builds can't read the system keychain, so
+# stock urllib fails EVERY public cert with CERTIFICATE_VERIFY_FAILED — which
+# silently emptied the model picker's live /models probe); elsewhere keep the
+# platform default so corporate CAs in the system store keep working.
+_https_ctx_built = False
+_https_ctx: "ssl.SSLContext | None" = None
+
+
+def _default_https_context() -> "ssl.SSLContext | None":
+    global _https_ctx_built, _https_ctx
+    if _https_ctx_built:
+        return _https_ctx
+    _https_ctx_built = True
+    ca = (
+        os.getenv("KOPI_CA_BUNDLE")
+        or os.getenv("SSL_CERT_FILE")
+        or os.getenv("REQUESTS_CA_BUNDLE")
+    )
+    try:
+        if ca and os.path.isfile(ca):
+            _https_ctx = ssl.create_default_context(cafile=ca)
+        elif sys.platform == "darwin":
+            import certifi
+            _https_ctx = ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        _https_ctx = None
+    return _https_ctx
+
+
 def _secure_opener_from_installed_policy(original_url: str):
     """Clone the installed opener's handlers, replacing redirect policy only."""
     installed = getattr(urllib.request, "_opener", None)
@@ -94,6 +128,15 @@ def _secure_opener_from_installed_policy(original_url: str):
         for handler in getattr(installed, "handlers", ())
         if not isinstance(handler, urllib.request.HTTPRedirectHandler)
     ]
+    # Swap only a PLAIN default HTTPSHandler (exact type, no custom context)
+    # for one with a working trust store; app-installed TLS instrumentation
+    # or custom contexts are preserved untouched.
+    _ctx = _default_https_context()
+    if _ctx is not None:
+        for _i, _h in enumerate(handlers):
+            if type(_h) is urllib.request.HTTPSHandler and getattr(_h, "_context", None) is None:
+                handlers[_i] = urllib.request.HTTPSHandler(context=_ctx)
+                break
     handlers.append(SafeCredentialRedirectHandler(original_url))
     handlers.append(_CrossOriginRequestSanitizer(original_url))
     secured = urllib.request.build_opener(*handlers)

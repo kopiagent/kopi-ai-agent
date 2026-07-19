@@ -1108,6 +1108,33 @@ try:
 except Exception:
     pass
 
+# ---------------------------------------------------------------------------
+# KOPI provider lock — this fork ships the KOPI Proxy (kopiaiagent.com/v1)
+# as the ONLY user-facing provider. Every provider surface derives from
+# CANONICAL_PROVIDERS (web /api/model/options, desktop provider_catalog(),
+# the `kopi model` TUI picker), so trimming it here hides the whole upstream
+# provider universe in one place. Model lists still come from the endpoint's
+# live /v1/models, so new server-side models appear without code changes.
+#
+# Escape hatches:
+#   - KOPI_ALL_PROVIDERS=1 restores the full upstream catalog (dev/debug;
+#     also set by tests/conftest.py so upstream provider tests keep passing).
+#   - If the kopi-proxy plugin failed to load, fail OPEN (keep the full
+#     list) rather than shipping an empty picker.
+_KOPI_LOCKED_SLUGS = {"kopi-proxy"}
+# When the lock is active this is the allowed-slug frozenset; None = lock off.
+# list_authenticated_providers() also consults it, because authenticated rows
+# (detected env keys, auth-store logins) are emitted independently of
+# CANONICAL_PROVIDERS and would otherwise still surface in the CLI /model
+# picker and the dashboard payloads.
+KOPI_PROVIDER_LOCK: "frozenset[str] | None" = None
+if os.getenv("KOPI_ALL_PROVIDERS", "").strip().lower() not in {"1", "true", "yes", "on"}:
+    _locked = [p for p in CANONICAL_PROVIDERS if p.slug in _KOPI_LOCKED_SLUGS]
+    if _locked:
+        CANONICAL_PROVIDERS[:] = _locked
+        _canonical_slugs = {p.slug for p in CANONICAL_PROVIDERS}
+        KOPI_PROVIDER_LOCK = frozenset(_KOPI_LOCKED_SLUGS)
+
 # Derived dicts — used throughout the codebase
 _PROVIDER_LABELS = {p.slug: p.label for p in CANONICAL_PROVIDERS}
 _PROVIDER_LABELS["custom"] = "Custom endpoint"  # special case: not a named provider

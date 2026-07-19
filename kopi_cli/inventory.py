@@ -52,6 +52,10 @@ class ConfigContext:
     current_base_url: str
     user_providers: dict
     custom_providers: list
+    # API key for the bare model.base_url custom endpoint (model.api_key in
+    # config). Needed so the picker's live /models probe can authenticate —
+    # endpoints like the KOPI Proxy 401 an unauthenticated /models.
+    current_api_key: str = ""
 
     def with_overrides(
         self,
@@ -90,11 +94,13 @@ def load_picker_context() -> ConfigContext:
         current_model = model_cfg.get("default", model_cfg.get("name", "")) or ""
         current_provider = model_cfg.get("provider", "") or ""
         current_base_url = model_cfg.get("base_url", "") or ""
+        current_api_key = model_cfg.get("api_key", "") or ""
     else:
         # config.model can be a bare string in older configs.
         current_model = str(model_cfg) if model_cfg else ""
         current_provider = ""
         current_base_url = ""
+        current_api_key = ""
     raw = cfg.get("providers")
     return ConfigContext(
         current_provider=current_provider,
@@ -102,6 +108,7 @@ def load_picker_context() -> ConfigContext:
         current_base_url=current_base_url,
         user_providers=raw if isinstance(raw, dict) else {},
         custom_providers=get_compatible_custom_providers(cfg),
+        current_api_key=current_api_key,
     )
 
 
@@ -172,6 +179,7 @@ def build_models_payload(
         current_provider=ctx.current_provider,
         current_base_url=ctx.current_base_url,
         current_model=ctx.current_model,
+        current_api_key=ctx.current_api_key,
         user_providers=ctx.user_providers,
         custom_providers=ctx.custom_providers,
         force_fresh_nous_tier=force_fresh_nous_tier,
