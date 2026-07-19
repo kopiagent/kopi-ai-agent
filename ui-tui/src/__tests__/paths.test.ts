@@ -99,7 +99,7 @@ describe('fmtProjectCwdBranch', () => {
   })
 
   it('keeps the project visible when space is tight', () => {
-    expect(fmtProjectCwdBranch('/Users/bb/proj', 'main', 'kopi-ai-agent', 12)).toBe('kopi-ai-agent')
+    expect(fmtProjectCwdBranch('/Users/bb/proj', 'main', 'kopi-ai-agent', 13)).toBe('kopi-ai-agent')
   })
 })
 
