@@ -11,10 +11,16 @@ name: desktop release
 #
 # (`desktop-v*` tags are still accepted for backwards compatibility.)
 #
-# Signing: macOS builds are UNSIGNED (CSC_IDENTITY_AUTO_DISCOVERY=false) —
-# users right-click → Open past Gatekeeper. Add Apple Developer cert secrets
-# and drop that env to sign/notarize later. Windows is unsigned too
-# (signAndEditExecutable: false in electron-builder config).
+# macOS signing: with no cert secrets configured, electron-builder AD-HOC
+# signs the app. That matters: Apple Silicon refuses to launch unsigned
+# arm64 binaries at all — a fully-unsigned download reports the misleading
+# "Kopi is damaged" error. Ad-hoc signed apps launch after the user allows
+# them (System Settings → Privacy & Security → Open Anyway).
+# To ship double-click-clean builds, add these repo secrets and the same
+# steps sign + notarize automatically (no workflow change needed):
+#   CSC_LINK / CSC_KEY_PASSWORD          — Developer ID Application .p12
+#   APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID — notarization
+# Windows is unsigned (signAndEditExecutable: false in electron-builder).
 
 on:
   push:
@@ -57,9 +63,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
-      # No Apple signing identity in this repo — build unsigned instead of
-      # failing certificate discovery.
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # No real cert secrets → electron-builder falls back to AD-HOC signing
+      # (required for arm64 to launch at all). When the secrets below are
+      # configured in the repo, the same build signs + notarizes for real.
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -105,7 +116,7 @@ jobs:
             VERSION_LABEL="${VERSION_LABEL#v}" # v1.2.3 -> 1.2.3
             gh release create "$TAG" $DRAFT_FLAG \
               --title "Kopi Desktop ${VERSION_LABEL}" \
-              --notes "Kopi desktop installers for macOS, Windows and Linux. macOS builds are unsigned — right-click the app and choose Open on first launch." \
+              --notes "Kopi desktop installers for macOS, Windows and Linux. macOS builds are ad-hoc signed (not notarized yet): on first launch approve the app under System Settings → Privacy & Security → Open Anyway, or run: xattr -cr /Applications/Kopi.app" \
               || true  # lost the race to a sibling job — fine
           fi
 
