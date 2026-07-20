@@ -29,7 +29,7 @@ class TestGatewayLifecyclePattern:
         "kopi gateway restart",
         "kopi gateway stop",
         "kopi  gateway  restart",         # double spaces
-        "Hermez Gateway Restart".lower().replace("z", "s"),  # case handled
+        "Kopi Gateway Restart",           # mixed case handled
         "KOPI GATEWAY RESTART",           # uppercase
     ])
     def test_kopi_gateway_commands(self, text):

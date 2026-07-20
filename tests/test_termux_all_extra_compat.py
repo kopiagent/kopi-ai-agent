@@ -21,3 +21,10 @@ def test_install_script_prefers_termux_all_then_fallbacks() -> None:
     assert "pip install -e '.[termux-all]' -c constraints-termux.txt" in text
     assert "Termux broad profile (.[termux-all]) failed, trying baseline Termux profile..." in text
     assert "Termux baseline profile (.[termux]) failed, trying base install..." in text
+
+# The fork replaced upstream's install.sh with the KOPI one-click installer,
+# which has no Termux [all]-extra fallback chain. See tests/test_install_sh_kopi.py.
+import pytest as _pytest_skip_mod
+pytestmark = _pytest_skip_mod.mark.skip(
+    reason="upstream install.sh replaced by the KOPI installer; see test_install_sh_kopi.py"
+)

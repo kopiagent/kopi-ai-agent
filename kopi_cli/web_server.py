@@ -2848,12 +2848,13 @@ def _read_office_agents() -> list:
                 continue
             alive = False
             if isinstance(pid, int):
+                # psutil.pid_exists instead of os.kill(pid, 0): the signal-0
+                # probe is a real CTRL_C_EVENT on Windows (bpo-14484), and
+                # psutil already treats EPERM as "alive".
                 try:
-                    os.kill(pid, 0)
-                    alive = True
-                except PermissionError:
-                    alive = True  # EPERM: alive, just owned by another user
-                except OSError:
+                    import psutil
+                    alive = psutil.pid_exists(pid)
+                except Exception:
                     alive = False
                 if alive:
                     expected = data.get("proc_start")

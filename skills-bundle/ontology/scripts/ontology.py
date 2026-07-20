@@ -73,7 +73,7 @@ def load_graph(path: str) -> tuple[dict, list]:
     if not graph_path.exists():
         return entities, relations
     
-    with open(graph_path) as f:
+    with open(graph_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -113,7 +113,7 @@ def append_op(path: str, record: dict):
     graph_path = Path(path)
     graph_path.parent.mkdir(parents=True, exist_ok=True)
     
-    with open(graph_path, "a") as f:
+    with open(graph_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
 
 
@@ -386,7 +386,7 @@ def load_schema(schema_path: str) -> dict:
     schema_file = Path(schema_path)
     if schema_file.exists():
         import yaml
-        with open(schema_file) as f:
+        with open(schema_file, encoding="utf-8") as f:
             schema = yaml.safe_load(f) or {}
     return schema
 
@@ -396,7 +396,7 @@ def write_schema(schema_path: str, schema: dict) -> None:
     schema_file = Path(schema_path)
     schema_file.parent.mkdir(parents=True, exist_ok=True)
     import yaml
-    with open(schema_file, "w") as f:
+    with open(schema_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(schema, f, sort_keys=False)
 
 
@@ -565,11 +565,11 @@ def main():
         else:
             path = Path(args.file)
             if path.suffix.lower() == ".json":
-                with open(path) as f:
+                with open(path, encoding="utf-8") as f:
                     incoming = json.load(f)
             else:
                 import yaml
-                with open(path) as f:
+                with open(path, encoding="utf-8") as f:
                     incoming = yaml.safe_load(f) or {}
         
         merged = append_schema(args.schema, incoming)

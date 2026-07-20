@@ -295,7 +295,7 @@ export default function UserStoriesCollage(): JSX.Element {
       <div className={styles.footer}>
         Built something with Kopi?{' '}
         <a
-          href="https://github.com/NousResearch/kopi-ai-agent/edit/main/website/src/data/userStories.json"
+          href="https://github.com/kopiagent/kopi-ai-agent/edit/main/website/src/data/userStories.json"
           target="_blank"
           rel="noopener noreferrer"
         >

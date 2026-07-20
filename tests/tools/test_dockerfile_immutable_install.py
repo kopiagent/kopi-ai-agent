@@ -69,9 +69,11 @@ def test_dockerfile_bakes_code_scoped_install_method_stamp() -> None:
     assert "printf 'docker\\n' > /opt/kopi/.install_method" in text
 
     # The stamp must be in the RUN block that wires the exec shim.
+    # Continuation lines end in a backslash; Dockerfile's parser also allows
+    # bare `# comment` lines inside a RUN continuation, so accept those too.
     shim_block = re.search(
         r"RUN mkdir -p /opt/kopi/bin && \\\n"
-        r"(?:.*\\\n)+?"
+        r"(?:(?:.*\\\n)|(?:\s*#.*\n))+?"
         r"\s+printf 'docker\\n' > /opt/kopi/\.install_method",
         text,
     )
