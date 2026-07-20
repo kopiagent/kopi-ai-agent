@@ -22,8 +22,8 @@ We value contributions in this order:
 
 ## Common contribution paths
 
-- Building a custom/local tool without modifying Hermes core? Start with [Build a Hermes Plugin](../developer-guide/plugins/index.md)
-- Building a new built-in core tool for Hermes itself? Start with [Adding Tools](./adding-tools.md)
+- Building a custom/local tool without modifying Kopi core? Start with [Build a Kopi Plugin](../developer-guide/plugins/index.md)
+- Building a new built-in core tool for Kopi itself? Start with [Adding Tools](./adding-tools.md)
 - Building a new skill? Start with [Creating Skills](./creating-skills.md)
 - Building a new inference provider? Start with [Adding Providers](./adding-providers.md)
 
@@ -42,7 +42,7 @@ We value contributions in this order:
 
 For most contributors, the best development bootstrap is the same path users
 take: run the standard installer, then work inside the repository it cloned.
-The installer creates the Hermes venv, wires the `kopi` command, stamps the
+The installer creates the Kopi venv, wires the `kopi` command, stamps the
 install method for `kopi update`, and clones the full git project into
 `$KOPI_HOME/kopi-ai-agent` (usually `~/.kopi/kopi-ai-agent`). That keeps your
 development environment on the same layout the CLI, updater, lazy dependency
@@ -68,7 +68,7 @@ scripts/run_tests.sh
 
 ### Manual clone fallback
 
-Use this only if you intentionally do not want Hermes' managed install layout
+Use this only if you intentionally do not want Kopi's managed install layout
 (for example, a throwaway clone inside a container or CI job). If you install
 this way, make sure you run the `kopi` entrypoint from this venv; running the
 system `python3 -m kopi_cli.main` can pick up unrelated system Python
@@ -194,7 +194,7 @@ Use `pathlib.Path` instead of string concatenation with `/`.
 
 ## Security Considerations
 
-Hermes has terminal access. Security matters.
+Kopi has terminal access. Security matters.
 
 ### Existing Protections
 
@@ -272,7 +272,7 @@ fix(security): prevent shell injection in sudo password piping
 ## Reporting Issues
 
 - Use [GitHub Issues](https://github.com/LINYIQ66/kopi-ai-agent/issues)
-- Include: OS, Python version, Hermes version (`kopi version`), full error traceback
+- Include: OS, Python version, Kopi version (`kopi version`), full error traceback
 - Include steps to reproduce
 - Check existing issues before creating duplicates
 - For security vulnerabilities, please report privately

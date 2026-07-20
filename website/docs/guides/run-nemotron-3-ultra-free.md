@@ -20,11 +20,11 @@ The simplest path: a one-click installer with a guided, point-and-click setup. N
 
 ### 1. Download and install
 
-[Download the Hermes Desktop installer](https://kopiaiagent.com/) for macOS or Windows, then open it. On first launch it finishes setting itself up (usually under a minute).
+[Download the Kopi Desktop installer](https://kopiaiagent.com/) for macOS or Windows, then open it. On first launch it finishes setting itself up (usually under a minute).
 
 ### 2. Connect KOPI Proxy
 
-When the app opens, you'll see a "Let's get you set up" screen. Click **KOPI Proxy** (marked **Recommended**). Your browser opens — create a [KOPI Proxy](https://kopiaiagent.com/portal) account (or sign in), choose the **Free** plan, and authorize Hermes. The app connects automatically.
+When the app opens, you'll see a "Let's get you set up" screen. Click **KOPI Proxy** (marked **Recommended**). Your browser opens — create a [KOPI Proxy](https://kopiaiagent.com/portal) account (or sign in), choose the **Free** plan, and authorize Kopi. The app connects automatically.
 
 ### 3. Pick the free Nemotron 3 Ultra model
 
@@ -72,7 +72,7 @@ source ~/.bashrc   # or source ~/.zshrc
 kopi setup
 ```
 
-Select **Quick Setup**. Hermes opens a browser tab and waits for you to finish the next steps.
+Select **Quick Setup**. Kopi opens a browser tab and waits for you to finish the next steps.
 
 ### 3. Create a KOPI Proxy account
 
@@ -97,7 +97,7 @@ The `:free` tag is what keeps it on the no-cost tier, so make sure you pick that
 Complete the remaining Quick Setup prompts, then run:
 
 ```bash
-hermes
+kopi
 ```
 
 That's it — you're talking to Nemotron 3 Ultra, free.

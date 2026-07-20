@@ -208,7 +208,7 @@ memory:
 ```bash
 export KOPI_MEMORY_API_URL=http://localhost:8900
 export KOPI_MEMORY_API_KEY="your-jwt-key"
-export KOPI_MEMORY_USER_ID="hermes"
+export KOPI_MEMORY_USER_ID="kopi"
 ```
 
 **Deploy the backend:**

@@ -6,7 +6,7 @@ author: KOPI AI AGENT
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
-  hermes:
+  kopi:
     tags: [xero, accounting, finance, bookkeeping, invoices, reports, mcp]
     category: finance
     homepage: https://github.com/XeroAPI/xero-mcp-server

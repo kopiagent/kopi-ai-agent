@@ -6,7 +6,7 @@ description: "Your first conversation with KOPI AI AGENT — from install to cha
 
 # Quickstart
 
-This guide gets you from zero to a working Hermes setup that survives real use. Install, choose a provider, verify a working chat, and know exactly what to do when something breaks.
+This guide gets you from zero to a working Kopi setup that survives real use. Install, choose a provider, verify a working chat, and know exactly what to do when something breaks.
 
 ## Prefer to watch?
 
@@ -27,7 +27,7 @@ This guide gets you from zero to a working Hermes setup that survives real use. 
 
 - Brand new and want the shortest path to a working setup
 - Switching providers and don't want to lose time to config mistakes
-- Setting up Hermes for a team, bot, or always-on workflow
+- Setting up Kopi for a team, bot, or always-on workflow
 - Tired of "it installed, but it still does nothing"
 
 ## The fastest path
@@ -36,22 +36,22 @@ Pick the row that matches your goal:
 
 | Goal | Do this first | Then do this |
 |---|---|---|
-| I just want Hermes working on my machine | `kopi setup` | Run a real chat and verify it responds |
+| I just want Kopi working on my machine | `kopi setup` | Run a real chat and verify it responds |
 | I already know my provider | `kopi model` | Save the config, then start chatting |
 | I want a bot or always-on setup | `kopi gateway setup` after CLI works | Connect Telegram, Discord, Slack, or another platform |
 | I want a local or self-hosted model | `kopi model` → custom endpoint | Verify the endpoint, model name, and context length |
 | I want multi-provider fallback | `kopi model` first | Add routing and fallback only after the base chat works |
 
-**Rule of thumb:** if Hermes cannot complete a normal chat, do not add more features yet. Get one clean conversation working first, then layer on gateway, cron, skills, voice, or routing.
+**Rule of thumb:** if Kopi cannot complete a normal chat, do not add more features yet. Get one clean conversation working first, then layer on gateway, cron, skills, voice, or routing.
 
 ---
 
 ## 1. Install KOPI AI AGENT
-### With the Hermes Desktop installer on macOS or Windows (recommended)
-To easily install the command-line and desktop applications, [download the Hermes Desktop installer](https://kopiaiagent.com/) from our website and run it.
+### With the Kopi Desktop installer on macOS or Windows (recommended)
+To easily install the command-line and desktop applications, [download the Kopi Desktop installer](https://kopiaiagent.com/) from our website and run it.
 
-### Without Hermes Desktop:
-For a command-line only install without Hermes Desktop, run:
+### Without Kopi Desktop:
+For a command-line only install without Kopi Desktop, run:
 
 #### Linux / macOS / WSL2 / Android (Termux)
 ```bash
@@ -156,7 +156,7 @@ You can switch providers at any time with `kopi model` — no lock-in. For a ful
 
 ### How settings are stored
 
-Hermes separates secrets from normal config:
+Kopi separates secrets from normal config:
 
 - **Secrets and tokens** → `~/.kopi/.env`
 - **Non-secret settings** → `~/.kopi/config.yaml`
@@ -181,7 +181,7 @@ kopi --tui      # modern TUI (recommended)
 You'll see a welcome banner with your model, available tools, and skills. Use a prompt that's specific and easy to verify:
 
 :::tip Pick your interface
-Hermes ships with two terminal interfaces: the classic `prompt_toolkit` CLI and a newer [TUI](../user-guide/tui.md) with modal overlays, mouse selection, and non-blocking input. Both share the same sessions, slash commands, and config — try each with `kopi` vs `kopi --tui`.
+Kopi ships with two terminal interfaces: the classic `prompt_toolkit` CLI and a newer [TUI](../user-guide/tui.md) with modal overlays, mouse selection, and non-blocking input. Both share the same sessions, slash commands, and config — try each with `kopi` vs `kopi --tui`.
 :::
 
 ```
@@ -199,7 +199,7 @@ Help me set up a clean GitHub PR workflow for this codebase.
 **What success looks like:**
 
 - The banner shows your chosen model/provider
-- Hermes replies without error
+- Kopi replies without error
 - It can use a tool if needed (terminal, file read, web search)
 - The conversation continues normally for more than one turn
 
@@ -276,7 +276,7 @@ kopi config set terminal.backend ssh       # Remote server
 ### Voice mode
 
 ```bash
-# From the Hermes install directory (the curl installer placed it at
+# From the Kopi install directory (the curl installer placed it at
 # ~/.kopi/kopi-ai-agent on Linux/macOS or %LOCALAPPDATA%\kopi\kopi-ai-agent on Windows):
 cd ~/.kopi/kopi-ai-agent
 uv pip install -e ".[voice]"
@@ -287,9 +287,9 @@ Then in the CLI: `/voice on`. Press `Ctrl+B` to record. See [Voice Mode](../user
 
 ### Skills
 
-Skills are on-demand instruction documents that teach Hermes how to do a specific task — deploy to Kubernetes, open a GitHub PR, fine-tune a model, search for GIFs. Each is a `SKILL.md` file with a name, a description, and a step-by-step procedure. The agent reads the short descriptions for free and only loads a skill's full content when a task actually calls for it, so adding skills doesn't bloat every request.
+Skills are on-demand instruction documents that teach Kopi how to do a specific task — deploy to Kubernetes, open a GitHub PR, fine-tune a model, search for GIFs. Each is a `SKILL.md` file with a name, a description, and a step-by-step procedure. The agent reads the short descriptions for free and only loads a skill's full content when a task actually calls for it, so adding skills doesn't bloat every request.
 
-Hermes ships with a catalog of bundled skills already installed in `~/.kopi/skills/`. You can add more from the Skills Hub, or write your own.
+Kopi ships with a catalog of bundled skills already installed in `~/.kopi/skills/`. You can add more from the Skills Hub, or write your own.
 
 **Browse and install from the hub:**
 
@@ -305,7 +305,7 @@ The install argument is a `source/path` slug from the hub — `openai/skills/k8s
 
 ```bash
 /k8s deploy the staging manifest          # run the skill with a request
-/k8s                                       # load it and let Hermes ask what you need
+/k8s                                       # load it and let Kopi ask what you need
 ```
 
 This works in the CLI and in any connected messaging platform. You don't have to install everything up front — the agent picks the right bundled skill on its own during normal conversation when a task matches one.
@@ -344,7 +344,7 @@ These are the problems that waste the most time:
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Hermes opens but gives empty or broken replies | Provider auth or model selection is wrong | Run `kopi model` again and confirm provider, model, and auth |
+| Kopi opens but gives empty or broken replies | Provider auth or model selection is wrong | Run `kopi model` again and confirm provider, model, and auth |
 | Custom endpoint "works" but returns garbage | Wrong base URL, model name, or not actually OpenAI-compatible | Verify the endpoint in a separate client first |
 | Gateway starts but nobody can message it | Bot token, allowlist, or platform setup is incomplete | Re-run `kopi gateway setup` and check `kopi gateway status` |
 | `kopi --continue` can't find old session | Switched profiles or session never saved | Check `kopi sessions list` and confirm you're in the right profile |

@@ -8,7 +8,7 @@ description: "Use your KOPI Proxy subscription (or other OAuth provider) as an O
 
 The subscription proxy is a local HTTP server that lets external apps —
 OpenViking, Karakeep, Open WebUI, anything that speaks OpenAI-compatible
-chat completions — use your Hermes-managed provider subscription as their
+chat completions — use your Kopi-managed provider subscription as their
 LLM endpoint. The proxy attaches the right credentials (refreshing them
 automatically) so the app never needs a static API key.
 
@@ -17,7 +17,7 @@ This is different from the [API server](./api-server.md):
 | | API server | Subscription proxy |
 |---|---|---|
 | What it serves | Your agent (full toolset, memory, skills) | Raw model inference |
-| Use case | "Use Hermes as a chat backend" | "Use my KOPI Proxy sub from another app" |
+| Use case | "Use Kopi as a chat backend" | "Use my KOPI Proxy sub from another app" |
 | Auth | Your `API_SERVER_KEY` | Any bearer (proxy attaches the real one) |
 | Tool calls | Yes — the agent runs tools | No — passthrough only |
 
@@ -32,8 +32,8 @@ proxy when you just want **the model** through your subscription.
 kopi portal
 ```
 
-This opens your browser for the KOPI Proxy OAuth flow. Hermes stores
-the refresh token in `~/.kopi/auth.json` — the same place all Hermes
+This opens your browser for the KOPI Proxy OAuth flow. Kopi stores
+the refresh token in `~/.kopi/auth.json` — the same place all Kopi
 provider logins live.
 
 ### 2. Start the proxy
@@ -43,7 +43,7 @@ kopi proxy start
 ```
 
 ```
-Starting Hermes proxy for KOPI Proxy
+Starting Kopi proxy for KOPI Proxy
   Listening on:  http://127.0.0.1:8645/v1
   Forwarding to: (resolved per-request from your subscription)
   Use any bearer token in the client — the proxy attaches your real credential.
@@ -83,7 +83,7 @@ kopi proxy status
 ```
 
 ```
-Hermes proxy upstream adapters
+Kopi proxy upstream adapters
 
   [nous    ] KOPI Proxy — ready (bearer expires 2026-05-15T06:43:21Z)
 ```

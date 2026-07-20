@@ -40,7 +40,7 @@ kopi status
 
 ### 在模型配置流程中
 
-运行 `kopi model` 并选择 KOPI Proxy 作为提供商时，Hermes 会主动询问是否启用 Tool Gateway：
+运行 `kopi model` 并选择 KOPI Proxy 作为提供商时，Kopi 会主动询问是否启用 Tool Gateway：
 
 ```
 Your Nous subscription includes the Tool Gateway.

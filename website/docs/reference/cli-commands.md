@@ -1,7 +1,7 @@
 ---
 sidebar_position: 1
 title: "CLI Commands Reference"
-description: "Authoritative reference for Hermes terminal commands and command families"
+description: "Authoritative reference for Kopi terminal commands and command families"
 ---
 
 # CLI Commands Reference
@@ -21,7 +21,7 @@ kopi [global-options] <command> [subcommand/options]
 | Option | Description |
 |--------|-------------|
 | `--version`, `-V` | Show version and exit. |
-| `--profile <name>`, `-p <name>` | Select which Hermes profile to use for this invocation. Overrides the sticky default set by `kopi profile use`. |
+| `--profile <name>`, `-p <name>` | Select which Kopi profile to use for this invocation. Overrides the sticky default set by `kopi profile use`. |
 | `--resume <session>`, `-r <session>` | Resume a previous session by ID or title. |
 | `--continue [name]`, `-c [name]` | Resume the most recent session, or the most recent session matching a title. |
 | `--worktree`, `-w` | Start in an isolated git worktree for parallel-agent workflows. |
@@ -64,9 +64,9 @@ kopi [global-options] <command> [subcommand/options]
 | `kopi dump` | Copy-pasteable setup summary for support/debugging. |
 | `kopi prompt-size` | Show a byte breakdown of the system prompt + tool schemas (skills index, memory, profile). Runs offline. |
 | `kopi debug` | Debug tools — upload logs and system info for support. |
-| `kopi backup` | Back up Hermes home directory to a zip file. |
+| `kopi backup` | Back up Kopi home directory to a zip file. |
 | `kopi checkpoints` | Inspect / prune / clear `~/.kopi/checkpoints/` (the shadow store used by `/rollback`). Run with no args for a status overview. |
-| `kopi import` | Restore a Hermes backup from a zip file. |
+| `kopi import` | Restore a Kopi backup from a zip file. |
 | `kopi logs` | View, tail, and filter agent/gateway/error log files. |
 | `kopi config` | Show, edit, migrate, and query configuration files. |
 | `kopi pairing` | Approve or revoke messaging pairing codes. |
@@ -74,8 +74,8 @@ kopi [global-options] <command> [subcommand/options]
 | `kopi bundles` | Group several skills under a single `/<name>` slash command. See [Skill Bundles](../user-guide/features/skills.md#skill-bundles). |
 | `kopi curator` | Background skill maintenance — status, run, pause, pin. See [Curator](../user-guide/features/curator.md). |
 | `kopi memory` | Configure external memory provider. Plugin-specific subcommands (e.g. `kopi honcho`) register automatically when their provider is active. |
-| `kopi acp` | Run Hermes as an ACP server for editor integration. |
-| `kopi mcp` | Manage MCP server configurations and run Hermes as an MCP server. |
+| `kopi acp` | Run Kopi as an ACP server for editor integration. |
+| `kopi mcp` | Manage MCP server configurations and run Kopi as an MCP server. |
 | `kopi plugins` | Manage KOPI AI AGENT plugins (install, enable, disable, remove). |
 | `kopi portal` | KOPI Proxy status, subscription link, and Tool Gateway routing. See [Tool Gateway](../user-guide/features/tool-gateway.md). |
 | `kopi tools` | Configure enabled tools per platform. |
@@ -86,11 +86,11 @@ kopi [global-options] <command> [subcommand/options]
 | `kopi claw` | OpenClaw migration helpers. |
 | `kopi dashboard` | Launch the web dashboard for managing config, API keys, and sessions. |
 | `kopi desktop` (alias `gui`) | Build and launch the native Electron desktop app. |
-| `kopi profile` | Manage profiles — multiple isolated Hermes instances. |
+| `kopi profile` | Manage profiles — multiple isolated Kopi instances. |
 | `kopi completion` | Print shell completion scripts (bash/zsh/fish). |
 | `kopi version` | Show version information. |
 | `kopi update` | Pull latest code and reinstall dependencies. `--check` previews without installing; `--backup` takes a pre-pull `KOPI_HOME` snapshot. |
-| `kopi uninstall` | Remove Hermes from the system. |
+| `kopi uninstall` | Remove Kopi from the system. |
 
 ## `kopi chat`
 
@@ -117,21 +117,21 @@ Common options:
 | `--pass-session-id` | Pass the session ID into the system prompt. |
 | `--ignore-user-config` | Ignore `~/.kopi/config.yaml` and use built-in defaults. Credentials in `.env` are still loaded. Useful for isolated CI runs, reproducible bug reports, and third-party integrations. |
 | `--ignore-rules` | Skip auto-injection of `AGENTS.md`, `SOUL.md`, `.cursorrules`, persistent memory, and preloaded skills. Combine with `--ignore-user-config` for a fully isolated run. |
-| `--safe-mode` | Troubleshooting mode: disable ALL customizations — user config, rules/memory injection, plugins, shell hooks, and MCP servers (implies `--ignore-user-config` and `--ignore-rules`). Use to isolate whether a problem comes from your setup or from Hermes itself. |
+| `--safe-mode` | Troubleshooting mode: disable ALL customizations — user config, rules/memory injection, plugins, shell hooks, and MCP servers (implies `--ignore-user-config` and `--ignore-rules`). Use to isolate whether a problem comes from your setup or from Kopi itself. |
 | `--source <tag>` | Session source tag for filtering (default: `cli`). Use `tool` for third-party integrations that should not appear in user session lists. |
 | `--max-turns <N>` | Maximum tool-calling iterations per conversation turn (default: 90, or `agent.max_turns` in config). |
 
 Examples:
 
 ```bash
-hermes
+kopi
 kopi chat -q "Summarize the latest PRs"
 kopi chat --provider openrouter --model anthropic/claude-sonnet-4.6
 kopi chat --toolsets web,terminal,skills
 kopi chat --quiet -q "Return only JSON"
 kopi chat --worktree -q "Review this repo and open a PR"
 kopi chat --ignore-user-config --ignore-rules -q "Repro without my personal setup"
-kopi chat --safe-mode -q "Is this bug mine or Hermes'?"
+kopi chat --safe-mode -q "Is this bug mine or Kopi's?"
 ```
 
 ### `kopi -z <prompt>` — scripted one-shot
@@ -163,7 +163,7 @@ Same agent, same tools, same skills — just strips every interactive / cosmetic
 
 ## `kopi model`
 
-Interactive provider + model selector. **This is the command for adding new providers, setting up API keys, and running OAuth flows.** Run it from your terminal — not from inside an active Hermes chat session.
+Interactive provider + model selector. **This is the command for adding new providers, setting up API keys, and running OAuth flows.** Run it from your terminal — not from inside an active Kopi chat session.
 
 ```bash
 kopi model
@@ -178,11 +178,11 @@ Use this when you want to:
 - save the new default into config
 
 :::warning kopi model vs /model — know the difference
-**`kopi model`** (run from your terminal, outside any Hermes session) is the **full provider setup wizard**. It can add new providers, run OAuth flows, prompt for API keys, and configure endpoints.
+**`kopi model`** (run from your terminal, outside any Kopi session) is the **full provider setup wizard**. It can add new providers, run OAuth flows, prompt for API keys, and configure endpoints.
 
-**`/model`** (typed inside an active Hermes chat session) can only **switch between providers and models you've already set up**. It cannot add new providers, run OAuth, or prompt for API keys.
+**`/model`** (typed inside an active Kopi chat session) can only **switch between providers and models you've already set up**. It cannot add new providers, run OAuth, or prompt for API keys.
 
-**If you need to add a new provider:** Exit your Hermes session first (`Ctrl+C` or `/quit`), then run `kopi model` from your terminal prompt.
+**If you need to add a new provider:** Exit your Kopi session first (`Ctrl+C` or `/quit`), then run `kopi model` from your terminal prompt.
 :::
 
 ### `/model` slash command (mid-session)
@@ -230,7 +230,7 @@ Subcommands:
 | `install` | Install as a systemd (Linux) or launchd (macOS) background service. |
 | `uninstall` | Remove the installed service. |
 | `setup` | Interactive messaging-platform setup. |
-| `migrate-legacy` | Remove legacy `hermes.service` units left over from pre-rename installs. Profile units (`kopi-gateway-<profile>.service`) and unrelated services are never touched. Flags: `--dry-run`, `-y`/`--yes`. |
+| `migrate-legacy` | Remove legacy `kopi.service` units left over from pre-rename installs. Profile units (`kopi-gateway-<profile>.service`) and unrelated services are never touched. Flags: `--dry-run`, `-y`/`--yes`. |
 | `enroll` | Experimental: enroll this gateway with a relay connector and save relay credentials for connector-backed platforms. |
 
 Options:
@@ -357,7 +357,7 @@ reinstall if scopes or slash commands changed.
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `--write [PATH]` | stdout | Write to a file instead of stdout. Bare `--write` writes `$KOPI_HOME/slack-manifest.json`. |
-| `--name NAME` | `Hermes` | Bot display name in Slack. |
+| `--name NAME` | `Kopi` | Bot display name in Slack. |
 | `--description DESC` | default blurb | Bot description shown in the Slack app directory. |
 | `--slashes-only` | off | Emit only `features.slash_commands` for merging into a manually-maintained manifest. |
 
@@ -456,7 +456,7 @@ Common flags for migration subcommands:
 | `--apply` | Rewrite `config.yaml` in-place (default: dry-run, no writes). |
 | `--no-backup` | Skip the timestamped backup of `config.yaml` when applying. |
 
-> Not to be confused with `kopi claw migrate` (one-shot import of OpenClaw configuration into Hermes) — `kopi migrate` is the top-level config-rewrite command.
+> Not to be confused with `kopi claw migrate` (one-shot import of OpenClaw configuration into Kopi) — `kopi migrate` is the top-level config-rewrite command.
 
 
 ## `kopi proxy`
@@ -480,7 +480,7 @@ Run a local OpenAI-compatible HTTP server that forwards requests to an OAuth-aut
 kopi security <subcommand>
 ```
 
-On-demand vulnerability scan against [OSV.dev](https://osv.dev). Covers the Hermes venv (installed PyPI distributions), Python dependencies declared by plugins under `~/.kopi/plugins/`, and pinned `npx`/`uvx` MCP servers in `config.yaml`. Does NOT scan globally-installed packages or editor/browser extensions.
+On-demand vulnerability scan against [OSV.dev](https://osv.dev). Covers the Kopi venv (installed PyPI distributions), Python dependencies declared by plugins under `~/.kopi/plugins/`, and pinned `npx`/`uvx` MCP servers in `config.yaml`. Does NOT scan globally-installed packages or editor/browser extensions.
 
 | Subcommand | Description |
 |------------|-------------|
@@ -492,7 +492,7 @@ On-demand vulnerability scan against [OSV.dev](https://osv.dev). Covers the Herm
 |------|---------|-------------|
 | `--json` | off | Emit machine-readable JSON instead of human-readable text. |
 | `--fail-on <level>` | `critical` | Exit non-zero when any finding meets this severity (`low`, `moderate`, `high`, `critical`). |
-| `--skip-venv` | off | Skip scanning the Hermes Python venv. |
+| `--skip-venv` | off | Skip scanning the Kopi Python venv. |
 | `--skip-plugins` | off | Skip scanning plugin requirements files. |
 | `--skip-mcp` | off | Skip scanning pinned MCP servers in `config.yaml`. |
 
@@ -517,7 +517,7 @@ kopi auth remove openrouter 2                          # Remove by index
 kopi auth reset openrouter                             # Clear cooldowns
 kopi auth status anthropic                             # Show auth status for a provider
 kopi auth logout anthropic                             # Log out and clear stored auth state
-kopi auth spotify                                      # Authenticate Hermes with Spotify via PKCE
+kopi auth spotify                                      # Authenticate Kopi with Spotify via PKCE
 ```
 
 Subcommands: `add`, `list`, `remove`, `reset`, `status`, `logout`, `spotify`. When called with no subcommand, launches the interactive management wizard.
@@ -700,7 +700,7 @@ kopi doctor [--fix]
 kopi dump [--show-keys]
 ```
 
-Outputs a compact, plain-text summary of your entire Hermes setup. Designed to be copy-pasted into Discord, GitHub issues, or Telegram when asking for support — no ANSI colors, no special formatting, just data.
+Outputs a compact, plain-text summary of your entire Kopi setup. Designed to be copy-pasted into Discord, GitHub issues, or Telegram when asking for support — no ANSI colors, no special formatting, just data.
 
 | Option | Description |
 |--------|-------------|
@@ -710,7 +710,7 @@ Outputs a compact, plain-text summary of your entire Hermes setup. Designed to b
 
 | Section | Details |
 |---------|---------|
-| **Header** | Hermes version, release date, git commit hash |
+| **Header** | Kopi version, release date, git commit hash |
 | **Environment** | OS, Python version, OpenAI SDK version |
 | **Identity** | Active profile name, KOPI_HOME path |
 | **Model** | Configured default model and provider |
@@ -786,7 +786,7 @@ Upload a debug report (system info + recent logs) to a paste service and get a s
 | `--local` | Print the report locally instead of uploading. |
 | `--no-redact` | Disable upload-time secret redaction. By default, uploads are redacted. |
 
-The report includes system info (OS, Python version, Hermes version), recent agent, gateway, GUI/dashboard, and desktop logs (512 KB limit per file), and redacted API key status. By default, uploads are redacted so secrets are not included.
+The report includes system info (OS, Python version, Kopi version), recent agent, gateway, GUI/dashboard, and desktop logs (512 KB limit per file), and redacted API key status. By default, uploads are redacted so secrets are not included.
 
 Default uploads use public paste services tried in order: paste.rs, dpaste.com. `--nous` uploads the same debug bundle to private Nous diagnostics storage instead; the returned viewer link is for the Nous team and auto-deletes after 14 days.
 
@@ -806,7 +806,7 @@ kopi debug share --local      # Print report to terminal (no upload)
 kopi backup [options]
 ```
 
-Create a zip archive of your Hermes configuration, skills, sessions, and data. The backup excludes the kopi-ai-agent codebase itself.
+Create a zip archive of your Kopi configuration, skills, sessions, and data. The backup excludes the kopi-ai-agent codebase itself.
 
 | Option | Description |
 |--------|-------------|
@@ -814,7 +814,7 @@ Create a zip archive of your Hermes configuration, skills, sessions, and data. T
 | `-q`, `--quick` | Quick snapshot: only critical state files (config.yaml, state.db, .env, auth, cron jobs). Much faster than a full backup. |
 | `-l`, `--label <name>` | Label for the snapshot (only used with `--quick`). |
 
-The backup uses SQLite's `backup()` API for safe copying, so it works correctly even when Hermes is running (WAL-mode safe).
+The backup uses SQLite's `backup()` API for safe copying, so it works correctly even when Kopi is running (WAL-mode safe).
 
 **What's excluded from the zip:**
 
@@ -875,7 +875,7 @@ See [Checkpoints and `/rollback`](../user-guide/checkpoints-and-rollback.md) for
 kopi import <zipfile> [options]
 ```
 
-Restore a previously created Hermes backup into your Hermes home directory. All files in the archive overwrite existing files in your Hermes home; `--force` only skips the confirmation prompt that fires when the target already has a Hermes installation.
+Restore a previously created Kopi backup into your Kopi home directory. All files in the archive overwrite existing files in your Kopi home; `--force` only skips the confirmation prompt that fires when the target already has a Kopi installation.
 
 | Option | Description |
 |--------|-------------|
@@ -897,7 +897,7 @@ kopi import ~/kopi-backup-20260423.zip --force   # Overwrite without prompting
 kopi logs [log_name] [options]
 ```
 
-View, tail, and filter Hermes log files. All logs are stored in `~/.kopi/logs/` (or `<profile>/logs/` for non-default profiles).
+View, tail, and filter Kopi log files. All logs are stored in `~/.kopi/logs/` (or `<profile>/logs/` for non-default profiles).
 
 ### Log files
 
@@ -959,7 +959,7 @@ Lines without a parseable timestamp are included when `--since` is active (they 
 
 ### Log rotation
 
-Hermes uses Python's `RotatingFileHandler`. Old logs are rotated automatically — look for `agent.log.1`, `agent.log.2`, etc. The `kopi logs list` subcommand shows all log files including rotated ones.
+Kopi uses Python's `RotatingFileHandler`. Old logs are rotated automatically — look for `agent.log.1`, `agent.log.2`, etc. The `kopi logs list` subcommand shows all log files including rotated ones.
 
 
 ## `kopi prompt-size`
@@ -980,7 +980,7 @@ It builds the same system prompt the agent would, then breaks it down:
 - **Skills index** — the `<available_skills>` block. This is often the largest
   single block when many skills are installed.
 - **Memory** and **user profile** — your `MEMORY.md` / `USER.md` snapshots.
-- **Prompt tiers** — stable / context / volatile, matching how Hermes layers
+- **Prompt tiers** — stable / context / volatile, matching how Kopi layers
   the prompt for cache-friendliness.
 - **Tool schemas** — the JSON for all enabled tools (the other half of the
   fixed per-call payload).
@@ -1090,7 +1090,7 @@ Notes:
 - `--force` can override non-dangerous policy blocks for third-party/community skills.
 - `--force` does not override a `dangerous` scan verdict.
 - `--source skills-sh` searches the public `skills.sh` directory.
-- `--source well-known` lets you point Hermes at a site exposing `/.well-known/skills/index.json`.
+- `--source well-known` lets you point Kopi at a site exposing `/.well-known/skills/index.json`.
 - `--source browse-sh` searches [browse.sh](https://browse.sh)'s catalog of 200+ site-specific browser-automation skills. Identifiers look like `browse-sh/airbnb.com/search-listings-ddgioa`.
 - Passing an `http(s)://…/*.md` URL installs a single-file SKILL.md directly. When frontmatter has no `name:` and the URL slug isn't a valid identifier, an interactive terminal prompts for a name; non-interactive surfaces (`/skills install` inside the TUI, gateway platforms) require `--name <x>` instead.
 
@@ -1170,7 +1170,7 @@ kopi moa configure [name]
 kopi moa delete <name>
 ```
 
-`kopi moa configure` reuses Hermes' provider → model picker for each reference model and the aggregator. A preset is an execution-mode configuration, not a primary model or provider.
+`kopi moa configure` reuses Kopi's provider → model picker for each reference model and the aggregator. A preset is an execution-mode configuration, not a primary model or provider.
 
 ## `kopi fallback`
 
@@ -1232,7 +1232,7 @@ When an external memory provider is active, it may register its own top-level `k
 kopi acp
 ```
 
-Starts Hermes as an ACP (Agent Client Protocol) stdio server for editor integration.
+Starts Kopi as an ACP (Agent Client Protocol) stdio server for editor integration.
 
 Related entrypoints:
 
@@ -1255,14 +1255,14 @@ See [ACP Editor Integration](../user-guide/features/acp.md) and [ACP Internals](
 kopi mcp <subcommand>
 ```
 
-Manage MCP (Model Context Protocol) server configurations and run Hermes as an MCP server.
+Manage MCP (Model Context Protocol) server configurations and run Kopi as an MCP server.
 
 | Subcommand | Description |
 |------------|-------------|
 | *(none)* or `picker` | Interactive catalog picker — browse Nous-approved MCPs and install/enable/disable. |
 | `catalog` | List Nous-approved MCPs (plain text, scriptable). |
 | `install <name>` | Install a catalog entry (e.g. `kopi mcp install n8n`). |
-| `serve [-v\|--verbose]` | Run Hermes as an MCP server — expose conversations to other agents. |
+| `serve [-v\|--verbose]` | Run Kopi as an MCP server — expose conversations to other agents. |
 | `add <name> [--url URL] [--command CMD] [--auth oauth\|header] [--args ...]` | Add a custom MCP server with automatic tool discovery. `--args` passes the remaining argv to the stdio command, so put it last. |
 | `remove <name>` (alias: `rm`) | Remove an MCP server from config. |
 | `list` (alias: `ls`) | List configured MCP servers. |
@@ -1270,7 +1270,7 @@ Manage MCP (Model Context Protocol) server configurations and run Hermes as an M
 | `configure <name>` (alias: `config`) | Toggle tool selection for a server. |
 | `login <name>` | Force re-authentication for an OAuth-based MCP server. |
 
-See [MCP Config Reference](./mcp-config-reference.md), [Use MCP with Hermes](../guides/use-mcp-with-hermes.md), and [MCP Server Mode](../user-guide/features/mcp.md#running-kopi-as-an-mcp-server).
+See [MCP Config Reference](./mcp-config-reference.md), [Use MCP with Kopi](../guides/use-mcp-with-kopi.md), and [MCP Server Mode](../user-guide/features/mcp.md#running-kopi-as-an-mcp-server).
 
 ## `kopi plugins`
 
@@ -1299,7 +1299,7 @@ Provider plugin selections are saved to `config.yaml`:
 
 General plugin disabled list is stored in `config.yaml` under `plugins.disabled`.
 
-See [Plugins](../user-guide/features/plugins.md) and [Build a Hermes Plugin](../developer-guide/plugins/index.md).
+See [Plugins](../user-guide/features/plugins.md) and [Build a Kopi Plugin](../developer-guide/plugins/index.md).
 
 ## `kopi tools`
 
@@ -1337,7 +1337,7 @@ it (for example, on returning-user setups).
 `kopi update` automatically re-runs the upstream installer at the end
 of the update if cua-driver is on PATH, so most users will not need to
 call `--upgrade` manually. Use it when upstream ships a fix you want
-right now without waiting for the next Hermes update.
+right now without waiting for the next Kopi update.
 
 ## `kopi pets`
 
@@ -1345,7 +1345,7 @@ right now without waiting for the next Hermes update.
 kopi pets <list|install|select|show|off|scale|remove|doctor>
 ```
 
-[Petdex](https://github.com/crafter-station/petdex) is a public gallery of animated sprite pets for coding agents. Install one and Hermes shows it reacting to agent activity across the CLI, TUI, and desktop app.
+[Petdex](https://github.com/crafter-station/petdex) is a public gallery of animated sprite pets for coding agents. Install one and Kopi shows it reacting to agent activity across the CLI, TUI, and desktop app.
 
 | Subcommand | Description |
 |------------|-------------|
@@ -1396,13 +1396,13 @@ kopi insights [--days N] [--source platform]
 kopi claw migrate [options]
 ```
 
-Migrate your OpenClaw setup to Hermes. Reads from `~/.openclaw` (or a custom path) and writes to `~/.kopi`. Automatically detects legacy directory names (`~/.clawdbot`, `~/.moltbot`) and config filenames (`clawdbot.json`, `moltbot.json`).
+Migrate your OpenClaw setup to Kopi. Reads from `~/.openclaw` (or a custom path) and writes to `~/.kopi`. Automatically detects legacy directory names (`~/.clawdbot`, `~/.moltbot`) and config filenames (`clawdbot.json`, `moltbot.json`).
 
 | Option | Description |
 |--------|-------------|
 | `--dry-run` | Preview what would be migrated without writing anything. |
 | `--preset <name>` | Migration preset: `full` (all compatible settings) or `user-data` (excludes infrastructure config). Neither preset imports secrets — pass `--migrate-secrets` explicitly. |
-| `--overwrite` | Overwrite existing Hermes files on conflicts (default: refuse to apply when the plan has conflicts). |
+| `--overwrite` | Overwrite existing Kopi files on conflicts (default: refuse to apply when the plan has conflicts). |
 | `--migrate-secrets` | Include API keys in migration. Required even under `--preset full`. |
 | `--no-backup` | Skip the pre-migration zip snapshot of `~/.kopi/` (by default a single restore-point archive is written to `~/.kopi/backups/pre-migration-*.zip` before apply; restorable with `kopi import`). |
 | `--source <path>` | Custom OpenClaw directory (default: `~/.openclaw`). |
@@ -1412,7 +1412,7 @@ Migrate your OpenClaw setup to Hermes. Reads from `~/.openclaw` (or a custom pat
 
 ### What gets migrated
 
-The migration covers 30+ categories across persona, memory, skills, model providers, messaging platforms, agent behavior, session policies, MCP servers, TTS, and more. Items are either **directly imported** into Hermes equivalents or **archived** for manual review.
+The migration covers 30+ categories across persona, memory, skills, model providers, messaging platforms, agent behavior, session policies, MCP servers, TTS, and more. Items are either **directly imported** into Kopi equivalents or **archived** for manual review.
 
 **Directly imported:** SOUL.md, MEMORY.md, USER.md, AGENTS.md, skills (4 source directories), default model, custom providers, MCP servers, messaging platform tokens and allowlists (Telegram, Discord, Slack, WhatsApp, Signal, Matrix, Mattermost), agent defaults (reasoning effort, compression, human delay, timezone, sandbox), session reset policies, approval rules, TTS config, browser settings, tool settings, exec timeout, command allowlist, gateway config, and API keys from 3 sources.
 
@@ -1447,7 +1447,7 @@ kopi claw migrate --source /home/user/old-openclaw
 kopi serve [options]
 ```
 
-Start the Hermes **backend server** — the JSON-RPC/WebSocket gateway the [desktop app](/user-guide/desktop) and remote clients connect to. It is the same server `kopi dashboard` runs, but **headless**: it never opens a browser UI. The desktop app launches its own `kopi serve` backend; use this command directly when you want a headless backend on a remote host. Accepts the same `--host` / `--port` / `--insecure` / `--skip-build` / `--stop` / `--status` options as `kopi dashboard` below (a non-loopback bind engages the same auth gate). Requires the `[web]` extra; the embedded Chat socket additionally needs `[pty]` on a POSIX host.
+Start the Kopi **backend server** — the JSON-RPC/WebSocket gateway the [desktop app](/user-guide/desktop) and remote clients connect to. It is the same server `kopi dashboard` runs, but **headless**: it never opens a browser UI. The desktop app launches its own `kopi serve` backend; use this command directly when you want a headless backend on a remote host. Accepts the same `--host` / `--port` / `--insecure` / `--skip-build` / `--stop` / `--status` options as `kopi dashboard` below (a non-loopback bind engages the same auth gate). Requires the `[web]` extra; the embedded Chat socket additionally needs `[pty]` on a POSIX host.
 
 ## `kopi dashboard`
 
@@ -1496,7 +1496,7 @@ worker dashboard
 kopi profile <subcommand>
 ```
 
-Manage profiles — multiple isolated Hermes instances, each with its own config, sessions, skills, and home directory.
+Manage profiles — multiple isolated Kopi instances, each with its own config, sessions, skills, and home directory.
 
 | Subcommand | Description |
 |------------|-------------|
@@ -1533,7 +1533,7 @@ kopi -p work chat -q "Hello from work profile"
 kopi completion [bash|zsh|fish]
 ```
 
-Print a shell completion script to stdout. Source the output in your shell profile for tab-completion of Hermes commands, subcommands, and profile names.
+Print a shell completion script to stdout. Source the output in your shell profile for tab-completion of Kopi commands, subcommands, and profile names.
 
 Examples:
 
@@ -1556,7 +1556,7 @@ kopi update [--gateway] [--check] [--no-backup] [--backup] [--yes]
 
 Pulls the latest `kopi-ai-agent` code and reinstalls dependencies in the managed venv, then re-runs the post-install hooks (MCP servers, skills sync, completion install). Safe to run on a live install. Use `--check` to see whether your checkout is behind `origin/main` without installing.
 
-`kopi update` pulls the configured update branch (default: `main`). If your checkout is on another branch, Hermes may check out the update branch before pulling. Commit branch work before updating when you want to keep it outside the update autostash flow.
+`kopi update` pulls the configured update branch (default: `main`). If your checkout is on another branch, Kopi may check out the update branch before pulling. Commit branch work before updating when you want to keep it outside the update autostash flow.
 
 | Option | Description |
 |--------|-------------|
@@ -1568,11 +1568,11 @@ Pulls the latest `kopi-ai-agent` code and reinstalls dependencies in the managed
 
 Additional behavior:
 
-- **Gateway restart.** After a successful update, Hermes attempts to restart all running gateway profiles automatically so they pick up the new code. Use `kopi gateway restart` when you want to restart a gateway without applying an update.
+- **Gateway restart.** After a successful update, Kopi attempts to restart all running gateway profiles automatically so they pick up the new code. Use `kopi gateway restart` when you want to restart a gateway without applying an update.
 - **Local source changes.** For git installs, dirty tracked files and untracked files are auto-stashed before branch checkout or pull (`git stash push --include-untracked`). Interactive terminal updates ask before restoring the stash. Non-interactive updates restore it by default; set `updates.non_interactive_local_changes: discard` only on managed installs where local source edits should be thrown away after a successful pull. If stash restore conflicts or the pull fails, the stash is left in place for manual recovery.
-- **npm lockfile churn.** Before stashing or switching branches, Hermes makes a best-effort cleanup of tracked `package-lock.json` diffs produced by npm install/build steps. Commit or manually stash intentional lockfile edits before running `kopi update`.
+- **npm lockfile churn.** Before stashing or switching branches, Kopi makes a best-effort cleanup of tracked `package-lock.json` diffs produced by npm install/build steps. Commit or manually stash intentional lockfile edits before running `kopi update`.
 - **Pairing data snapshot.** Even when `--backup` is off, `kopi update` takes a lightweight snapshot of `~/.kopi/pairing/` and the Feishu comment rules before `git pull`. You can roll it back with `kopi backup restore --state pre-update` if a pull rewrites a file you were editing.
-- **Legacy `hermes.service` warning.** If Hermes detects a pre-rename `hermes.service` systemd unit (instead of the current `kopi-gateway.service`), it prints a one-time migration hint so you can avoid flap-loop issues.
+- **Legacy `kopi.service` warning.** If Kopi detects a pre-rename `kopi.service` systemd unit (instead of the current `kopi-gateway.service`), it prints a one-time migration hint so you can avoid flap-loop issues.
 - **Exit codes.** `0` on success, `1` on pull/install/post-install errors, `2` on unexpected working-tree changes that block `git pull`.
 
 ## Maintenance commands
@@ -1581,8 +1581,8 @@ Additional behavior:
 |---------|-------------|
 | `kopi version` | Print version information. |
 | `kopi update` | Pull latest changes and reinstall dependencies. |
-| `kopi postinstall` | Internal bootstrap. Runs once after the install script provisions Hermes (or after `kopi update`) to install non-Python dependencies that pip cannot provide — Node.js runtime, headless browser, ripgrep, ffmpeg — and then trigger `kopi setup` if the profile has not been configured yet. Safe to re-run idempotently. |
-| `kopi uninstall [--full] [--gui] [--yes]` | Remove Hermes, optionally deleting all config/data. `--gui` removes only the desktop Chat GUI, leaving the agent intact; `--full` also deletes config/data; `--yes` skips prompts. |
+| `kopi postinstall` | Internal bootstrap. Runs once after the install script provisions Kopi (or after `kopi update`) to install non-Python dependencies that pip cannot provide — Node.js runtime, headless browser, ripgrep, ffmpeg — and then trigger `kopi setup` if the profile has not been configured yet. Safe to re-run idempotently. |
+| `kopi uninstall [--full] [--gui] [--yes]` | Remove Kopi, optionally deleting all config/data. `--gui` removes only the desktop Chat GUI, leaving the agent intact; `--full` also deletes config/data; `--yes` skips prompts. |
 
 ## See also
 

@@ -12,7 +12,7 @@ Quick answers and fixes for the most common questions and issues.
 
 ## Frequently Asked Questions
 
-### What LLM providers work with Hermes?
+### What LLM providers work with Kopi?
 
 KOPI AI AGENT works with any OpenAI-compatible API. Supported providers include:
 
@@ -31,22 +31,22 @@ Set your provider with `kopi model` or by editing `~/.kopi/.env`. See the [Envir
 ### Does it work on Windows/Android/Termux/my plataform??
 See **[Platform Support](../getting-started/platform-support.md)** for the full platform availability matrix.
 
-### I run Hermes in WSL2. What's the best way to control my normal Windows Chrome?
+### I run Kopi in WSL2. What's the best way to control my normal Windows Chrome?
 
 Prefer an MCP bridge over `/browser connect`.
 
 Recommended pattern:
 
-- run Hermes inside WSL2
+- run Kopi inside WSL2
 - keep using your normal signed-in Chrome on Windows
 - add `chrome-devtools-mcp` as an MCP server through `cmd.exe` or `powershell.exe`
-- let Hermes use the resulting MCP browser tools
+- let Kopi use the resulting MCP browser tools
 
-This is more reliable than trying to force Hermes core browser transport to attach directly across the WSL2/Windows boundary.
+This is more reliable than trying to force Kopi core browser transport to attach directly across the WSL2/Windows boundary.
 
 See:
 
-- [Use MCP with Hermes](../guides/use-mcp-with-hermes.md#wsl2-bridge-kopi-in-wsl-to-windows-chrome)
+- [Use MCP with Kopi](../guides/use-mcp-with-kopi.md#wsl2-bridge-kopi-in-wsl-to-windows-chrome)
 - [Browser Automation](../user-guide/features/browser.md#wsl2--windows-chrome-prefer-mcp-over-browser-connect)
 
 ### Is my data sent anywhere?
@@ -63,7 +63,7 @@ kopi model
 # API base URL: http://localhost:11434/v1
 # API key: ollama
 # Model name: qwen3.5:27b
-# Context length: 64000   ← Hermes minimum; set this to match your server's actual context window
+# Context length: 64000   ← Kopi minimum; set this to match your server's actual context window
 ```
 
 Or configure it directly in `config.yaml`:
@@ -75,16 +75,16 @@ model:
   base_url: http://localhost:11434/v1
 ```
 
-Hermes persists the endpoint, provider, and base URL in `config.yaml` so it survives restarts. If your local server has exactly one model loaded, `/model custom` auto-detects it. You can also set `provider: custom` in config.yaml — it's a first-class provider, not an alias for anything else.
+Kopi persists the endpoint, provider, and base URL in `config.yaml` so it survives restarts. If your local server has exactly one model loaded, `/model custom` auto-detects it. You can also set `provider: custom` in config.yaml — it's a first-class provider, not an alias for anything else.
 
 This works with Ollama, vLLM, llama.cpp server, SGLang, LocalAI, and others. See the [Configuration guide](../user-guide/configuration.md) for details.
 
 :::tip Ollama users
-If you set a custom `num_ctx` in Ollama (e.g., `ollama run --num_ctx 64000`), make sure to set the matching context length in Hermes — Ollama's `/api/show` reports the model's *maximum* context, not the effective `num_ctx` you configured.
+If you set a custom `num_ctx` in Ollama (e.g., `ollama run --num_ctx 64000`), make sure to set the matching context length in Kopi — Ollama's `/api/show` reports the model's *maximum* context, not the effective `num_ctx` you configured.
 :::
 
 :::tip Timeouts with local models
-Hermes auto-detects local endpoints and relaxes streaming timeouts (read timeout raised from 120s to 1800s, stale stream detection disabled). If you still hit timeouts on very large contexts, set `KOPI_STREAM_READ_TIMEOUT=1800` in your `.env`. See the [Local LLM guide](../guides/local-llm-on-mac.md#timeouts) for details.
+Kopi auto-detects local endpoints and relaxes streaming timeouts (read timeout raised from 120s to 1800s, stale stream detection disabled). If you still hit timeouts on very large contexts, set `KOPI_STREAM_READ_TIMEOUT=1800` in your `.env`. See the [Local LLM guide](../guides/local-llm-on-mac.md#timeouts) for details.
 :::
 
 ### How much does it cost?
@@ -104,7 +104,7 @@ Both persist across sessions. See [Memory](../user-guide/features/memory.md) and
 
 ### Can I use it in my own Python project?
 
-Yes. Import the `AIAgent` class and use Hermes programmatically:
+Yes. Import the `AIAgent` class and use Kopi programmatically:
 
 ```python
 from run_agent import AIAgent
@@ -121,7 +121,7 @@ See the [Python Library guide](../user-guide/features/code-execution.md) for ful
 
 ### Installation Issues
 
-#### `hermes: command not found` after installation
+#### `kopi: command not found` after installation
 
 **Cause:** Your shell hasn't reloaded the updated PATH.
 
@@ -136,7 +136,7 @@ source ~/.zshrc     # zsh
 
 If it still doesn't work, verify the install location:
 ```bash
-which hermes
+which kopi
 ls ~/.local/bin/kopi
 ```
 
@@ -146,7 +146,7 @@ The installer adds `~/.local/bin` to your PATH. If you use a non-standard shell 
 
 #### Python version too old
 
-**Cause:** Hermes requires Python 3.11 or newer.
+**Cause:** Kopi requires Python 3.11 or newer.
 
 **Solution:**
 ```bash
@@ -161,9 +161,9 @@ The installer handles this automatically — if you see this error during manual
 
 #### Terminal commands say `node: command not found` (or `nvm`, `pyenv`, `asdf`, …)
 
-**Cause:** Hermes builds a per-session environment snapshot by running `bash -l` once at startup. A bash login shell reads `/etc/profile`, `~/.bash_profile`, and `~/.profile`, but **does not source `~/.bashrc`** — so tools that install themselves there (`nvm`, `asdf`, `pyenv`, `cargo`, custom `PATH` exports) stay invisible to the snapshot. This most commonly happens when Hermes runs under systemd or in a minimal shell where nothing has pre-loaded the interactive shell profile.
+**Cause:** Kopi builds a per-session environment snapshot by running `bash -l` once at startup. A bash login shell reads `/etc/profile`, `~/.bash_profile`, and `~/.profile`, but **does not source `~/.bashrc`** — so tools that install themselves there (`nvm`, `asdf`, `pyenv`, `cargo`, custom `PATH` exports) stay invisible to the snapshot. This most commonly happens when Kopi runs under systemd or in a minimal shell where nothing has pre-loaded the interactive shell profile.
 
-**Solution:** Hermes auto-sources `~/.bashrc` by default. If that's not enough — e.g. you're a zsh user whose PATH lives in `~/.zshrc`, or you init `nvm` from a standalone file — list the extra files to source in `~/.kopi/config.yaml`:
+**Solution:** Kopi auto-sources `~/.bashrc` by default. If that's not enough — e.g. you're a zsh user whose PATH lives in `~/.zshrc`, or you init `nvm` from a standalone file — list the extra files to source in `~/.kopi/config.yaml`:
 
 ```yaml
 terminal:
@@ -220,7 +220,7 @@ curl -fsSL https://kopiaiagent.com/install.sh | bash
 **Solution:** Exit your session and use `kopi model` from your terminal to add new providers:
 
 ```bash
-# Exit the Hermes chat session first (Ctrl+C or /quit)
+# Exit the Kopi chat session first (Ctrl+C or /quit)
 
 # Run the full provider setup wizard
 kopi model
@@ -286,7 +286,7 @@ kopi chat --model openrouter/meta-llama/llama-3.1-70b-instruct
 
 #### Context length exceeded
 
-**Cause:** The conversation has grown too long for the model's context window, or Hermes detected the wrong context length for your model.
+**Cause:** The conversation has grown too long for the model's context window, or Kopi detected the wrong context length for your model.
 
 **Solution:**
 ```bash
@@ -300,7 +300,7 @@ kopi chat
 kopi chat --model openrouter/google/gemini-3-flash-preview
 ```
 
-If this happens on the first long conversation, Hermes may have the wrong context length for your model. Check what it detected:
+If this happens on the first long conversation, Kopi may have the wrong context length for your model. Check what it detected:
 
 Look at the CLI startup line — it shows the detected context length (e.g., `📊 Context limit: 128000 tokens`). You can also check with `/usage` during a session.
 
@@ -332,14 +332,14 @@ See [Context Length Detection](../integrations/providers.md#context-length-detec
 
 #### Command blocked as dangerous
 
-**Cause:** Hermes detected a potentially destructive command (e.g., `rm -rf`, `DROP TABLE`). This is a safety feature.
+**Cause:** Kopi detected a potentially destructive command (e.g., `rm -rf`, `DROP TABLE`). This is a safety feature.
 
 **Solution:** When prompted, review the command and type `y` to approve it. You can also:
 - Ask the agent to use a safer alternative
 - See the full list of dangerous patterns in the [Security docs](../user-guide/security.md)
 
 :::tip
-This is working as intended — Hermes never silently runs destructive commands. The approval prompt shows you exactly what will execute.
+This is working as intended — Kopi never silently runs destructive commands. The approval prompt shows you exactly what will execute.
 :::
 
 #### `sudo` not working via messaging gateway
@@ -439,7 +439,7 @@ kopi gateway run
 
 # Option 2: Persistent via tmux (survives terminal close)
 tmux new -s kopi 'kopi gateway run'
-# Reattach later: tmux attach -t hermes
+# Reattach later: tmux attach -t kopi
 
 # Option 3: Background via nohup
 nohup kopi gateway run > ~/.kopi/logs/gateway.log 2>&1 &
@@ -571,13 +571,13 @@ mcp_servers:
 # Verify MCP servers are configured
 kopi config show | grep -A 12 mcp_servers
 
-# Restart Hermes or reload MCP after config changes
+# Restart Kopi or reload MCP after config changes
 kopi chat
 ```
 
 See also:
 - [MCP (Model Context Protocol)](/user-guide/features/mcp)
-- [Use MCP with Hermes](/guides/use-mcp-with-hermes)
+- [Use MCP with Kopi](/guides/use-mcp-with-kopi)
 - [MCP Config Reference](/reference/mcp-config-reference)
 
 #### MCP timeout errors
@@ -590,7 +590,7 @@ See also:
 - For remote HTTP MCP servers, check network connectivity
 
 :::warning
-If an MCP server crashes mid-request, Hermes will report a timeout. Check the server's own logs (not just Hermes logs) to diagnose the root cause.
+If an MCP server crashes mid-request, Kopi will report a timeout. Check the server's own logs (not just Kopi logs) to diagnose the root cause.
 :::
 
 ---
@@ -626,7 +626,7 @@ There is no hard limit. Each profile is just a directory under `~/.kopi/profiles
 
 **Scenario:** You use GPT-5.4 as your daily driver, but Gemini or Grok writes better social media content. Manually switching models every time is tedious.
 
-**Solution: Delegation config.** Hermes can route subagents to a different model automatically. Set this in `~/.kopi/config.yaml`:
+**Solution: Delegation config.** Kopi can route subagents to a different model automatically. Set this in `~/.kopi/config.yaml`:
 
 ```yaml
 delegation:
@@ -634,7 +634,7 @@ delegation:
   provider: "openrouter"                    # provider for subagents
 ```
 
-Now when you tell Hermes "write me a Twitter thread about X" and it spawns a `delegate_task` subagent, that subagent runs on Gemini instead of your main model. Your primary conversation stays on GPT-5.4.
+Now when you tell Kopi "write me a Twitter thread about X" and it spawns a `delegate_task` subagent, that subagent runs on Gemini instead of your main model. Your primary conversation stays on GPT-5.4.
 
 You can also be explicit in your prompt: *"Delegate a task to write social media posts about our product launch. Use your subagent for the actual writing."* The agent will use `delegate_task`, which automatically picks up the delegation config.
 
@@ -654,9 +654,9 @@ See [Subagent Delegation](../user-guide/features/delegation.md) for more on how 
 
 ### Running multiple agents on one WhatsApp number (per-chat binding)
 
-**Scenario:** In OpenClaw, you had multiple independent agents bound to specific WhatsApp chats — one for a family shopping list group, another for your private chat. Can Hermes do this?
+**Scenario:** In OpenClaw, you had multiple independent agents bound to specific WhatsApp chats — one for a family shopping list group, another for your private chat. Can Kopi do this?
 
-**Current limitation:** Hermes profiles each require their own WhatsApp number/session. You cannot bind multiple profiles to different chats on the same WhatsApp number — the WhatsApp bridge (Baileys) uses one authenticated session per number.
+**Current limitation:** Kopi profiles each require their own WhatsApp number/session. You cannot bind multiple profiles to different chats on the same WhatsApp number — the WhatsApp bridge (Baileys) uses one authenticated session per number.
 
 **Workarounds:**
 
@@ -672,7 +672,7 @@ See [Profiles](../user-guide/profiles.md) and [WhatsApp setup](../user-guide/mes
 
 ### Controlling what shows up in Telegram (hiding logs and reasoning)
 
-**Scenario:** You see gateway exec logs, Hermes reasoning, and tool call details in Telegram instead of just the final output.
+**Scenario:** You see gateway exec logs, Kopi reasoning, and tool call details in Telegram instead of just the final output.
 
 **Solution:** The `display.tool_progress` setting in `config.yaml` controls how much tool activity is shown:
 
@@ -718,7 +718,7 @@ Skills with very long descriptions are truncated to 40 characters in the Telegra
 
 **Scenario:** You have a Telegram or Discord thread where multiple people mention the bot. You want all mentions in that thread to be part of one shared conversation, not separate per-user sessions.
 
-**Current behavior:** Hermes creates sessions keyed by user ID on most platforms, so each person gets their own conversation context. This is by design for privacy and context isolation.
+**Current behavior:** Kopi creates sessions keyed by user ID on most platforms, so each person gets their own conversation context. This is by design for privacy and context isolation.
 
 **Workarounds:**
 
@@ -728,7 +728,7 @@ Skills with very long descriptions are truncated to 40 characters in the Telegra
 
 3. **Use a Discord channel.** Discord sessions are keyed by channel, so all users in the same channel share context. Use a dedicated channel for the shared conversation.
 
-### Exporting Hermes to another machine
+### Exporting Kopi to another machine
 
 **Scenario:** You've built up skills, cron jobs, and memories on one machine and want to move everything to a new dedicated Linux box.
 
@@ -786,14 +786,14 @@ rsync -av --exclude='kopi-ai-agent' ~/.kopi/ newmachine:~/.kopi/
 ```
 
 :::tip
-`kopi backup` produces a consistent snapshot even while Hermes is actively running. The restored archive excludes machine-local runtime files like `gateway.pid` and `cron.pid`.
+`kopi backup` produces a consistent snapshot even while Kopi is actively running. The restored archive excludes machine-local runtime files like `gateway.pid` and `cron.pid`.
 :::
 
 ### Permission denied when reloading shell after install
 
-**Scenario:** After running the Hermes installer, `source ~/.zshrc` gives a permission denied error.
+**Scenario:** After running the Kopi installer, `source ~/.zshrc` gives a permission denied error.
 
-**Cause:** This usually happens when `~/.zshrc` (or `~/.bashrc`) has incorrect file permissions, or when the installer couldn't write to it cleanly. It's not a Hermes-specific issue — it's a shell config permissions problem.
+**Cause:** This usually happens when `~/.zshrc` (or `~/.bashrc`) has incorrect file permissions, or when the installer couldn't write to it cleanly. It's not a Kopi-specific issue — it's a shell config permissions problem.
 
 **Solution:**
 ```bash
@@ -842,4 +842,4 @@ If your issue isn't covered here:
 
 1. **Search existing issues:** [GitHub Issues](https://github.com/LINYIQ66/kopi-ai-agent/issues)
 2. **Ask the community:** [Kopi Ai Agent Pte Ltd Discord](https://discord.gg/kopi-ai-agent)
-3. **File a bug report:** Include your OS, Python version (`python3 --version`), Hermes version (`kopi --version`), and the full error message
+3. **File a bug report:** Include your OS, Python version (`python3 --version`), Kopi version (`kopi --version`), and the full error message

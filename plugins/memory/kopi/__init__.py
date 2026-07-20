@@ -8,7 +8,7 @@ Production-grade multi-layer memory with Hot/Warm/Cold tiers:
 Config via environment variables:
   KOPI_MEMORY_API_URL    — kopi-memory service URL (default: http://localhost:8900)
   KOPI_MEMORY_API_KEY    — JWT auth key (optional, for authenticated endpoints)
-  KOPI_MEMORY_USER_ID    — user/agent identifier (default: "hermes")
+  KOPI_MEMORY_USER_ID    — user/agent identifier (default: "kopi")
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ class KopiMemoryProvider(MemoryProvider):
         """
         self._api_url = _config("API_URL", _DEFAULT_API_URL)
         self._api_key = _config("API_KEY", "")
-        self._user_id = _config("USER_ID", "hermes")
+        self._user_id = _config("USER_ID", "kopi")
         return bool(self._api_url)  # URL is always set (has default)
 
     def initialize(self, session_id: str, **kwargs) -> None:
@@ -503,7 +503,7 @@ class KopiMemoryProvider(MemoryProvider):
                 "key": "user_id",
                 "description": "User/agent identifier",
                 "required": False,
-                "default": "hermes",
+                "default": "kopi",
             },
         ]
 

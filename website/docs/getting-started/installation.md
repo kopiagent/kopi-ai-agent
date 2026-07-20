@@ -14,11 +14,11 @@ platform-gated features are supported), see **[Platform Support](./platform-supp
 :::
 
 ## Quick Install
-### With the Hermes Desktop installer on macOS or Windows (recommended)
-To easily install the command-line and desktop applications, [download the Hermes Desktop installer](https://kopiaiagent.com/) from our website and run it.
+### With the Kopi Desktop installer on macOS or Windows (recommended)
+To easily install the command-line and desktop applications, [download the Kopi Desktop installer](https://kopiaiagent.com/) from our website and run it.
 
-### Without Hermes Desktop:
-For a command-line only install without Hermes Desktop, run:
+### Without Kopi Desktop:
+For a command-line only install without Kopi Desktop, run:
 
 #### Linux / macOS / WSL2 / Android (Termux)
 ```bash
@@ -32,7 +32,7 @@ Run in powershell:
 iex (irm https://kopiaiagent.com/install.ps1) 
 ```
 
-If you want to install & run Hermes Desktop after a command-line only install, simply run
+If you want to install & run Kopi Desktop after a command-line only install, simply run
 ```bash
 kopi desktop
 ```
@@ -112,7 +112,7 @@ If you want to clone the repo and install from source — for contributing, runn
 
 ## Non-Sudo / System Service User Installs
 
-Running Hermes as a dedicated unprivileged user (e.g. a `kopi` systemd service account, or any user without `sudo` access) is supported. The only thing on the install path that genuinely needs root is Playwright's `--with-deps` step, which `apt`-installs shared libraries (`libnss3`, `libxkbcommon`, etc.) used by Chromium. The installer detects whether sudo is available and gracefully degrades when it isn't — it will install the Chromium binary into the service user's own Playwright cache and print the exact command an administrator needs to run separately.
+Running Kopi as a dedicated unprivileged user (e.g. a `kopi` systemd service account, or any user without `sudo` access) is supported. The only thing on the install path that genuinely needs root is Playwright's `--with-deps` step, which `apt`-installs shared libraries (`libnss3`, `libxkbcommon`, etc.) used by Chromium. The installer detects whether sudo is available and gracefully degrades when it isn't — it will install the Chromium binary into the service user's own Playwright cache and print the exact command an administrator needs to run separately.
 
 **Recommended split (Debian/Ubuntu):**
 
@@ -151,7 +151,7 @@ The same pattern works on Arch (the installer uses pacman with the same sudo-det
 
 | Problem | Solution |
 |---------|----------|
-| `hermes: command not found` | Reload your shell (`source ~/.bashrc`) or check PATH |
+| `kopi: command not found` | Reload your shell (`source ~/.bashrc`) or check PATH |
 | `API key not set` | Run `kopi model` to configure your provider, or `kopi config set OPENROUTER_API_KEY your_key` |
 | Missing config after update | Run `kopi config check` then `kopi config migrate` |
 
@@ -159,4 +159,4 @@ For more diagnostics, run `kopi doctor` — it will tell you exactly what's miss
 
 ## Install method auto-detection
 
-Hermes auto-detects whether it was installed via `pip`, the git installer, Homebrew, or NixOS, and `kopi update` prints the matching update command for that path. There's no env var to set — the detection is based on the install layout (Python site-packages, `~/.kopi/kopi-ai-agent/`, Homebrew prefix, or Nix store path). `kopi doctor` also surfaces the detected method under its environment summary.
+Kopi auto-detects whether it was installed via `pip`, the git installer, Homebrew, or NixOS, and `kopi update` prints the matching update command for that path. There's no env var to set — the detection is based on the install layout (Python site-packages, `~/.kopi/kopi-ai-agent/`, Homebrew prefix, or Nix store path). `kopi doctor` also surfaces the detected method under its environment summary.
