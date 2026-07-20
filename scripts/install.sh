@@ -340,7 +340,7 @@ provision_api_key() {
     if [[ -f "$CRED_FILE" ]]; then
         local existing_key
         existing_key=$(cat "$CRED_FILE" 2>/dev/null | tr -d '[:space:]')
-        if [[ -n "$existing_key" ]] && [[ "$existing_key" == kp-* || "$existing_key" == kopi-* ]]; then
+        if [[ -n "$existing_key" ]] && [[ "$existing_key" == kp-* || "$existing_key" == kopi-* || "$existing_key" == kopi_* ]]; then
             ok "已有 API Key，跳过开通"
             KOPI_API_KEY="$existing_key"
             return

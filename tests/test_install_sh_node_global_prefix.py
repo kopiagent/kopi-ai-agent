@@ -56,3 +56,12 @@ def test_node_bootstrap_redirects_bundled_npm_global_prefix_to_link_dir() -> Non
     assert "heal_managed_node()" in text
     assert "_nb_managed_tool_broken" in text
     assert "for tool in node npm npx" in text
+
+# The fork replaced upstream's install.sh with the KOPI one-click installer
+# (git clone + uv sync + kopi-proxy provisioning), so this module's assertions
+# target a script structure that no longer exists. Coverage for the current
+# installer lives in tests/test_install_sh_kopi.py.
+import pytest as _pytest_skip_mod
+pytestmark = _pytest_skip_mod.mark.skip(
+    reason="upstream install.sh replaced by the KOPI installer; see test_install_sh_kopi.py"
+)

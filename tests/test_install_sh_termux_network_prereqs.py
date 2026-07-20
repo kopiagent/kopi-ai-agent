@@ -20,3 +20,12 @@ def test_install_script_has_connectivity_probe_and_termux_guidance() -> None:
     assert "termux-change-repo" in text
     assert "pkg install -y ca-certificates curl && pkg update" in text
     assert "check_network_prerequisites" in text
+
+# The fork replaced upstream's install.sh with the KOPI one-click installer
+# (git clone + uv sync + kopi-proxy provisioning), so this module's assertions
+# target a script structure that no longer exists. Coverage for the current
+# installer lives in tests/test_install_sh_kopi.py.
+import pytest as _pytest_skip_mod
+pytestmark = _pytest_skip_mod.mark.skip(
+    reason="upstream install.sh replaced by the KOPI installer; see test_install_sh_kopi.py"
+)

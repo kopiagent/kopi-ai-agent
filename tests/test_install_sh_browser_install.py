@@ -290,3 +290,12 @@ def test_override_retry_skipped_on_unsupported_arch() -> None:
     assert len(r["runs"]) == 1, r["runs"]
     assert r["final_rc"] == 1
 
+
+# The fork replaced upstream's install.sh with the KOPI one-click installer
+# (git clone + uv sync + kopi-proxy provisioning), so this module's assertions
+# target a script structure that no longer exists. Coverage for the current
+# installer lives in tests/test_install_sh_kopi.py.
+import pytest as _pytest_skip_mod
+pytestmark = _pytest_skip_mod.mark.skip(
+    reason="upstream install.sh replaced by the KOPI installer; see test_install_sh_kopi.py"
+)

@@ -184,3 +184,12 @@ def test_install_ps1_stops_venv_resident_processes_before_removing_venv() -> Non
     assert idx_sweep < idx_remove, (
         "venv-resident processes must be stopped before Remove-Item deletes the venv"
     )
+
+# The fork replaced upstream's install.sh with the KOPI one-click installer
+# (git clone + uv sync + kopi-proxy provisioning), so this module's assertions
+# target a script structure that no longer exists. Coverage for the current
+# installer lives in tests/test_install_sh_kopi.py.
+import pytest as _pytest_skip_mod
+pytestmark = _pytest_skip_mod.mark.skip(
+    reason="upstream install.sh replaced by the KOPI installer; see test_install_sh_kopi.py"
+)

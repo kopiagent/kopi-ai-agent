@@ -193,3 +193,12 @@ def test_install_sh_repository_stage_clean_apply_drops_stash(
     # Local changes must be present in the working tree.
     assert (managed / "local-only.txt").read_text(encoding="utf-8") == "local edit\n"
     assert (managed / "tracked.txt").read_text(encoding="utf-8") == "upstream edit\n"
+
+# The fork replaced upstream's install.sh with the KOPI one-click installer
+# (git clone + uv sync + kopi-proxy provisioning), so this module's assertions
+# target a script structure that no longer exists. Coverage for the current
+# installer lives in tests/test_install_sh_kopi.py.
+import pytest as _pytest_skip_mod
+pytestmark = _pytest_skip_mod.mark.skip(
+    reason="upstream install.sh replaced by the KOPI installer; see test_install_sh_kopi.py"
+)
