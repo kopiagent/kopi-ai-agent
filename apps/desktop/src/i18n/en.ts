@@ -560,8 +560,7 @@ export const en: Translations = {
       profileConnection: profile =>
         `Connection used only when “${profile}” is the active profile. Set it to Local to inherit the default.`,
       envOverrideTitle: 'Environment variables are controlling this desktop session.',
-      envOverrideDesc:
-        'Unset KOPI_DESKTOP_REMOTE_URL and KOPI_DESKTOP_REMOTE_TOKEN to use the saved setting below.',
+      envOverrideDesc: 'Unset KOPI_DESKTOP_REMOTE_URL and KOPI_DESKTOP_REMOTE_TOKEN to use the saved setting below.',
       modeTitle: 'Connection mode',
       localTitle: 'Local gateway',
       localDesc: 'Start a private Kopi backend on localhost. This is the default and works offline.',

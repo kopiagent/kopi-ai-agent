@@ -47,8 +47,8 @@ export {
   type GatewayAuthMode,
   GatewayReauthRequiredError,
   type GatewayWsConnection,
-  type KopiWebSocketUrlOptions,
   isGatewayReauthRequired,
+  type KopiWebSocketUrlOptions,
   resolveGatewayWsUrl,
   type ResolveGatewayWsUrlDeps,
   type WebSocketAuthParam

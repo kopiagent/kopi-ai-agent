@@ -153,17 +153,9 @@ export function GatewayConnectingOverlay() {
                 <stop offset="100%" stopColor="#d4a04a" />
               </linearGradient>
             </defs>
-            <path
-              d="M6 14h26v12a10 10 0 0 1-10 10h-6a10 10 0 0 1-10-10V14Z"
-              fill="url(#kopi-brew-fill)"
-            />
+            <path d="M6 14h26v12a10 10 0 0 1-10 10h-6a10 10 0 0 1-10-10V14Z" fill="url(#kopi-brew-fill)" />
             {/* handle */}
-            <path
-              d="M32 17h4a6 6 0 0 1 0 12h-4"
-              stroke="var(--theme-primary)"
-              strokeLinecap="round"
-              strokeWidth="3"
-            />
+            <path d="M32 17h4a6 6 0 0 1 0 12h-4" stroke="var(--theme-primary)" strokeLinecap="round" strokeWidth="3" />
             {/* saucer */}
             <rect fill="var(--theme-primary)" height="3" opacity="0.35" rx="1.5" width="36" x="1" y="39" />
           </svg>

@@ -3538,9 +3538,7 @@ function resolveKopiBackend(backendArgs) {
         )
       }
 
-      rememberLog(
-        `Ignoring existing Kopi CLI at ${kopiCommand}: --version probe failed; falling through to bootstrap.`
-      )
+      rememberLog(`Ignoring existing Kopi CLI at ${kopiCommand}: --version probe failed; falling through to bootstrap.`)
     }
   }
 
@@ -7113,10 +7111,7 @@ async function startKopi() {
     await advanceBootProgress('backend.port', 'Waiting for Kopi backend to launch', 86)
 
     // Discover the ephemeral port the child bound to
-    const port = await Promise.race([
-      waitForDashboardPortAnnouncement(kopiProcess, { readyFile }),
-      backendStartFailed
-    ])
+    const port = await Promise.race([waitForDashboardPortAnnouncement(kopiProcess, { readyFile }), backendStartFailed])
 
     if (readyFile) {
       fs.unlink(readyFile, () => {})
