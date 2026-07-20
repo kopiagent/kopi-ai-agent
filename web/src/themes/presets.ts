@@ -40,8 +40,41 @@ const DEFAULT_LAYOUT: ThemeLayout = {
 
 export const defaultTheme: DashboardTheme = {
   name: "default",
+  label: "Kopi",
+  description: "kopiaiagent.com look — blue & amber on clean slate",
+  palette: {
+    background: { hex: "#f8fafc", alpha: 1 },
+    midground: { hex: "#2563eb", alpha: 1 },
+    foreground: { hex: "#0f172a", alpha: 0 },
+    warmGlow: "rgba(245, 158, 11, 0.18)",
+    noiseOpacity: 0,
+  },
+  typography: {
+    ...DEFAULT_TYPOGRAPHY,
+    fontSans: `"Inter", ${SYSTEM_SANS}`,
+    fontMono: `"JetBrains Mono", ${SYSTEM_MONO}`,
+    fontUrl:
+      "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap",
+    letterSpacing: "-0.005em",
+  },
+  layout: {
+    ...DEFAULT_LAYOUT,
+    radius: "0.75rem",
+  },
+  terminalBackground: "#0f172a",
+  terminalForeground: "#e2e8f0",
+  seriesColors: {
+    inputTokenAccent: "#2563eb",
+    outputTokenAccent: "#f59e0b",
+  },
+  swatchColors: ["#0f172a", "#2563eb", "#f8fafc"],
+};
+
+/** The previous dark-teal default, kept for anyone who prefers it. */
+export const kopiTealTheme: DashboardTheme = {
+  name: "kopi-teal",
   label: "Kopi Teal",
-  description: "Classic dark teal — the canonical Kopi look",
+  description: "Classic dark teal — the original Kopi look",
   palette: {
     background: { hex: "#041c1c", alpha: 1 },
     midground: { hex: "#ffe6cb", alpha: 1 },
@@ -214,23 +247,28 @@ export const nousBlueTheme: DashboardTheme = {
  */
 export const defaultLargeTheme: DashboardTheme = {
   name: "default-large",
-  label: "Kopi Teal (Large)",
-  description: "Kopi Teal with bigger fonts and roomier spacing",
+  label: "Kopi (Large)",
+  description: "Kopi with bigger fonts and roomier spacing",
   palette: defaultTheme.palette,
   typography: {
-    ...DEFAULT_TYPOGRAPHY,
+    ...defaultTheme.typography,
     baseSize: "18px",
     lineHeight: "1.65",
   },
   layout: {
-    ...DEFAULT_LAYOUT,
+    ...defaultTheme.layout,
     density: "spacious",
   },
+  terminalBackground: defaultTheme.terminalBackground,
+  terminalForeground: defaultTheme.terminalForeground,
+  seriesColors: defaultTheme.seriesColors,
+  swatchColors: defaultTheme.swatchColors,
 };
 
 export const BUILTIN_THEMES: Record<string, DashboardTheme> = {
   default: defaultTheme,
   "default-large": defaultLargeTheme,
+  "kopi-teal": kopiTealTheme,
   "nous-blue": nousBlueTheme,
   midnight: midnightTheme,
   ember: emberTheme,

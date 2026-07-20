@@ -132,16 +132,53 @@ export function GatewayConnectingOverlay() {
         overlayHidden ? 'pointer-events-none opacity-0' : 'opacity-100'
       )}
     >
-      <DecodeText
-        active={phase === 'live' && (previewing || connecting)}
-        className={cn(
-          'pl-[0.4em] text-(--theme-primary) transition duration-300 ease-out',
-          leaving ? 'translate-y-2 opacity-0 saturate-0' : 'translate-y-0 opacity-100 saturate-100'
-        )}
-        cursor
-        prefix={4}
-        text={TEXT}
-      />
+      <div className="flex flex-col items-center gap-5">
+        {/* Brewing cup — the kopiaiagent.com coffee identity. Steam wisps rise
+            while connecting; the whole mark fades with the text on exit. */}
+        <div
+          aria-hidden
+          className={cn(
+            'kopi-brew transition duration-300 ease-out',
+            leaving ? 'translate-y-2 opacity-0 saturate-0' : 'translate-y-0 opacity-100'
+          )}
+        >
+          <span className="kopi-brew-steam" />
+          <span className="kopi-brew-steam" />
+          <span className="kopi-brew-steam" />
+          <svg fill="none" height="44" viewBox="0 0 48 44" width="48" xmlns="http://www.w3.org/2000/svg">
+            {/* cup body with brand gradient fill */}
+            <defs>
+              <linearGradient id="kopi-brew-fill" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0%" stopColor="#c87533" />
+                <stop offset="100%" stopColor="#d4a04a" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M6 14h26v12a10 10 0 0 1-10 10h-6a10 10 0 0 1-10-10V14Z"
+              fill="url(#kopi-brew-fill)"
+            />
+            {/* handle */}
+            <path
+              d="M32 17h4a6 6 0 0 1 0 12h-4"
+              stroke="var(--theme-primary)"
+              strokeLinecap="round"
+              strokeWidth="3"
+            />
+            {/* saucer */}
+            <rect fill="var(--theme-primary)" height="3" opacity="0.35" rx="1.5" width="36" x="1" y="39" />
+          </svg>
+        </div>
+        <DecodeText
+          active={phase === 'live' && (previewing || connecting)}
+          className={cn(
+            'pl-[0.4em] text-(--theme-primary) transition duration-300 ease-out',
+            leaving ? 'translate-y-2 opacity-0 saturate-0' : 'translate-y-0 opacity-100 saturate-100'
+          )}
+          cursor
+          prefix={4}
+          text={TEXT}
+        />
+      </div>
     </div>
   )
 }

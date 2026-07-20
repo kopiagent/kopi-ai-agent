@@ -120,14 +120,14 @@
   :root {
     color-scheme: light;
 
-    --theme-foreground: #17171a;
-    --theme-primary: #0053fd;
-    --theme-secondary: color-mix(in srgb, #0053fd 7%, #ffffff);
-    --theme-accent-soft: color-mix(in srgb, #0053fd 10%, #ffffff);
-    --theme-midground: #0053fd;
-    --theme-warm: #cf806d;
-    --theme-background-seed: #f8faff;
-    --theme-sidebar-seed: #f3f7ff;
+    --theme-foreground: #0f172a;
+    --theme-primary: #2563eb;
+    --theme-secondary: color-mix(in srgb, #2563eb 7%, #ffffff);
+    --theme-accent-soft: color-mix(in srgb, #f59e0b 12%, #ffffff);
+    --theme-midground: #2563eb;
+    --theme-warm: #f59e0b;
+    --theme-background-seed: #f8fafc;
+    --theme-sidebar-seed: #f1f5f9;
     --theme-card-seed: #ffffff;
     --theme-elevated-seed: #ffffff;
     --theme-bubble-seed: color-mix(in srgb, #0053fd 6%, #ffffff);
@@ -1833,4 +1833,38 @@ text-* variant utilities. */ .btn-arc {
     width: 100%;
     opacity: 0.4;
   }
+}
+
+/* ── Kopi brewing loader (gateway connecting overlay) ─────────────────────
+   Matches the kopiaiagent.com coffee identity: amber steam wisps rising from
+   the gradient cup while the app connects. */
+.kopi-brew {
+  position: relative;
+  width: 48px;
+  height: 44px;
+}
+
+.kopi-brew-steam {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: #f59e0b;
+  opacity: 0;
+  animation: kopi-steam 2.2s ease-in-out infinite;
+}
+
+.kopi-brew-steam:nth-child(1) { left: 11px; }
+.kopi-brew-steam:nth-child(2) { left: 18px; animation-delay: 0.55s; }
+.kopi-brew-steam:nth-child(3) { left: 25px; animation-delay: 1.1s; }
+
+@keyframes kopi-steam {
+  0%   { transform: translateY(6px) scaleY(0.6); opacity: 0; }
+  35%  { opacity: 0.75; }
+  100% { transform: translateY(-12px) scaleY(1.2); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kopi-brew-steam { animation: none; opacity: 0.4; }
 }

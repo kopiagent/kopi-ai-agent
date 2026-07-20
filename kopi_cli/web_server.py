@@ -18154,8 +18154,9 @@ def mount_spa(application: FastAPI):
 # Built-in dashboard themes — label + description only.  The actual color
 # definitions live in the frontend (web/src/themes/presets.ts).
 _BUILTIN_DASHBOARD_THEMES = [
-    {"name": "default",       "label": "Kopi Teal",         "description": "Classic dark teal — the canonical Kopi look"},
-    {"name": "default-large", "label": "Kopi Teal (Large)", "description": "Kopi Teal with bigger fonts and roomier spacing"},
+    {"name": "default",       "label": "Kopi",              "description": "kopiaiagent.com look — blue & amber on clean slate"},
+    {"name": "default-large", "label": "Kopi (Large)",      "description": "Kopi with bigger fonts and roomier spacing"},
+    {"name": "kopi-teal",     "label": "Kopi Teal",         "description": "Classic dark teal — the original Kopi look"},
     {"name": "nous-blue",     "label": "Nous Blue",           "description": "Light mode — vivid Nous-blue accents on cream canvas"},
     {"name": "midnight",      "label": "Midnight",            "description": "Deep blue-violet with cool accents"},
     {"name": "ember",     "label": "Ember",          "description": "Warm crimson and bronze — forge vibes"},

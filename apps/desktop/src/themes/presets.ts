@@ -24,6 +24,84 @@ const NOUS_BLUE = '#0053FD'
 const PSYCHE_BLUE = '#1540B1'
 const PSYCHE_WARM = '#FFE6CB'
 
+// kopiaiagent.com marketing palette: blue + amber on clean slate neutrals.
+const KOPI_BLUE = '#2563eb'
+const KOPI_AMBER = '#f59e0b'
+const KOPI_SLATE_900 = '#0f172a'
+
+const kopiTint = (pct: number) => `color-mix(in srgb, ${KOPI_BLUE} ${pct}%, #FFFFFF)`
+const kopiTintTransparent = (pct: number) => `color-mix(in srgb, ${KOPI_BLUE} ${pct}%, transparent)`
+
+/**
+ * Kopi — matches the kopiaiagent.com marketing site: blue #2563eb primary,
+ * amber #f59e0b accents, slate neutrals, Inter + JetBrains Mono.
+ */
+export const kopiTheme: DesktopTheme = {
+  name: 'kopi',
+  label: 'Kopi',
+  description: 'kopiaiagent.com look — blue & amber on clean slate',
+  colors: {
+    background: '#f8fafc',
+    foreground: KOPI_SLATE_900,
+    card: '#ffffff',
+    cardForeground: KOPI_SLATE_900,
+    muted: '#f1f5f9',
+    mutedForeground: '#64748b',
+    popover: '#ffffff',
+    popoverForeground: KOPI_SLATE_900,
+    primary: KOPI_BLUE,
+    primaryForeground: '#ffffff',
+    secondary: kopiTint(7),
+    secondaryForeground: '#334155',
+    accent: 'color-mix(in srgb, #f59e0b 12%, #FFFFFF)',
+    accentForeground: '#92400e',
+    border: '#e2e8f0',
+    input: kopiTintTransparent(30),
+    ring: KOPI_BLUE,
+    midground: KOPI_BLUE,
+    composerRing: KOPI_BLUE,
+    destructive: '#dc2626',
+    destructiveForeground: '#ffffff',
+    sidebarBackground: '#f1f5f9',
+    sidebarBorder: '#e2e8f0',
+    userBubble: kopiTint(6),
+    userBubbleBorder: kopiTintTransparent(24)
+  },
+  darkColors: {
+    background: KOPI_SLATE_900,
+    foreground: '#e2e8f0',
+    card: '#1e293b',
+    cardForeground: '#e2e8f0',
+    muted: '#1e293b',
+    mutedForeground: '#94a3b8',
+    popover: '#1e293b',
+    popoverForeground: '#e2e8f0',
+    primary: '#3b82f6',
+    primaryForeground: '#ffffff',
+    secondary: '#334155',
+    secondaryForeground: '#cbd5e1',
+    accent: '#78350f',
+    accentForeground: '#fbbf24',
+    border: '#334155',
+    input: '#1e293b',
+    ring: '#3b82f6',
+    midground: '#3b82f6',
+    composerRing: KOPI_AMBER,
+    destructive: '#ef4444',
+    destructiveForeground: '#fef2f2',
+    sidebarBackground: '#0b1120',
+    sidebarBorder: '#1e293b',
+    userBubble: '#1e3a5f',
+    userBubbleBorder: '#2563eb'
+  },
+  typography: {
+    fontSans: `"Inter", ${SYSTEM_SANS}`,
+    fontMono: `"JetBrains Mono", ${SYSTEM_MONO}`,
+    fontUrl:
+      'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap'
+  }
+}
+
 const nousTint = (pct: number) => `color-mix(in srgb, ${NOUS_BLUE} ${pct}%, #FFFFFF)`
 const nousTintTransparent = (pct: number) => `color-mix(in srgb, ${NOUS_BLUE} ${pct}%, transparent)`
 
@@ -278,6 +356,7 @@ export const slateTheme: DesktopTheme = {
 }
 
 export const BUILTIN_THEMES: Record<string, DesktopTheme> = {
+  kopi: kopiTheme,
   nous: nousTheme,
   midnight: midnightTheme,
   ember: emberTheme,
@@ -289,4 +368,4 @@ export const BUILTIN_THEMES: Record<string, DesktopTheme> = {
 export const BUILTIN_THEME_LIST = Object.values(BUILTIN_THEMES)
 
 /** Skin used when nothing is persisted or the persisted name is retired. */
-export const DEFAULT_SKIN_NAME = 'nous'
+export const DEFAULT_SKIN_NAME = 'kopi'
