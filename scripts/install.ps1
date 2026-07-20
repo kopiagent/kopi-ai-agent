@@ -138,6 +138,8 @@ foreach ($tmpVar in @('TEMP', 'TMP')) {
 
 $RepoUrlSsh = "git@github.com:kopiagent/kopi-ai-agent.git"
 $RepoUrlHttps = "https://github.com/kopiagent/kopi-ai-agent.git"
+$KopiProxyBaseUrl = $(if ($env:KOPI_PROXY_BASE_URL) { $env:KOPI_PROXY_BASE_URL } else { "https://kopiaiagent.com/v1" })
+$KopiAutoProvisionUrl = "$KopiProxyBaseUrl/auto-provision/ready"
 $PythonVersion = "3.11"
 # Minor versions the installer accepts when the requested $PythonVersion isn't
 # available, in preference order.  uv discovers both uv-managed and system
@@ -227,6 +229,116 @@ function Write-Success {
 function Write-Warn {
     param([string]$Message)
     Write-Host "[!] $Message" -ForegroundColor Yellow
+}
+
+function Get-DotEnvValue {
+    param(
+        [string]$Path,
+        [string]$Key
+    )
+
+    if (-not (Test-Path $Path)) { return "" }
+    try {
+        foreach ($line in (Get-Content $Path -ErrorAction Stop)) {
+            if ($line -match "^\s*$([regex]::Escape($Key))=(.*)$") {
+                return $Matches[1].Trim().Trim('"').Trim("'")
+            }
+        }
+    } catch {
+        return ""
+    }
+    return ""
+}
+
+function Set-DotEnvValue {
+    param(
+        [string]$Path,
+        [string]$Key,
+        [string]$Value
+    )
+
+    $lines = @()
+    $found = $false
+    if (Test-Path $Path) {
+        $lines = @(Get-Content $Path -ErrorAction SilentlyContinue)
+    }
+
+    $next = @()
+    foreach ($line in $lines) {
+        if ($line -match "^\s*$([regex]::Escape($Key))=") {
+            if (-not $found) {
+                $next += "$Key=$Value"
+                $found = $true
+            }
+        } else {
+            $next += $line
+        }
+    }
+    if (-not $found) {
+        $next += "$Key=$Value"
+    }
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, (($next -join [Environment]::NewLine) + [Environment]::NewLine), $utf8NoBom)
+}
+
+function Get-ExistingKopiApiKey {
+    param([string]$EnvPath)
+
+    $provided = "$env:KOPI_API_KEY".Trim()
+    if ($provided) { return $provided }
+
+    $credPath = Join-Path $KopiHome "kopi-credentials"
+    if (Test-Path $credPath) {
+        try {
+            $existing = (Get-Content $credPath -Raw -ErrorAction Stop).Trim()
+            if ($existing -match "^(kp|kopi)-") { return $existing }
+        } catch {
+            # Ignore unreadable stale credential files; provisioning below will
+            # either refresh the key or surface a clear warning.
+        }
+    }
+
+    $envKey = (Get-DotEnvValue -Path $EnvPath -Key "KOPI_API_KEY").Trim()
+    if ($envKey -and $envKey -notmatch "your-token-here") { return $envKey }
+
+    return ""
+}
+
+function Ensure-KopiApiKey {
+    param([string]$EnvPath)
+
+    $existing = Get-ExistingKopiApiKey -EnvPath $EnvPath
+    if ($existing) {
+        Set-DotEnvValue -Path $EnvPath -Key "KOPI_API_KEY" -Value $existing
+        Write-Success "KOPI_API_KEY already configured"
+        return
+    }
+
+    Write-Info "Requesting KOPI Proxy API key..."
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -Method Post -Uri $KopiAutoProvisionUrl `
+            -ContentType "application/json" -TimeoutSec 30 -Body "{}"
+        $payload = $response.Content | ConvertFrom-Json
+        $apiKey = "$($payload.api_key)".Trim()
+    } catch {
+        Write-Warn "Auto-provision failed. Set KOPI_API_KEY manually in $EnvPath or rerun with `$env:KOPI_API_KEY set."
+        return
+    }
+
+    if (-not $apiKey) {
+        Write-Warn "Auto-provision returned no API key. Set KOPI_API_KEY manually in $EnvPath."
+        return
+    }
+
+    Set-DotEnvValue -Path $EnvPath -Key "KOPI_API_KEY" -Value $apiKey
+
+    $credPath = Join-Path $KopiHome "kopi-credentials"
+    New-Item -ItemType Directory -Force -Path (Split-Path $credPath -Parent) | Out-Null
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($credPath, ($apiKey + [Environment]::NewLine), $utf8NoBom)
+
+    Write-Success "KOPI_API_KEY auto-provisioned and saved"
 }
 
 function Write-Err {
@@ -2393,6 +2505,8 @@ function Copy-ConfigTemplates {
     } else {
         Write-Info "$envPath already exists, keeping it"
     }
+
+    Ensure-KopiApiKey -EnvPath $envPath
     
     # Create config.yaml
     $configPath = "$KopiHome\config.yaml"
