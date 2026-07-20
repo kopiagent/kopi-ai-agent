@@ -1843,7 +1843,7 @@ wheels = [
 
 [[package]]
 name = "kopi-ai-agent"
-version = "0.18.2"
+version = "1.20.0"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },

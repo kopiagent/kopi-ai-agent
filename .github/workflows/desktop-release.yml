@@ -5,7 +5,11 @@ name: desktop release
 # manually via workflow_dispatch, which uploads to a draft release named
 # after the current package version).
 #
-#   git tag desktop-v0.17.0 && git push origin desktop-v0.17.0
+#   scripts/bump-version.sh 1.21.0
+#   git commit -am "release: v1.21.0" && git tag v1.21.0
+#   git push origin main v1.21.0
+#
+# (`desktop-v*` tags are still accepted for backwards compatibility.)
 #
 # Signing: macOS builds are UNSIGNED (CSC_IDENTITY_AUTO_DISCOVERY=false) —
 # users right-click → Open past Gatekeeper. Add Apple Developer cert secrets
@@ -14,7 +18,9 @@ name: desktop release
 
 on:
   push:
-    tags: ['desktop-v*']
+    tags:
+      - 'v*'
+      - 'desktop-v*'
   workflow_dispatch:
 
 permissions:
@@ -73,12 +79,12 @@ jobs:
         id: tag
         shell: bash
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/desktop-v* ]]; then
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
             echo "draft=false" >> "$GITHUB_OUTPUT"
           else
             VERSION=$(node -p "require('./apps/desktop/package.json').version")
-            echo "tag=desktop-v${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
             echo "draft=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -95,8 +101,10 @@ jobs:
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             DRAFT_FLAG=""
             [ "$DRAFT" = "true" ] && DRAFT_FLAG="--draft"
+            VERSION_LABEL="${TAG#desktop-}"   # desktop-v1.2.3 -> v1.2.3
+            VERSION_LABEL="${VERSION_LABEL#v}" # v1.2.3 -> 1.2.3
             gh release create "$TAG" $DRAFT_FLAG \
-              --title "Kopi Desktop ${TAG#desktop-v}" \
+              --title "Kopi Desktop ${VERSION_LABEL}" \
               --notes "Kopi desktop installers for macOS, Windows and Linux. macOS builds are unsigned — right-click the app and choose Open on first launch." \
               || true  # lost the race to a sibling job — fine
           fi
