@@ -62,16 +62,28 @@ jobs:
               apps/desktop/release/*.rpm
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
-    env:
-      # No real cert secrets → electron-builder falls back to AD-HOC signing
-      # (required for arm64 to launch at all). When the secrets below are
-      # configured in the repo, the same build signs + notarizes for real.
-      CSC_LINK: ${{ secrets.CSC_LINK }}
-      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
+      # Inject signing env ONLY when the secrets exist. An unconditional
+      # `CSC_LINK: ${{ secrets.CSC_LINK }}` sets an EMPTY string when the
+      # secret is missing, and electron-builder then treats "" as a
+      # certificate file path and dies with "… not a file". With no CSC_*
+      # env at all it falls back to ad-hoc signing (required for arm64 to
+      # launch); with the secrets configured it signs + notarizes for real.
+      - name: Enable Developer ID signing when secrets exist
+        run: |
+          if [ -n "${{ secrets.CSC_LINK }}" ]; then
+            {
+              echo "CSC_LINK=${{ secrets.CSC_LINK }}"
+              echo "CSC_KEY_PASSWORD=${{ secrets.CSC_KEY_PASSWORD }}"
+              echo "APPLE_ID=${{ secrets.APPLE_ID }}"
+              echo "APPLE_APP_SPECIFIC_PASSWORD=${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}"
+              echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}"
+            } >> "$GITHUB_ENV"
+            echo "Signing secrets found — Developer ID signing enabled."
+          else
+            echo "No signing secrets — electron-builder will ad-hoc sign."
+          fi
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
