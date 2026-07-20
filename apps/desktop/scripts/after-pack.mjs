@@ -19,11 +19,40 @@
  *   - packager.appInfo.productFilename: the exe basename (e.g. 'Kopi')
  */
 
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 
 import { stampExeIdentity } from './set-exe-identity.mjs'
 
+// Ad-hoc sign the packed .app when no real Developer ID is available.
+// electron-builder SKIPS signing entirely without an identity — but an
+// unsigned arm64 bundle will not launch on Apple Silicon at all, and a
+// downloaded copy reports the misleading "Kopi is damaged" Gatekeeper error.
+// `codesign --sign -` (ad-hoc) makes the bundle launchable once the user
+// clears quarantine (right-click → Open, or `xattr -cr`). When CSC_LINK is
+// set, electron-builder already did a real Developer ID signing, so skip.
+function adhocSignMac(context) {
+  if (process.env.CSC_LINK) {
+    return // real signing happened; don't clobber it
+  }
+  const productName = context.packager?.appInfo?.productFilename || 'Kopi'
+  const appPath = path.join(context.appOutDir, `${productName}.app`)
+  try {
+    execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], {
+      stdio: 'inherit',
+    })
+    console.log(`[after-pack] ad-hoc signed ${appPath}`)
+  } catch (err) {
+    console.warn(`[after-pack] ad-hoc codesign failed (${err.message})`)
+  }
+}
+
 export default async function afterPack(context) {
+  if (context.electronPlatformName === 'darwin') {
+    adhocSignMac(context)
+    return
+  }
+
   if (context.electronPlatformName !== 'win32') {
     return
   }
