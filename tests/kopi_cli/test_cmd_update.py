@@ -416,7 +416,7 @@ class TestCmdUpdateBranchFallback:
         """Regression for issue #26172: forks whose local HEAD already matches
         origin/main must still consult upstream/main before printing
         "Already up to date!" — otherwise a fork that's caught up to its own
-        origin but behind NousResearch/kopi-ai-agent silently misses updates.
+        origin but behind kopiagent/kopi-ai-agent silently misses updates.
         """
         from kopi_cli import main as hm
 

@@ -113,8 +113,8 @@ _UPDATE_CHECK_CACHE_SECONDS = 6 * 3600
 # (e.g. nix-built kopi — no local git history to count against).
 UPDATE_AVAILABLE_NO_COUNT = -1
 
-_UPSTREAM_REPO_URL = "https://github.com/NousResearch/kopi-ai-agent.git"
-_OFFICIAL_REPO_CANONICAL = "github.com/nousresearch/kopi-ai-agent"
+_UPSTREAM_REPO_URL = "https://github.com/kopiagent/kopi-ai-agent.git"
+_OFFICIAL_REPO_CANONICAL = "github.com/kopiagent/kopi-ai-agent"
 
 
 def _canonical_github_remote(url: str | None) -> str:
@@ -450,7 +450,7 @@ def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
     return {"upstream": upstream, "local": local, "ahead": max(ahead, 0)}
 
 
-_RELEASE_URL_BASE = "https://github.com/NousResearch/kopi-ai-agent/releases/tag"
+_RELEASE_URL_BASE = "https://github.com/kopiagent/kopi-ai-agent/releases/tag"
 _latest_release_cache: Optional[tuple] = None  # (tag, url) once resolved
 
 
@@ -459,7 +459,7 @@ def get_latest_release_tag(repo_dir: Optional[Path] = None) -> Optional[tuple]:
 
     Local-only — runs ``git describe --tags --abbrev=0`` against the
     Kopi checkout. Cached per-process. Release URL always points at the
-    canonical NousResearch/kopi-ai-agent repo (forks don't get a link).
+    canonical kopiagent/kopi-ai-agent repo (forks don't get a link).
     """
     global _latest_release_cache
     if _latest_release_cache is not None:
