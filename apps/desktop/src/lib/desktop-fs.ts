@@ -1,9 +1,4 @@
-import type {
-  KopiConnection,
-  KopiReadDirResult,
-  KopiReadFileTextResult,
-  KopiSelectPathsOptions
-} from '@/global'
+import type { KopiConnection, KopiReadDirResult, KopiReadFileTextResult, KopiSelectPathsOptions } from '@/global'
 import { $connection } from '@/store/session'
 
 export interface DesktopFsRemotePicker {
