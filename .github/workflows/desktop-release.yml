@@ -1,0 +1,118 @@
+name: desktop release
+
+# Build the Kopi desktop installers for macOS / Windows / Linux and attach
+# them to a GitHub Release. Triggered by pushing a `desktop-v*` tag (or
+# manually via workflow_dispatch, which uploads to a draft release named
+# after the current package version).
+#
+#   git tag desktop-v0.17.0 && git push origin desktop-v0.17.0
+#
+# Signing: macOS builds are UNSIGNED (CSC_IDENTITY_AUTO_DISCOVERY=false) —
+# users right-click → Open past Gatekeeper. Add Apple Developer cert secrets
+# and drop that env to sign/notarize later. Windows is unsigned too
+# (signAndEditExecutable: false in electron-builder config).
+
+on:
+  push:
+    tags: ['desktop-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the release + upload installer assets
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            label: macOS (arm64 + x64)
+            dist: 'dist:mac'
+            files: |
+              apps/desktop/release/*.dmg
+              apps/desktop/release/*-mac-*.zip
+          - os: windows-latest
+            label: Windows (nsis)
+            dist: 'dist:win:nsis'
+            files: apps/desktop/release/*.exe
+          - os: ubuntu-latest
+            label: Linux (AppImage + deb + rpm)
+            dist: 'dist:linux'
+            files: |
+              apps/desktop/release/*.AppImage
+              apps/desktop/release/*.deb
+              apps/desktop/release/*.rpm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      # No Apple signing identity in this repo — build unsigned instead of
+      # failing certificate discovery.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+
+      - name: Build installers
+        run: npm run --workspace apps/desktop ${{ matrix.dist }}
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/desktop-v* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            echo "draft=false" >> "$GITHUB_OUTPUT"
+          else
+            VERSION=$(node -p "require('./apps/desktop/package.json').version")
+            echo "tag=desktop-v${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release and upload installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          DRAFT: ${{ steps.tag.outputs.draft }}
+        run: |
+          set -euo pipefail
+
+          # First matrix job to arrive creates the release; the rest reuse it.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            DRAFT_FLAG=""
+            [ "$DRAFT" = "true" ] && DRAFT_FLAG="--draft"
+            gh release create "$TAG" $DRAFT_FLAG \
+              --title "Kopi Desktop ${TAG#desktop-v}" \
+              --notes "Kopi desktop installers for macOS, Windows and Linux. macOS builds are unsigned — right-click the app and choose Open on first launch." \
+              || true  # lost the race to a sibling job — fine
+          fi
+
+          shopt -s nullglob
+          FILES=()
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            for f in $pattern; do FILES+=("$f"); done
+          done <<< "${{ matrix.files }}"
+
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "::error::No installer artifacts matched — build output layout changed?"
+            ls -la apps/desktop/release/ || true
+            exit 1
+          fi
+
+          gh release upload "$TAG" "${FILES[@]}" --clobber
+          echo "Uploaded: ${FILES[*]}"
