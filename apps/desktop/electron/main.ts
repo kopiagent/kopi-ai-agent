@@ -8,6 +8,7 @@ import path from 'node:path'
 import tls from 'node:tls'
 import { pathToFileURL } from 'node:url'
 
+import type * as ElectronNS from 'electron'
 import nodePty from 'node-pty'
 
 import { stopBackendChild as stopBackendChildImpl } from './backend-child'
@@ -145,7 +146,8 @@ import { isPackagedInstallPath as isPackagedInstallPathUnderRoots } from './work
 import { readWslWindowsClipboardImage } from './wsl-clipboard-image'
 import { resolvePickerDefaultPath } from './wsl-path-bridge'
 
-const electron = require('electron') as typeof import('electron')
+const electron = require('electron') as typeof ElectronNS
+
 const {
   app,
   BrowserWindow,

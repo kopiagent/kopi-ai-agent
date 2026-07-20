@@ -11,8 +11,8 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { renameProfile } from '@/kopi'
 import { useI18n } from '@/i18n'
+import { renameProfile } from '@/kopi'
 import { AlertTriangle } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 

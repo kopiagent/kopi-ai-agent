@@ -10,6 +10,7 @@ import { PageLoader } from '@/components/page-loader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CountSkeleton } from '@/components/ui/skeleton'
+import { useI18n } from '@/i18n'
 import {
   editLearningNode,
   getLearningNode,
@@ -20,7 +21,6 @@ import {
   toggleSkill,
   toggleToolset
 } from '@/kopi'
-import { useI18n } from '@/i18n'
 import { isDesktopToolsetVisible } from '@/lib/desktop-toolsets'
 import { compactNumber } from '@/lib/format'
 import { queryClient, writeCache } from '@/lib/query-client'

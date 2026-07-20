@@ -8,8 +8,8 @@ import { HUD_HEADING, HUD_ITEM, HUD_POSITION, HUD_SURFACE, HUD_TEXT } from '@/ap
 import { setTerminalTakeover } from '@/app/right-sidebar/store'
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { KbdCombo } from '@/components/ui/kbd'
-import { getKopiConfigRecord, listAllProfileSessions } from '@/kopi'
 import { useI18n } from '@/i18n'
+import { getKopiConfigRecord, listAllProfileSessions } from '@/kopi'
 import { sessionTitle } from '@/lib/chat-runtime'
 import {
   Activity,

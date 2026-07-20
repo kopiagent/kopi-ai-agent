@@ -2,8 +2,8 @@ import { isGatewayReauthRequired, resolveGatewayWsUrl } from '@kopi/shared'
 import { useEffect, useRef } from 'react'
 
 import type { KopiConnection } from '@/global'
-import { KopiGateway } from '@/kopi'
 import { translateNow } from '@/i18n'
+import { KopiGateway } from '@/kopi'
 import { desktopDefaultCwd } from '@/lib/desktop-fs'
 import {
   $desktopBoot,

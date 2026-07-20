@@ -1,4 +1,6 @@
-const electron = require('electron') as typeof import('electron')
+import type * as ElectronNS from 'electron'
+
+const electron = require('electron') as typeof ElectronNS
 const { session } = electron
 
 const EMBED_SESSION_PARTITION = 'persist:kopi-embed'

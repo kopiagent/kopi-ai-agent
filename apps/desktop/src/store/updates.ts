@@ -13,8 +13,8 @@ import type {
   DesktopUpdateStatus,
   DesktopVersionInfo
 } from '@/global'
-import { checkKopiUpdate, getActionStatus, updateKopi } from '@/kopi'
 import { translateNow } from '@/i18n'
+import { checkKopiUpdate, getActionStatus, updateKopi } from '@/kopi'
 import { persistString, storedString } from '@/lib/storage'
 import { dismissNotification, notify } from '@/store/notifications'
 import { $connection } from '@/store/session'

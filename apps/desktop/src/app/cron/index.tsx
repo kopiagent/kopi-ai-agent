@@ -25,6 +25,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { type Translations, useI18n } from '@/i18n'
 import {
   createCronJob,
   type CronJob,
@@ -37,7 +38,6 @@ import {
   triggerCronJob,
   updateCronJob
 } from '@/kopi'
-import { type Translations, useI18n } from '@/i18n'
 import { AlertTriangle } from '@/lib/icons'
 import { requestModelOptions } from '@/lib/model-options'
 import { asText } from '@/lib/text'

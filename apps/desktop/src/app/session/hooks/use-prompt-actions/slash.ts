@@ -1,7 +1,7 @@
 import { type MutableRefObject, useCallback } from 'react'
 
-import { getProfiles } from '@/kopi'
 import type { Translations } from '@/i18n'
+import { getProfiles } from '@/kopi'
 import { type ChatMessage } from '@/lib/chat-messages'
 import { parseCommandDispatch, parseSlashCommand, sessionTitle } from '@/lib/chat-runtime'
 import {

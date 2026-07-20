@@ -15,8 +15,8 @@ import {
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { KopiGateway } from '@/kopi'
 import { useI18n } from '@/i18n'
+import type { KopiGateway } from '@/kopi'
 import { requestModelOptions } from '@/lib/model-options'
 import {
   currentPickerSelection,
