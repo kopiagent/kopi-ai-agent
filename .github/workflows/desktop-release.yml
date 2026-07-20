@@ -70,6 +70,8 @@ jobs:
       # env at all it falls back to ad-hoc signing (required for arm64 to
       # launch); with the secrets configured it signs + notarizes for real.
       - name: Enable Developer ID signing when secrets exist
+        if: runner.os == 'macOS'
+        shell: bash
         run: |
           if [ -n "${{ secrets.CSC_LINK }}" ]; then
             {
