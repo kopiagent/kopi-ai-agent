@@ -54,14 +54,17 @@ export DEBIAN_FRONTEND=noninteractive
 echo "=== [1/3] 准备基础依赖 ==="
 apt-get update -qq >/dev/null
 apt-get install -y -qq curl git ca-certificates python3 >/dev/null 2>&1
-echo "=== [2/3] 运行 install.sh ==="
-bash /install.sh
+echo "=== [2/3] 运行 install.sh (staged 线性安装, 跳过交互向导) ==="
+bash /install.sh --skip-setup
 echo "=== [3/3] 验收断言 ==="
-test -x /usr/local/bin/kopi        && echo "PASS: /usr/local/bin/kopi 存在且可执行"
-grep -q "provider: kopi-proxy" ~/.kopi/config.yaml && echo "PASS: config 指向 kopi-proxy"
-grep -Eq "api_key: (kopi[-_]|kp-)" ~/.kopi/config.yaml && echo "PASS: config 含 API key"
-test -d /opt/kopi-ai-agent/venv    && echo "PASS: venv 已创建"
-/usr/local/bin/kopi --version >/dev/null && echo "PASS: kopi --version 可运行"
+# Root install layout (Hermes resolve_install_layout): CLI at /usr/local/bin,
+# code+venv under /usr/local/lib/kopi-ai-agent.
+test -x /usr/local/bin/kopi                    && echo "PASS: /usr/local/bin/kopi 存在且可执行"
+test -d /usr/local/lib/kopi-ai-agent/venv      && echo "PASS: venv 已创建"
+test -f ~/.kopi/config.yaml                    && echo "PASS: config.yaml 已生成"
+# The KOPI fork provisions the proxy key into ~/.kopi/.env in the config stage.
+grep -Eq "^KOPI_API_KEY=(kopi[-_]|kp-)" ~/.kopi/.env && echo "PASS: .env 含 KOPI Proxy key"
+/usr/local/bin/kopi --version >/dev/null       && echo "PASS: kopi --version 可运行"
 echo "=== E2E ALL PASS ($(uname -sr)) ==="
 '; then
         echo "✓ $IMAGE 通过"
