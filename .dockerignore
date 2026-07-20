@@ -106,3 +106,6 @@ acp_registry/
 .gitattributes
 .hadolint.yaml
 .mailmap
+
+kopi_ai_agent.egg-info
+pnpm*.yaml
