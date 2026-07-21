@@ -85,3 +85,11 @@ if len(set(vs.values())) != 1:
     sys.exit("✗ 四处版本不一致 — 用 scripts/bump-version.sh <x.y.z> 统一")
 print(f"✓ 版本一致: {list(vs.values())[0]}")
 PYEOF
+
+# uv.lock records the project's own version, so a pyproject bump without a
+# relock makes `uv lock --check` (a blocking CI gate) fail and every
+# `uv sync --locked` install error out. Relock right after writing versions.
+if [ -n "$VERSION" ] && command -v uv >/dev/null 2>&1; then
+    echo "→ 更新 uv.lock ..."
+    uv lock >/dev/null 2>&1 && echo "✓ uv.lock 已同步" || echo "⚠ uv lock 失败,请手动运行 uv lock"
+fi
