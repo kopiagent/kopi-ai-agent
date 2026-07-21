@@ -450,6 +450,7 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
     () => (providers ? sortProviders(providers).filter(p => KOPI_ONLY_OAUTH.includes(p.id)) : []),
     [providers]
   )
+
   const hasOauth = ordered.length > 0
   const apiKeyOptions = useApiKeyCatalog()
 
