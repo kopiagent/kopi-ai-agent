@@ -56,6 +56,7 @@ class ConfigContext:
     # config). Needed so the picker's live /models probe can authenticate —
     # endpoints like the KOPI Proxy 401 an unauthenticated /models.
     current_api_key: str = ""
+    excluded_providers: list = None
 
     def with_overrides(
         self,
@@ -102,6 +103,7 @@ def load_picker_context() -> ConfigContext:
         current_base_url = ""
         current_api_key = ""
     raw = cfg.get("providers")
+    excluded = cfg.get("model_catalog", {}).get("excluded_providers") or []
     return ConfigContext(
         current_provider=current_provider,
         current_model=current_model,
@@ -109,6 +111,7 @@ def load_picker_context() -> ConfigContext:
         user_providers=raw if isinstance(raw, dict) else {},
         custom_providers=get_compatible_custom_providers(cfg),
         current_api_key=current_api_key,
+        excluded_providers=excluded if isinstance(excluded, list) else [],
     )
 
 
@@ -187,6 +190,7 @@ def build_models_payload(
         refresh=refresh,
         probe_custom_providers=probe_custom_providers,
         probe_current_custom_provider=probe_current_custom_provider,
+        excluded_providers=ctx.excluded_providers or [],
     )
 
     moa_row = _moa_provider_row(ctx.current_provider)
