@@ -1,7 +1,7 @@
 {
   "id": "kopi-ai-agent",
   "name": "Kopi Agent",
-  "version": "1.21.0",
+  "version": "1.21.1",
   "description": "Self-improving open-source AI agent by Kopi Ai Agent Pte Ltd with ACP editor integration, persistent memory, skills, and rich tool support.",
   "repository": "https://github.com/kopiagent/kopi-ai-agent",
   "website": "https://kopiaiagent.com/docs/user-guide/features/acp",
@@ -9,7 +9,7 @@
   "license": "MIT",
   "distribution": {
     "uvx": {
-      "package": "kopi-ai-agent[acp]==1.21.0",
+      "package": "kopi-ai-agent[acp]==1.21.1",
       "args": ["kopi-acp"]
     }
   }
