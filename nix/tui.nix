@@ -1,7 +1,12 @@
 # nix/tui.nix — Kopi TUI (Ink/React) compiled with tsc and bundled
 { pkgs, kopiNpmLib, ... }:
 let
-  npm = kopiNpmLib.mkNpmPassthru { dirs = [ "ui-tui" ]; };
+  npm = kopiNpmLib.mkNpmPassthru {
+    dirs = [
+      "ui-tui"
+      "apps/shared"
+    ];
+  };
 
   packageJson = builtins.fromJSON (builtins.readFile (npm.src + "/ui-tui/package.json"));
   version = packageJson.version;
