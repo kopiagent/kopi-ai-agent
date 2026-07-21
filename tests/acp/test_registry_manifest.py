@@ -32,9 +32,9 @@ def test_agent_json_matches_official_registry_required_fields():
     assert re.fullmatch(r"[a-z][a-z0-9-]*", data["id"])
     assert data["name"] == "Kopi Agent"
     assert data["description"]
-    assert data["repository"] == "https://github.com/NousResearch/kopi-ai-agent"
-    assert data["website"].startswith("https://kopi-ai-agent.nousresearch.com/")
-    assert data["authors"] == ["Nous Research"]
+    assert data["repository"] == "https://github.com/kopiagent/kopi-ai-agent"
+    assert data["website"].startswith("https://kopiaiagent.com/")
+    assert data["authors"] == ["Kopi Ai Agent Pte Ltd"]
     assert data["license"] == "MIT"
     assert set(data["distribution"]) <= ALLOWED_DISTRIBUTIONS
 

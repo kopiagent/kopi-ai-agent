@@ -64,6 +64,16 @@ def write_init(v):
     assert n == 1, "kopi_cli/__init__.py: 未找到 __version__"
     p.write_text(new_text, encoding="utf-8")
 
+def write_agent_json(v):
+    # ACP registry manifest — test_registry_manifest asserts these match pyproject.
+    p = Path("acp_registry/agent.json")
+    if not p.exists():
+        return
+    text = p.read_text(encoding="utf-8")
+    text = re.sub(r'"version": "[^"]+"', f'"version": "{v}"', text, count=1)
+    text = re.sub(r'kopi-ai-agent\[acp\]==[^"]+', f'kopi-ai-agent[acp]=={v}', text)
+    p.write_text(text, encoding="utf-8")
+
 def current_versions():
     return {
         "package.json": read_json_version("package.json"),
@@ -77,6 +87,7 @@ if version:
     write_json_version("apps/desktop/package.json", version)
     write_pyproject(version)
     write_init(version)
+    write_agent_json(version)
 
 vs = current_versions()
 for k, v in vs.items():
