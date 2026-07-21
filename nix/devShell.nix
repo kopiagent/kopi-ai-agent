@@ -43,6 +43,9 @@
           ${combinedNonNpm}
           ${kopiNpmLib.mkNpmDevShellHook npmPackageJsonPaths}
 
+          # Force Node to use Nix's playwright-test binary instead of node_modules/.bin
+          export PATH="${pkgs.playwright-test}/bin:$PATH"
+
           # for the devshell to pick up the src
           export KOPI_PYTHON_SRC_ROOT=$(git rev-parse --show-toplevel)
           echo "Kopi Agent dev shell in $KOPI_PYTHON_SRC_ROOT"

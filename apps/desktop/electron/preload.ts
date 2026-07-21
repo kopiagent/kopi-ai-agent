@@ -6,7 +6,8 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
   touchBackend: profile => ipcRenderer.invoke('kopi:backend:touch', profile),
   getGatewayWsUrl: profile => ipcRenderer.invoke('kopi:gateway:ws-url', profile),
   openSessionWindow: (sessionId, opts) => ipcRenderer.invoke('kopi:window:openSession', sessionId, opts),
-  openNewSessionWindow: () => ipcRenderer.invoke('kopi:window:openNewSession'),
+  openWindow: () => ipcRenderer.invoke('kopi:window:openInstance'),
+  claimAmbientCue: key => ipcRenderer.invoke('kopi:ambient:claim', key),
   petOverlay: {
     // Main renderer → main process: window lifecycle + drag. `request` is
     // `{ bounds, screen }`; resolves with the screen bounds it actually used.
@@ -79,6 +80,7 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
   setTitleBarTheme: payload => ipcRenderer.send('kopi:titlebar-theme', payload),
   setNativeTheme: mode => ipcRenderer.send('kopi:native-theme', mode),
   setTranslucency: payload => ipcRenderer.send('kopi:translucency', payload),
+  setKeepAwake: on => ipcRenderer.send('kopi:keep-awake', on),
   setPreviewShortcutActive: active => ipcRenderer.send('kopi:previewShortcutActive', Boolean(active)),
   openExternal: url => ipcRenderer.invoke('kopi:openExternal', url),
   openPreviewInBrowser: url => ipcRenderer.invoke('kopi:openPreviewInBrowser', url),

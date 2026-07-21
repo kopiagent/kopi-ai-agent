@@ -1420,6 +1420,9 @@ def test_session_resume_uses_parent_lineage_for_display(monkeypatch):
                 self.get_messages_as_conversation(session_id, include_ancestors=True),
             )
 
+        def get_ancestor_display_prefix(self, _sid):
+            return []
+
         def get_messages_as_conversation(self, target, include_ancestors=False, repair_alternation=False):
             captured.setdefault("history_calls", []).append((target, include_ancestors))
             return (
@@ -1557,6 +1560,9 @@ def test_session_resume_passes_stored_runtime_to_agent(monkeypatch):
                 self.get_messages_as_conversation(session_id, include_ancestors=True),
             )
 
+        def get_ancestor_display_prefix(self, _sid):
+            return []
+
         def get_messages_as_conversation(self, target, include_ancestors=False, repair_alternation=False):
             return [{"role": "user", "content": "hello"}]
 
@@ -1622,6 +1628,9 @@ def test_session_resume_profile_uses_profile_db_cwd(monkeypatch, tmp_path):
                 self.get_messages_as_conversation(session_id, repair_alternation=True),
                 self.get_messages_as_conversation(session_id, include_ancestors=True),
             )
+
+        def get_ancestor_display_prefix(self, _sid):
+            return []
 
         def get_messages_as_conversation(self, _target, include_ancestors=False, repair_alternation=False):
             return [{"role": "user", "content": "hello"}]
@@ -5679,6 +5688,9 @@ def test_slash_exec_r7_read_commands_use_metadata_mirror_flag_on(monkeypatch):
                 self.get_messages_as_conversation(session_id, repair_alternation=True),
                 self.get_messages_as_conversation(session_id, include_ancestors=True),
             )
+
+        def get_ancestor_display_prefix(self, _sid):
+            return []
 
         def get_messages_as_conversation(self, key, include_ancestors=True, repair_alternation=False):
             assert key == "session-key"

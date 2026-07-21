@@ -49,6 +49,7 @@ IGNORED_PATTERNS = [
     re.compile(r"^dependabot", re.IGNORECASE),
     re.compile(r"^renovate", re.IGNORECASE),
     re.compile(r"^Kopi\s+(Agent|Audit)$", re.IGNORECASE),
+    re.compile(r"^nousbot(-eng)?$", re.IGNORECASE),
     re.compile(r"^Ubuntu$", re.IGNORECASE),
 ]
 
@@ -59,6 +60,7 @@ IGNORED_EMAILS = {
     "cursoragent@cursor.com",
     "kopi@nousresearch.com",
     "kopi-audit@example.com",
+    "nousbot@nousresearch.com",
     "kopi@habibilabs.dev",
     "omx@oh-my-codex.dev",
     "codex@openai.com",
