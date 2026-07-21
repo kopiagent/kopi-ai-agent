@@ -7,6 +7,7 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
+import type * as KopiApi from '@/kopi'
 import { $modelPresets, getModelPreset } from '@/store/model-presets'
 import {
   $activeSessionId,
@@ -19,6 +20,12 @@ import {
 } from '@/store/session'
 
 import { type FastControl, ModelEditSubmenu } from './model-edit-submenu'
+
+vi.mock('@/kopi', async importOriginal => {
+  const actual = await importOriginal<typeof KopiApi>()
+
+  return { ...actual, setApiRequestProfile: vi.fn() }
+})
 
 // Radix calls these on open; jsdom doesn't implement them.
 beforeAll(() => {
