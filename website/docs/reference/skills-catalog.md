@@ -99,6 +99,12 @@ If a skill is missing from this list but present in the repo, the catalog is reg
 |-------|-------------|------|
 | [`kopi-desktop-plugins`](/docs/user-guide/skills/bundled/kopi-desktop-plugins/kopi-desktop-plugins-kopi-desktop-plugins) | Write desktop app plugins that add UI panes and commands. | `kopi-desktop-plugins` |
 
+## kopi-themes
+
+| Skill | Description | Path |
+|-------|-------------|------|
+| [`kopi-themes`](/docs/user-guide/skills/bundled/kopi-themes/kopi-themes-kopi-themes) | Author a Kopi color theme that skins every surface. | `kopi-themes` |
+
 ## media
 
 | Skill | Description | Path |
@@ -141,6 +147,7 @@ If a skill is missing from this list but present in the repo, the catalog is reg
 | [`petdex`](/docs/user-guide/skills/bundled/productivity/productivity-petdex) | Install and select animated petdex mascots for Kopi. | `productivity/petdex` |
 | [`powerpoint`](/docs/user-guide/skills/bundled/productivity/productivity-powerpoint) | Create, read, edit .pptx decks, slides, notes, templates. | `productivity/powerpoint` |
 | [`teams-meeting-pipeline`](/docs/user-guide/skills/bundled/productivity/productivity-teams-meeting-pipeline) | Operate the Teams meeting summary pipeline via Kopi CLI — summarize meetings, inspect pipeline status, replay jobs, manage Microsoft Graph subscriptions. | `productivity/teams-meeting-pipeline` |
+| [`tui-widgets`](/docs/user-guide/skills/bundled/productivity/productivity-tui-widgets) | Author live widget apps for the Kopi TUI dock. | `productivity/tui-widgets` |
 | [`xlsx`](/docs/user-guide/skills/bundled/productivity/productivity-xlsx) | Create, read, edit Excel .xlsx spreadsheets and CSVs. | `productivity/xlsx` |
 
 ## research

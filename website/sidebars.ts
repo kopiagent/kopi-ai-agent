@@ -253,6 +253,15 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'category',
+                  label: 'kopi-themes',
+                  key: 'skills-bundled-kopi-themes',
+                  collapsed: true,
+                  items: [
+                    'user-guide/skills/bundled/kopi-themes/kopi-themes-kopi-themes',
+                  ],
+                },
+                {
+                  type: 'category',
                   label: 'media',
                   key: 'skills-bundled-media',
                   collapsed: true,
@@ -304,6 +313,7 @@ const sidebars: SidebarsConfig = {
                     'user-guide/skills/bundled/productivity/productivity-petdex',
                     'user-guide/skills/bundled/productivity/productivity-powerpoint',
                     'user-guide/skills/bundled/productivity/productivity-teams-meeting-pipeline',
+                    'user-guide/skills/bundled/productivity/productivity-tui-widgets',
                     'user-guide/skills/bundled/productivity/productivity-xlsx',
                   ],
                 },
