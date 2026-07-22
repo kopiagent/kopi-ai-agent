@@ -2,7 +2,7 @@
   "name": "kopi",
   "productName": "Kopi",
   "private": true,
-  "version": "1.21.1",
+  "version": "1.22.0",
   "description": "Native desktop shell for Kopi Agent.",
   "author": "Kopi Ai Agent Pte Ltd",
   "homepage": "https://kopiaiagent.com",
