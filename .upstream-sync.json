@@ -1,9 +1,9 @@
 {
   "upstream": "https://github.com/NousResearch/hermes-agent.git",
-  "synced_to_commit": "f4df260f2",
-  "synced_date": "2026-07-21",
+  "synced_to_commit": "3de91c697",
+  "synced_date": "2026-07-22",
   "merge_base": "c1b46d9",
-  "sync_tag": "hermes-sync-f4df260f2",
+  "sync_tag": "hermes-sync-3de91c697",
   "rebrand_transform": "case-preserving hermes->kopi; plus post-pass hermes-agent/kopi-agent -> kopi-ai-agent (package/repo name)",
   "merge_method": "TWO scenarios, do not confuse them. (A) INCREMENTAL SYNC \u2014 the normal case, used for v5..v8: per-file delta 3-way. base = the PREVIOUS synced_to_commit, theirs = new hermes HEAD, ours = current kopi tip. For each file in `git diff --name-status -M base theirs`, transform path+content (case-preserving hermes->kopi + hermes-agent/kopi-agent->kopi-ai-agent), then `git merge-file` into kopi's worktree. Tooling: scratchpad `batch_merge.py <hermes> <kopi> <base> <theirs>`; split large ranges into contiguous batches and merge/compile/test each. Because the delta contains ONLY real upstream changes, there is NO silent-drop risk. (B) FROM-SCRATCH RE-FORK \u2014 rare, only if you ever re-materialize the whole tree: base MUST be c1b46d9 (kopi's TRUE initial rebranded commit, the real common ancestor), NOT a synthetic T(fork) \u2014 a too-new base silently drops upstream code as 'ours deleted it'. c1b46d9 applies ONLY to scenario B; never use it as the base for an incremental delta.",
   "conflict_policy": "website/** + i18n kept KOPI's (user maintains these); README.md/install.sh kept KOPI's; .env.example kept KOPI PROXY block + upstream providers; version fields kept KOPI's (see rules); lockfiles + model-catalog.json regenerated, never taken from upstream. KOPI-CUSTOM features that upstream ALSO touches -> UNION-merge (keep the kopi addition AND apply the upstream change), never a blind take-upstream: e.g. inventory.py ConfigContext.current_api_key (kopi) + excluded_providers (upstream); web_server.py office/subagent block (kopi-only, upstream lacks _read_office_agents) + ssh endpoint/selftest cancel (upstream); main.ts `import type * as ElectronNS` namespace pattern (kopi) vs upstream's named electron imports (keep ours; the namespace covers new symbols like powerSaveBlocker). Everything with no kopi divergence -> take upstream transformed.",
@@ -22,7 +22,8 @@
     "614dc194e (v5, merged to main)",
     "36f2a966c (v6, 119 commits in 3 batches: 614dc194e..6a135142c..1093263aa..36f2a966c)",
     "26480e6c5 (v6 batch4, +29 commits 36f2a966c..26480e6c5)",
-    "f4df260f2 (v7, 239 commits in 4 batches 26480e6c5..86e603e7d..3b4f96ce9..17a99f6b1..f4df260f2; conflicts: inventory.py union, main.ts electron namespace +powerSaveBlocker, kept kopi version/brand/CI)"
+    "f4df260f2 (v7, 239 commits in 4 batches 26480e6c5..86e603e7d..3b4f96ce9..17a99f6b1..f4df260f2; conflicts: inventory.py union, main.ts electron namespace +powerSaveBlocker, kept kopi version/brand/CI)",
+    "3de91c697 (v8, 121 commits in 3 batches f4df260f2..35fb2e428..473545449..3de91c697; conflicts: web_server.py union x2 (kopi office feature + upstream ssh/selftest), desktop imports take-upstream, kept kopi version/website/uv.lock; Office skills docx/xlsx/pdf/pptx bundled per upstream default)"
   ],
   "notes": "The `synced_to_commit` field above is the single source of truth for the last upstream HEAD pulled — read it, do not rely on any hash hardcoded in prose. For the NEXT sync use merge_method scenario A (incremental delta): base = current `synced_to_commit`, theirs = new hermes HEAD. After merging, run green_ci_runbook (above) before pushing, then bump `synced_to_commit` + `sync_tag` + `synced_date`, append a `history` line, and create the new hermes-sync-<hash> tag on the marker commit.",
   "rules": [

@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
   saveConnectionConfig: payload => ipcRenderer.invoke('kopi:connection-config:save', payload),
   applyConnectionConfig: payload => ipcRenderer.invoke('kopi:connection-config:apply', payload),
   testConnectionConfig: payload => ipcRenderer.invoke('kopi:connection-config:test', payload),
+  sshConfigHosts: () => ipcRenderer.invoke('kopi:ssh-config:hosts'),
+  sshResolveHost: host => ipcRenderer.invoke('kopi:ssh-config:resolve', host),
   probeConnectionConfig: remoteUrl => ipcRenderer.invoke('kopi:connection-config:probe', remoteUrl),
   oauthLoginConnectionConfig: remoteUrl => ipcRenderer.invoke('kopi:connection-config:oauth-login', remoteUrl),
   oauthLogoutConnectionConfig: remoteUrl => ipcRenderer.invoke('kopi:connection-config:oauth-logout', remoteUrl),

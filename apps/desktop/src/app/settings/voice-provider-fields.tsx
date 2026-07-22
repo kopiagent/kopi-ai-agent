@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useI18n } from '@/i18n'
 import { getElevenLabsVoices, getKopiConfigSchema, saveKopiConfig } from '@/kopi'
+import { useI18n } from '@/i18n'
 import { notifyError } from '@/store/notifications'
 import type { KopiConfigRecord } from '@/types/kopi'
 

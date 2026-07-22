@@ -54,10 +54,14 @@ Use this skill when the user:
 
 **Location:** Set via `WIKI_PATH` environment variable (e.g. in `${KOPI_HOME:-~/.kopi}/.env`).
 
-If unset, defaults to `~/wiki`.
+The wiki and the Obsidian vault are ONE directory. When `WIKI_PATH` is unset it
+falls back to `OBSIDIAN_VAULT_PATH` (the same vault the `obsidian` skill and the
+`obsidian_*` tools use), then to `~/Documents/Obsidian Vault`. So "my knowledge
+base", "my wiki", and "my Obsidian vault" all resolve to the same place — no
+ambiguity about where knowledge lives.
 
 ```bash
-WIKI="${WIKI_PATH:-$HOME/wiki}"
+WIKI="${WIKI_PATH:-${OBSIDIAN_VAULT_PATH:-$HOME/Documents/Obsidian Vault}}"
 ```
 
 The wiki is just a directory of markdown files — open it in Obsidian, VS Code, or
@@ -97,7 +101,7 @@ When the user has an existing wiki, **always orient yourself before doing anythi
 ③ **Scan recent `log.md`** — read the last 20-30 entries to understand recent activity.
 
 ```bash
-WIKI="${WIKI_PATH:-$HOME/wiki}"
+WIKI="${WIKI_PATH:-${OBSIDIAN_VAULT_PATH:-$HOME/Documents/Obsidian Vault}}"
 # Orientation reads at session start
 read_file "$WIKI/SCHEMA.md"
 read_file "$WIKI/index.md"
@@ -117,7 +121,7 @@ at hand before creating anything new.
 
 When the user asks to create or start a wiki:
 
-1. Determine the wiki path (from `$WIKI_PATH` env var, or ask the user; default `~/wiki`)
+1. Determine the wiki path (`$WIKI_PATH`, else `$OBSIDIAN_VAULT_PATH`, else `~/Documents/Obsidian Vault`; or ask the user). The wiki lives in the same directory as the Obsidian vault.
 2. Create the directory structure above
 3. Ask the user what domain the wiki covers — be specific
 4. Write `SCHEMA.md` customized to the domain (see template below)
