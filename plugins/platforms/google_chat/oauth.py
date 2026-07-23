@@ -199,7 +199,7 @@ def load_user_credentials(email: Optional[str] = None) -> Optional[Any]:
     except ImportError:
         logger.warning(
             "[google_chat_user_oauth] google-auth not installed; user-OAuth "
-            "attachment delivery is disabled. Install kopi-ai-agent[google_chat]."
+            "attachment delivery is disabled. Run `kopi setup` to install Google Chat support."
         )
         return None
 
@@ -388,8 +388,7 @@ def install_deps() -> bool:
         return True
     except Exception as exc:
         print(f"ERROR: Failed to install dependencies: {exc}")
-        print("Or install via the optional extra:")
-        print("  pip install 'kopi-ai-agent[google_chat]'")
+        print("Run `kopi setup` to repair the managed installation, then retry.")
         return False
 
 

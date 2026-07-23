@@ -141,7 +141,7 @@ def install_deps():
         "On environments without pip (e.g. Nix, or the Kopi Docker image's "
         "uv-managed venv), install the optional extra instead:"
     )
-    print("  pip install 'kopi-agent[google]'")
+    print("  kopi setup")
     print(f"Or manually: {sys.executable} -m pip install {' '.join(REQUIRED_PACKAGES)}")
     return False
 

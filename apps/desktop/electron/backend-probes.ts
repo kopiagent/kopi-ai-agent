@@ -106,6 +106,16 @@ function canImportKopiCli(pythonPath: string, opts: { env?: Record<string, strin
  *   in resolveKopiBackend.
  * @returns {boolean}
  */
+/**
+ * An explicit desktop backend command is a deployment contract, not a PATH
+ * discovery candidate. In particular, the Nix desktop wrapper points this at
+ * its immutable, matching Kopi package; it must never fall through to the
+ * mutable install-script bootstrap path if a best-effort probe is slow.
+ */
+function shouldTrustKopiOverride(kopiOverride?: string) {
+  return typeof kopiOverride === 'string' && kopiOverride.trim().length > 0
+}
+
 function verifyKopiCli(kopiCommand: string, opts?: { shell?: boolean }) {
   if (!kopiCommand) {
     return false
@@ -125,4 +135,4 @@ function verifyKopiCli(kopiCommand: string, opts?: { shell?: boolean }) {
   }
 }
 
-export { canImportKopiCli, kopiRuntimeImportProbe, PROBE_TIMEOUT_MS, verifyKopiCli }
+export { canImportKopiCli, kopiRuntimeImportProbe, PROBE_TIMEOUT_MS, shouldTrustKopiOverride, verifyKopiCli }

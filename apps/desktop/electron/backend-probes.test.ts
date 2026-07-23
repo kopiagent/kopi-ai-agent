@@ -12,7 +12,7 @@ import path from 'node:path'
 
 import { test } from 'vitest'
 
-import { canImportKopiCli, kopiRuntimeImportProbe, verifyKopiCli } from './backend-probes'
+import { canImportKopiCli, kopiRuntimeImportProbe, shouldTrustKopiOverride, verifyKopiCli } from './backend-probes'
 
 // Resolve the host's own Node binary -- guaranteed to be on disk and
 // runnable. We use it as both a stand-in for "a python that doesn't
@@ -47,6 +47,15 @@ test('kopi runtime import probe checks config dependencies', () => {
   // passed the old probe and produced an unrecoverable boot loop.
   assert.match(probe, /\bimport dotenv\b/)
   assert.match(probe, /\bimport kopi_cli\.config\b/)
+})
+
+test('explicit Kopi override is authoritative', () => {
+  assert.equal(shouldTrustKopiOverride('/nix/store/abc/bin/kopi'), true)
+})
+
+test('empty Kopi override is not authoritative', () => {
+  assert.equal(shouldTrustKopiOverride(''), false)
+  assert.equal(shouldTrustKopiOverride(undefined), false)
 })
 
 test('verifyKopiCli returns false when command is falsy', () => {

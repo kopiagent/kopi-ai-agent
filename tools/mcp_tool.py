@@ -2353,10 +2353,8 @@ class MCPServerTask:
         if not _MCP_AVAILABLE:
             raise ImportError(
                 f"MCP server '{self.name}' requires the 'mcp' Python SDK, but "
-                "it is not installed. Install with:\n"
-                "  pip install 'kopi-ai-agent[mcp]'\n"
-                "or (full install):\n"
-                "  pip install 'kopi-ai-agent[all]'"
+                "it is not installed. Run `kopi setup` to install MCP support, "
+                "then retry."
             )
 
         command = config.get("command")

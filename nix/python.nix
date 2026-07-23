@@ -110,6 +110,15 @@ let
           overlay
           buildSystemOverrides
           pythonPackageOverrides
+          # ``setup.py`` permits wheel/sdist creation only from the sealed
+          # Kopi derivation. This is deliberately a derivation environment
+          # variable, not a devShell variable: ``nix develop -c uv build``
+          # must remain blocked.
+          (final: prev: {
+            kopi-ai-agent = prev.kopi-ai-agent.overrideAttrs (_old: {
+              KOPI_NIX_BUILD = "1";
+            });
+          })
         ]
       );
 

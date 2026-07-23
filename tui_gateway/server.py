@@ -1431,6 +1431,7 @@ def _send_compute_host_control(
     command: str = "",
     payload: dict | None = None,
     wait: bool = True,
+    timeout: float = 30.0,
 ) -> dict:
     frame = dict(payload or {})
     frame.setdefault("type", "control")
@@ -1440,6 +1441,7 @@ def _send_compute_host_control(
         route_name=route_name,
         payload=frame,
         wait=wait,
+        timeout=timeout,
     )
 
 
@@ -3642,12 +3644,18 @@ def _compress_session_history(
     # cached prompt (which already contains the agent identity block)
     # makes the rebuild append the identity a second time. Mirrors the
     # CLI's _manual_compress fix for issue #15281.
+    # force=True: every caller of this helper is a manual /compress path
+    # (session.compress RPC, slash compress/compact, slash-worker mirror) —
+    # auto-compaction runs inside the agent loop, not here. Manual
+    # compaction bypasses the summary-failure cooldown, matching the CLI
+    # and gateway handlers.
     try:
         compressed, _ = agent._compress_context(
             history,
             None,
             approx_tokens=approx_tokens,
             focus_topic=focus_topic or None,
+            force=True,
             defer_context_engine_notification=True,
         )
     except Exception:
@@ -3992,18 +4000,6 @@ def _session_info(agent, session: dict | None = None) -> dict:
         "usage": _session_usage_snapshot(session),
         "profile_name": _current_profile_name(),
     }
-    try:
-        from kopi_cli.config import (
-            detect_install_method,
-            format_unsupported_install_warning,
-            is_unsupported_install_method,
-        )
-
-        _install_method = detect_install_method()
-        if is_unsupported_install_method(_install_method):
-            info["install_warning"] = format_unsupported_install_warning(_install_method)
-    except Exception:
-        pass
     try:
         from kopi_cli import __version__, __release_date__
 
@@ -9091,6 +9087,7 @@ def _(rid, params: dict) -> dict:
     session, err = _sess_nowait(params, rid)
     if err:
         return err
+    assert session is not None
     if _session_uses_compute_host(session):
         sid = str(params.get("session_id") or "")
         focus_topic = str(params.get("focus_topic", "") or "").strip()
@@ -9101,13 +9098,38 @@ def _(rid, params: dict) -> dict:
                 route_name="session.compress",
                 command=command,
                 wait=True,
+                timeout=120.0,
             )
         except Exception as exc:
             return _err(rid, 5019, f"compute-host compress failed: {exc}")
         if ack.get("type") in {"control.error", "error"}:
             return _err(rid, 4009, str(ack.get("message") or "compute-host compress failed"))
         _apply_compute_host_metadata_mirror(session, ack)
-        return _ok(rid, {"status": "compressed", "turn_isolation": True, "host_ack": ack})
+        host_result = ack.get("result")
+        if isinstance(host_result, dict):
+            # The host owns the isolated session's agent/history, so preserve
+            # its structured compression result verbatim. In particular this
+            # carries `status: aborted` and `summary.aborted`; flattening the
+            # old text-only acknowledgement made Desktop show aborted work as a
+            # success toast.
+            return _ok(rid, {**host_result, "turn_isolation": True})
+        host_info = ack.get("session_info") if isinstance(ack.get("session_info"), dict) else {}
+        host_messages = _history_to_messages(ack.get("messages")) if isinstance(ack.get("messages"), list) else []
+        # `messages` is returned at top level for the desktop transcript
+        # replacement. Keep the host acknowledgement metadata, but do not send
+        # the same (potentially large) transcript a second time inside it.
+        host_ack = {key: value for key, value in ack.items() if key != "messages"}
+        return _ok(
+            rid,
+            {
+                "status": "compressed",
+                "turn_isolation": True,
+                "host_ack": host_ack,
+                "info": host_info,
+                "messages": host_messages,
+                "usage": host_info.get("usage") if isinstance(host_info.get("usage"), dict) else {},
+            },
+        )
     session, err = _sess(params, rid)
     if err:
         return err
@@ -9202,7 +9224,11 @@ def _(rid, params: dict) -> dict:
                     "summary": summary,
                     "usage": usage,
                     "info": info,
-                    "messages": messages,
+                    # Keep this identical to session.resume / session.history:
+                    # raw tool results can contain large or sensitive payloads
+                    # that belong in persisted history, not the transcript
+                    # replacement response.
+                    "messages": _history_to_messages(messages),
                 },
             )
         finally:
@@ -9223,6 +9249,23 @@ def _(rid, params: dict) -> dict:
     session, err = _sess(params, rid)
     if err:
         return err
+
+    if _session_uses_compute_host(session):
+        sid = str(params.get("session_id") or "")
+        try:
+            ack = _send_compute_host_control(
+                sid,
+                route_name="session.save",
+                wait=True,
+            )
+        except Exception as exc:
+            return _err(rid, 5011, f"compute-host session save failed: {exc}")
+        if ack.get("type") in {"control.error", "error"}:
+            return _err(rid, 5011, str(ack.get("message") or "compute-host session save failed"))
+        result = ack.get("result")
+        if not isinstance(result, dict):
+            return _err(rid, 5011, "compute-host session save returned an invalid response")
+        return _ok(rid, result)
 
     agent = session["agent"]
     # Mirror the classic CLI /save: snapshot under the Kopi profile home
@@ -9372,6 +9415,9 @@ def _(rid, params: dict) -> dict:
 
 @method("session.interrupt")
 def _(rid, params: dict) -> dict:
+    # Keypress barge-in: stopping the turn also silences its streaming TTS
+    # (voice is process-global, so no per-session scoping is needed).
+    _tts_stream_stop()
     session, err = _sess_nowait(params, rid)
     if err:
         return err
@@ -9742,6 +9788,12 @@ def _(rid, params: dict) -> dict:
     raw_text = params.get("text", "")
     text = sanitize_user_prompt_text(raw_text) if isinstance(raw_text, str) else raw_text
     truncate_user_ordinal = params.get("truncate_before_user_ordinal")
+    if params.get("interrupted"):
+        # Client-side barge-in (desktop VAD / typing over playback) — latch it
+        # so this turn's model message carries the interruption note.
+        from tools.tts_streaming import mark_speech_interrupted
+
+        mark_speech_interrupted()
     session, err = _sess_nowait(params, rid)
     if err:
         return err
@@ -10302,6 +10354,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
         session_tokens = []
         home_token = None  # per-turn KOPI_HOME override for a resumed remote profile
         goal_followup = None  # set by the post-turn goal hook below
+        tts_queue = None  # streaming-TTS feed for this turn (voice mode)
         one_turn_restore = session.pop("one_turn_model_restore", None)
         try:
             from tools.approval import (
@@ -10424,12 +10477,32 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 else:
                     run_message = _enrich_with_attached_images(prompt, images)
 
+            # Streaming TTS: voice-mode replies are spoken sentence-by-sentence
+            # as tokens arrive (CLI parity) instead of after the full turn.
+            # begin() first — it cuts any still-speaking previous turn, and
+            # that cut IS this turn's barge-in, so it must latch before we
+            # consume the latch below.
+            tts_queue = _tts_stream_begin()
+
+            # Barged mid-speech? Tell the model (API-message note, same
+            # enrichment channel as attached images) so it can react
+            # ("rude!") instead of being oblivious to its own interruption.
+            from tools.tts_streaming import SPEECH_INTERRUPTED_NOTE, take_speech_interrupted
+
+            if take_speech_interrupted():
+                if isinstance(run_message, str):
+                    run_message = f"{SPEECH_INTERRUPTED_NOTE}\n\n{run_message}"
+                elif isinstance(run_message, list):
+                    run_message = [{"type": "text", "text": SPEECH_INTERRUPTED_NOTE}, *run_message]
+
             def _stream(delta):
                 with session["history_lock"]:
                     _append_inflight_delta(session, delta)
                 payload = {"text": delta}
                 if streamer and (r := streamer.feed(delta)) is not None:
                     payload["rendered"] = r
+                if tts_queue is not None and isinstance(delta, str):
+                    tts_queue.put(delta)
                 _emit("message.delta", sid, payload)
 
             # Surface interim assistant text (commentary emitted alongside
@@ -10698,12 +10771,13 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 except Exception:
                     pass
 
-            # CLI parity: when voice-mode TTS is on, speak the agent reply
-            # (cli.py:_voice_speak_response).  Only the final text — tool
-            # calls / reasoning already stream separately and would be
-            # noisy to read aloud.
+            # Voice TTS fallback: when the streaming pipeline couldn't start
+            # (no provider / missing deps probed at turn start), speak the
+            # final text whole (cli.py:_voice_speak_response parity). The
+            # streaming path already spoke everything via tts_queue.
             if (
                 status == "complete"
+                and tts_queue is None
                 and isinstance(raw, str)
                 and raw.strip()
                 and _voice_tts_enabled()
@@ -10738,6 +10812,8 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             )
             _emit("error", sid, {"message": str(e)})
         finally:
+            if tts_queue is not None:
+                tts_queue.put(None)  # end-of-text sentinel — flush + finish speaking
             if one_turn_restore:
                 try:
                     _restore_agent_model_runtime(agent, one_turn_restore)
@@ -15512,6 +15588,118 @@ def _voice_tts_enabled() -> bool:
     return os.environ.get("KOPI_VOICE_TTS", "").strip() == "1"
 
 
+# ── Streaming TTS (one active pipeline per process — one speaker) ──────────
+# Token deltas from the running turn feed a sentence-buffering consumer
+# (tools.tts_tool.stream_tts_to_speaker) so speech starts on the first
+# sentence instead of after the full reply. Voice is process-global, so a
+# single slot suffices; starting a new turn's pipeline barges in on the
+# previous one.
+
+_tts_stream_lock = threading.Lock()
+_tts_stream_state: Optional[dict] = None
+
+
+def _tts_stream_begin() -> Optional[queue.Queue]:
+    """Start a per-turn streaming TTS consumer; None when TTS can't stream."""
+    if not _voice_tts_enabled():
+        return None
+    try:
+        from tools.tts_tool import check_tts_requirements, stream_tts_to_speaker
+
+        if not check_tts_requirements():
+            return None
+    except Exception:
+        return None
+
+    _tts_stream_stop()
+    text_queue: queue.Queue = queue.Queue()
+    stop = threading.Event()
+    done = threading.Event()
+    threading.Thread(
+        target=stream_tts_to_speaker, args=(text_queue, stop, done), daemon=True
+    ).start()
+
+    global _tts_stream_state
+    with _tts_stream_lock:
+        _tts_stream_state = {"stop": stop, "done": done}
+
+    if _voice_mode_enabled() and _voice_cfg_dict().get("barge_in", True):
+        threading.Thread(
+            target=_tts_stream_barge_in_monitor, args=(stop, done), daemon=True
+        ).start()
+
+    return text_queue
+
+
+def _tts_stream_stop(user_barge: bool = True) -> None:
+    """Cut any in-flight streaming TTS (new turn, interrupt, /voice off).
+
+    *user_barge* latches the interruption for the next turn's model note
+    (``mark_speech_interrupted``) — pass ``False`` for mode changes like
+    ``/voice off`` where the user isn't talking over the reply.
+    """
+    global _tts_stream_state
+    with _tts_stream_lock:
+        state, _tts_stream_state = _tts_stream_state, None
+    if state is None:
+        return
+    if user_barge and not state["done"].is_set():
+        from tools.tts_streaming import mark_speech_interrupted
+
+        mark_speech_interrupted()
+    state["stop"].set()
+    try:
+        from tools.voice_mode import stop_playback
+
+        stop_playback()
+    except Exception:
+        pass
+
+
+def _tts_stream_barge_in_monitor(stop: threading.Event, done: threading.Event) -> None:
+    """VAD barge-in: cut streaming TTS when the user starts talking.
+
+    Playback is cut at the moment of detection while the monitor keeps
+    capturing (with pre-roll) until the user goes quiet — the interruption is
+    then transcribed and emitted as ``voice.transcript``, which the TUI
+    submits like any spoken turn. Without capture the opening words would be
+    lost between detection and the next recording start.
+    """
+    try:
+        from tools.tts_streaming import mark_speech_interrupted
+        from tools.voice_mode import listen_for_speech, stop_playback, transcribe_recording
+
+        barged = threading.Event()
+
+        def _cut_playback():
+            if not done.is_set():
+                barged.set()
+                mark_speech_interrupted()
+                stop.set()
+                stop_playback()
+                _voice_emit("voice.interrupted")
+
+        wav_path = listen_for_speech(
+            lambda: stop.is_set() or done.is_set(),
+            capture=True,
+            on_trigger=_cut_playback,
+        )
+        if not (wav_path and barged.is_set()):
+            return
+        try:
+            result = transcribe_recording(wav_path)
+            text = (result.get("transcript") or "").strip() if result.get("success") else ""
+            if text:
+                _voice_emit("voice.transcript", {"text": text})
+        finally:
+            try:
+                os.unlink(wav_path)
+            except OSError:
+                pass
+    except Exception as e:
+        logger.debug("TTS barge-in monitor failed: %s", e)
+
+
 def _voice_cfg_dict() -> dict:
     """Shape-safe accessor for the ``voice:`` block in config.yaml.
 
@@ -15599,8 +15787,10 @@ def _(rid, params: dict) -> dict:
             except Exception as e:
                 logger.warning("voice: stop_continuous failed during toggle off: %s", e)
 
-            # Clear TTS so it can be toggled independently after voice is off.
+            # Clear TTS so it can be toggled independently after voice is off,
+            # and silence any in-flight streaming speech.
             os.environ["KOPI_VOICE_TTS"] = "0"
+            _tts_stream_stop(user_barge=False)
 
         return _ok(
             rid,
@@ -15617,6 +15807,8 @@ def _(rid, params: dict) -> dict:
         new_value = not _voice_tts_enabled()
         # Runtime-only flag (CLI parity) — see voice.toggle on/off above.
         os.environ["KOPI_VOICE_TTS"] = "1" if new_value else "0"
+        if not new_value:
+            _tts_stream_stop(user_barge=False)
         # Include ``record_key`` on every branch so a /voice tts toggle
         # doesn't reset the TUI's cached shortcut to the default when a
         # user has a custom binding configured (Copilot review, round 2

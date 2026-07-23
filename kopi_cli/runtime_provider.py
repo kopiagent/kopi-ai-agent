@@ -1626,7 +1626,7 @@ def resolve_runtime_provider(
                 "in ~/.kopi/.env, or run 'gcloud auth application-default "
                 "login' for ADC. Set the GCP project/region under vertex: in "
                 "config.yaml if they aren't embedded in the credentials. "
-                "Install the extra with: pip install 'kopi-ai-agent[vertex]'."
+                "Run `kopi setup` to install Vertex support."
             )
         return {
             "provider": "vertex",

@@ -192,7 +192,9 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
             (echo "FAIL: KOPI_BUNDLED_LOCALES not in wrapper"; exit 1)
           echo "PASS: KOPI_BUNDLED_LOCALES set in wrapper"
 
-          echo "=== Rendering via the wrapper override (KOPI_BUNDLED_LOCALES) ==="
+          # locales/ is a bare data dir (no __init__.py), shipped via a
+          # symlink + KOPI_BUNDLED_LOCALES (not via wheel data-files).
+          # Verify the wrapper override resolves real strings.
           export HOME=$(mktemp -d)
           RENDERED=$(cd "$HOME" && KOPI_BUNDLED_LOCALES=${kopi-ai-agent}/share/kopi-ai-agent/locales \
             ${kopiVenv}/bin/python3 -c "from agent import i18n; print(i18n.t('gateway.reset.header_default', lang='en'))")
@@ -200,21 +202,35 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
           test "$RENDERED" != "gateway.reset.header_default" || (echo "FAIL: i18n returned the raw key with KOPI_BUNDLED_LOCALES set"; exit 1)
           echo "PASS: i18n renders a human string via the wrapper override"
 
-          # Defense-in-depth check: the sealed venv must ALSO resolve catalogs
-          # with NO env var, via the wheel's setuptools data-files materialized
-          # into the venv data scheme. If a future uv2nix bump drops data-files,
-          # the wrapper override above would mask the regression at runtime while
-          # `pip install`/other sealed paths silently break — this catches it.
-          echo "=== Rendering WITHOUT the env var (data-files materialization) ==="
-          BARE_DIR=$(cd "$HOME" && ${kopiVenv}/bin/python3 -c "from agent import i18n; print(i18n._locales_dir())")
-          BARE=$(cd "$HOME" && ${kopiVenv}/bin/python3 -c "from agent import i18n; print(i18n.t('gateway.reset.header_default', lang='en'))")
-          echo "resolved dir (no env var): $BARE_DIR"
-          echo "rendered: $BARE"
-          test "$BARE" != "gateway.reset.header_default" || \
-            (echo "FAIL: sealed venv could not resolve locales without KOPI_BUNDLED_LOCALES — data-files materialization regressed"; exit 1)
-          echo "PASS: sealed venv resolves locales via data-files without the env var"
-
           echo "=== All bundled locales checks passed ==="
+          mkdir -p $out
+          echo "ok" > $out/result
+        '';
+
+        # Verify bundled optional-mcps catalog is present and resolvable.
+        # optional-mcps/ is a bare data dir shipped via symlink +
+        # KOPI_OPTIONAL_MCPS (not via wheel data-files).
+        bundled-mcps = pkgs.runCommand "kopi-bundled-mcps" { } ''
+          set -e
+          echo "=== Checking bundled optional-mcps ==="
+          test -d ${kopi-ai-agent}/share/kopi-ai-agent/optional-mcps || (echo "FAIL: optional-mcps directory missing"; exit 1)
+          echo "PASS: optional-mcps directory exists"
+
+          MANIFEST_COUNT=$(find -L ${kopi-ai-agent}/share/kopi-ai-agent/optional-mcps -name "manifest.yaml" | wc -l)
+          test "$MANIFEST_COUNT" -gt 0 || (echo "FAIL: no manifest.yaml files found"; exit 1)
+          echo "PASS: $MANIFEST_COUNT catalog manifests found"
+
+          grep -q "KOPI_OPTIONAL_MCPS" ${kopi-ai-agent}/bin/kopi || \
+            (echo "FAIL: KOPI_OPTIONAL_MCPS not in wrapper"; exit 1)
+          echo "PASS: KOPI_OPTIONAL_MCPS set in wrapper"
+
+          export HOME=$(mktemp -d)
+          CATALOG=$(cd "$HOME" && ${kopi-ai-agent}/bin/kopi mcp catalog 2>/dev/null || true)
+          echo "catalog output: $CATALOG"
+          test -n "$CATALOG" || (echo "FAIL: kopi mcp catalog returned empty"; exit 1)
+          echo "PASS: mcp catalog resolves entries"
+
+          echo "=== All bundled optional-mcps checks passed ==="
           mkdir -p $out
           echo "ok" > $out/result
         '';

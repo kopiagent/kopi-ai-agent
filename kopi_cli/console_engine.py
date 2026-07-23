@@ -1180,7 +1180,7 @@ class KopiConsoleEngine:
             "model",
             "moa",
             "oneshot",
-            "postinstall",
+
             "proxy",
             "serve",
             "setup",

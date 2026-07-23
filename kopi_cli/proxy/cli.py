@@ -20,9 +20,7 @@ logger = logging.getLogger(__name__)
 
 def _print_aiohttp_missing() -> None:
     print(
-        "kopi proxy requires aiohttp. Install one of:\n"
-        "  pip install 'kopi-ai-agent[messaging]'\n"
-        "  pip install aiohttp",
+        "kopi proxy requires aiohttp. Run `kopi setup` to install it.",
         file=sys.stderr,
     )
 

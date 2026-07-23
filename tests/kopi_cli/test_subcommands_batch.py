@@ -27,7 +27,7 @@ from kopi_cli.subcommands.login import build_login_parser
 from kopi_cli.subcommands.logout import build_logout_parser
 from kopi_cli.subcommands.logs import build_logs_parser
 from kopi_cli.subcommands.model import build_model_parser
-from kopi_cli.subcommands.postinstall import build_postinstall_parser
+
 from kopi_cli.subcommands.prompt_size import build_prompt_size_parser
 from kopi_cli.subcommands.security import build_security_parser
 from kopi_cli.subcommands.setup import build_setup_parser
@@ -51,7 +51,7 @@ def _h(name):
 SINGLE_HANDLER_CASES = [
     ("model", build_model_parser, "cmd_model", ["model"]),
     ("setup", build_setup_parser, "cmd_setup", ["setup"]),
-    ("postinstall", build_postinstall_parser, "cmd_postinstall", ["postinstall"]),
+
     ("whatsapp", build_whatsapp_parser, "cmd_whatsapp", ["whatsapp"]),
     ("slack", build_slack_parser, "cmd_slack", ["slack"]),
     ("login", build_login_parser, "cmd_login", ["login"]),
