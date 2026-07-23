@@ -39,6 +39,12 @@ class TestWriteDenyExactPaths:
         path = str(get_kopi_home() / ".env")
         assert _is_write_denied(path) is True
 
+    def test_encrypted_bitwarden_cache(self):
+        from kopi_constants import get_kopi_home
+
+        path = get_kopi_home() / "cache" / "bws_cache.enc.json"
+        assert _is_write_denied(str(path)) is True
+
     def test_kopi_root_env_when_running_under_profile(self, tmp_path, monkeypatch):
         """Top-level ``<root>/.env`` stays write-denied even when running under
         a profile (#15981).

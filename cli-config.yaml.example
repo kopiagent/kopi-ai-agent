@@ -439,6 +439,12 @@ compression:
   # compression of older turns.
   protect_last_n: 20
 
+  # Compression retry rounds before a turn gives up with "max compression
+  # attempts reached" (default: 3, same as the previous hardcoded value).
+  # Raise (e.g. 6) for tool-schema-heavy sessions where 3 rounds cannot bring
+  # the request estimate under the threshold. Validated >= 1, hard cap 10.
+  max_attempts: 3
+
   # Codex app-server (codex CLI runtime) thread-compaction mode. The codex
   # agent owns the real thread context on this runtime, so Kopi' summarizer
   # cannot shrink it — compaction goes through the app server instead.
@@ -1499,7 +1505,10 @@ updates:
 #     access_token_env: BWS_ACCESS_TOKEN   # bootstrap token, sourced from .env
 #     project_id: ""                       # UUID of the BSM project to sync
 #     server_url: ""                       # "" = US Cloud; EU/self-hosted URL otherwise
-#     cache_ttl_seconds: 300               # 0 disables caching
+#     cache_ttl_seconds: 300               # 0 disables fresh caching
+#     encrypted_cache:                     # optional encrypted stale fallback
+#       enabled: false
+#       max_stale_seconds: 0               # 0 disables stale fallback
 #     override_existing: true              # BSM values win over existing env
 #     auto_install: true                   # lazy-download bws into ~/.kopi/bin
 #

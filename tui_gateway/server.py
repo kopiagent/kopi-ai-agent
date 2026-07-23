@@ -11946,7 +11946,7 @@ def _(rid, params: dict) -> dict:
         )
         return _ok(rid, {"key": key, "value": nv})
 
-    if key == "compact":
+    if key == "density":
         raw = str(value or "").strip().lower()
         cfg0 = _load_cfg()
         d0 = cfg0.get("display") if isinstance(cfg0.get("display"), dict) else {}
@@ -11958,7 +11958,7 @@ def _(rid, params: dict) -> dict:
         elif raw == "off":
             nv_b = False
         else:
-            return _err(rid, 4002, f"unknown compact value: {value}")
+            return _err(rid, 4002, f"unknown density value: {value}")
         _write_config_key("display.tui_compact", nv_b)
         return _ok(rid, {"key": key, "value": "on" if nv_b else "off"})
 
@@ -12828,7 +12828,7 @@ def _(rid, params: dict) -> dict:
             )
             nv = "full" if dm == "expanded" else "collapsed"
         return _ok(rid, {"value": nv})
-    if key == "compact":
+    if key == "density":
         on = bool((_load_cfg().get("display") or {}).get("tui_compact", False))
         return _ok(rid, {"value": "on" if on else "off"})
     if key == "theme":
@@ -13273,7 +13273,7 @@ _TUI_HIDDEN: frozenset[str] = frozenset(
 )
 
 _TUI_EXTRA: list[tuple[str, str, str]] = [
-    ("/compact", "Toggle compact display mode", "TUI"),
+    ("/density", "Toggle compact display mode", "TUI"),
     ("/logs", "Show recent gateway log lines", "TUI"),
     (
         "/mouse",
@@ -14498,8 +14498,8 @@ def _(rid, params: dict) -> dict:
         text_lower = text.lower()
         extras = [
             {
-                "text": "/compact",
-                "display": "/compact",
+                "text": "/density",
+                "display": "/density",
                 "meta": "Toggle compact display mode",
             },
             {
@@ -14542,10 +14542,42 @@ def _(rid, params: dict) -> dict:
         return _err(rid, 5020, str(e))
 
 
+def _model_picker_context(agent):
+    """Layer live session state onto config without losing custom identity."""
+    from kopi_cli.inventory import load_picker_context
+
+    ctx = load_picker_context()
+    provider = getattr(agent, "provider", "") if agent else ""
+    base_url = getattr(agent, "base_url", "") if agent else ""
+    if str(provider or "").strip().lower() == "custom":
+        try:
+            from kopi_cli.runtime_provider import canonical_custom_identity
+
+            provider = (
+                canonical_custom_identity(
+                    base_url=base_url or None,
+                    config_provider=ctx.current_provider,
+                )
+                or provider
+            )
+        except Exception:
+            logger.debug(
+                "custom provider identity recovery failed (model picker)",
+                exc_info=True,
+            )
+
+    return ctx.with_overrides(
+        current_provider=provider,
+        current_model=(getattr(agent, "model", "") if agent else "")
+        or _resolve_model(),
+        current_base_url=base_url,
+    )
+
+
 @method("model.options")
 def _(rid, params: dict) -> dict:
     try:
-        from kopi_cli.inventory import build_models_payload, load_picker_context
+        from kopi_cli.inventory import build_models_payload
 
         session = _sessions.get(params.get("session_id", ""))
         agent = session.get("agent") if session else None
@@ -14553,13 +14585,7 @@ def _(rid, params: dict) -> dict:
         # is spawned, IT owns the live provider/model/base_url. Empty
         # agent attributes must NOT clobber disk config (with_overrides
         # is truthy-only).
-        ctx = load_picker_context().with_overrides(
-            current_provider=getattr(agent, "provider", "") if agent else "",
-            current_model=(
-                (getattr(agent, "model", "") if agent else "") or _resolve_model()
-            ),
-            current_base_url=getattr(agent, "base_url", "") if agent else "",
-        )
+        ctx = _model_picker_context(agent)
         # picker_hints + canonical_order produce the TUI/desktop picker shape:
         # `authenticated`/`auth_type`/`key_env`/`warning` per row, in
         # CANONICAL_PROVIDERS declaration order. Desktop pickers default to the
@@ -14599,7 +14625,7 @@ def _(rid, params: dict) -> dict:
     try:
         from kopi_cli.auth import PROVIDER_REGISTRY
         from kopi_cli.config import is_managed
-        from kopi_cli.inventory import build_models_payload, load_picker_context
+        from kopi_cli.inventory import build_models_payload
 
         slug = (params.get("slug") or "").strip()
         api_key = (params.get("api_key") or "").strip()
@@ -14640,13 +14666,7 @@ def _(rid, params: dict) -> dict:
         # carries `authenticated` for the TUI frontend.
         session = _sessions.get(params.get("session_id", ""))
         agent = session.get("agent") if session else None
-        ctx = load_picker_context().with_overrides(
-            current_provider=getattr(agent, "provider", "") if agent else "",
-            current_model=(
-                (getattr(agent, "model", "") if agent else "") or _resolve_model()
-            ),
-            current_base_url=getattr(agent, "base_url", "") if agent else "",
-        )
+        ctx = _model_picker_context(agent)
         payload = build_models_payload(
             ctx, picker_hints=True, max_models=50,
         )
