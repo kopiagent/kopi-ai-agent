@@ -12961,6 +12961,20 @@ def cmd_dashboard(args):
         remaining = _find_stale_dashboard_pids()
         sys.exit(1 if remaining else 0)
 
+    # Load persisted secrets from ~/.kopi/.env into the environment before the
+    # dashboard reads them. In a container the credential (dashboard basic-auth,
+    # KOPI_API_KEY) is seeded to the data-volume .env by cont-init, but the
+    # dashboard process is launched via `s6-setuidgid`, which drops the run
+    # script's exported env — so the process must load the file itself, the same
+    # reload_env() the interactive CLI uses. Without this the basic-auth provider
+    # sees empty creds and a public-bind dashboard renders "sign-in unavailable".
+    try:
+        from kopi_cli.config import reload_env
+
+        reload_env()
+    except Exception:
+        pass
+
     # `serve` is the headless backend: no UI build, no SPA mount, neutral
     # ready sentinel. Resolved once and threaded through the re-exec, the
     # build gate, and start_server.
