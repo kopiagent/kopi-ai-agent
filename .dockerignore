@@ -33,6 +33,12 @@ node_modules
 # that now depends on the full ui-tui/packages/kopi-ink/ tree being present.
 ui-tui/dist/
 ui-tui/packages/kopi-ink/dist/
+# Built web dashboard bundle: the image rebuilds it (web/vite.config.ts
+# outDir=kopi_cli/web_dist, emptyOutDir). If the host's stale copy is in the
+# build context, the late `COPY . .` clobbers the fresh build's index.html
+# back to an old bundle hash. Exclude it so the image always serves what it
+# just built.
+kopi_cli/web_dist/
 
 # CI/CD
 .github
