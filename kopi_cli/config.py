@@ -1469,6 +1469,10 @@ DEFAULT_CONFIG = {
                                       # floored at 0.75 (raise-only) so compaction
                                       # doesn't fire with half the window still free;
                                       # set this above 0.75 to override the floor.
+        "threshold_tokens": None,     # absolute token cap — when set, compression
+                                      # triggers at the lower of the ratio-based
+                                      # threshold and this token count. Clamped to
+                                      # the model's context length at apply-time.
         "target_ratio": 0.20,         # fraction of threshold to preserve as recent tail
         "protect_last_n": 20,         # minimum recent messages to keep uncompressed
         "max_attempts": 3,            # compression retry rounds before a turn gives up
@@ -1545,6 +1549,21 @@ DEFAULT_CONFIG = {
                                       # models) still applies on top of overrides
                                       # (raise-only: an override above the floor
                                       # wins; one below it is raised to the floor).
+        "idle_compact_after_seconds": 0,  # Opt-in idle compaction (0 = disabled).
+                                      # When > 0, a session that resumes after at
+                                      # least this many seconds of inactivity
+                                      # compacts its accumulated history up front,
+                                      # before the first reply — so a long-lived
+                                      # thread resumed hours later doesn't re-read
+                                      # its full stale context on every turn.
+                                      # Time-based; complements (does not replace)
+                                      # the size-based `threshold` above. Skipped
+                                      # when the context is already at/below the
+                                      # post-compression target (threshold ×
+                                      # target_ratio) and it honors the same
+                                      # failure-cooldown / anti-thrash / per-session
+                                      # lock guards as every automatic compaction.
+                                      # Example: 1800 = compact after 30 min idle.
     },
 
     # Kanban subsystem (orchestrator workers + dispatcher-driven child tasks).
@@ -3249,6 +3268,20 @@ DEFAULT_CONFIG = {
         #     enforcement is a copy/gating change, not new migration code.
         #   "off": suppress the notice entirely.
         "fts_optimize_notice": "advise",
+        # CJK-bigram search index (messages_fts_cjk, cjk_unicode61 loadable
+        # tokenizer). When the extension is built (native/fts5_cjk/build.sh →
+        # ~/.kopi/lib/libfts5_cjk.so), 1-2 char CJK terms (일본, 项目, ...)
+        # get index-speed exact matching instead of LIKE full-table scans.
+        # True (default): use the index when the extension is present; the
+        # setting is inert when it isn't. False: never load the extension or
+        # serve the cjk index. Bridged to KOPI_CJK_FTS (internal carrier).
+        "cjk_fts": True,
+        # Slow session-search log threshold in milliseconds: searches at or
+        # above it log one INFO line with the routing path taken (fts_cjk /
+        # fts5 / trigram / like_scan) so latency regressions stay
+        # attributable per query shape. 0 logs every search. Bridged to
+        # KOPI_SEARCH_SLOW_MS (internal carrier).
+        "search_slow_ms": 1000,
     },
 
     # Contextual first-touch onboarding hints (see agent/onboarding.py).
@@ -8548,6 +8581,14 @@ def show_config():
     print(f"  Enabled:      {'yes' if enabled else 'no'}")
     if enabled:
         print(f"  Threshold:    {compression.get('threshold', 0.50) * 100:.0f}%")
+        _tt = compression.get('threshold_tokens')
+        if _tt is not None:
+            try:
+                _tt = int(_tt)
+                if _tt > 0:
+                    print(f"  Token cap:    {_tt:,} tokens (takes lower of ratio vs absolute)")
+            except (TypeError, ValueError):
+                pass
         print(f"  Target ratio: {compression.get('target_ratio', 0.20) * 100:.0f}% of threshold preserved")
         print(f"  Protect last: {compression.get('protect_last_n', 20)} messages")
         print(f"  Protect first: {compression.get('protect_first_n', 3)} non-system head messages")
@@ -8944,6 +8985,19 @@ def set_config_value(key: str, value: str, force: bool = False):
     env_var = terminal_config_env_var_for_key(key)
     if env_var and key != "terminal.cwd":
         save_env_value(env_var, _terminal_env_value(value))
+
+    # Setting display.skin is an explicit "apply NOW" — bump the skin file's
+    # mtime so the gateway watcher's (name, mtime) signature moves even when the
+    # name is unchanged (re-affirming the active skin after a surface missed the
+    # original activation). Built-ins have no file; a name switch already moves
+    # their signature.
+    if key == "display.skin" and isinstance(value, str) and value:
+        try:
+            skin_file = get_kopi_home() / "skins" / f"{value}.yaml"
+            if skin_file.exists():
+                skin_file.touch()
+        except Exception:
+            pass  # best-effort: the config write above already succeeded
 
     # Mask the echoed value when the (possibly nested) key is credential-shaped
     # — e.g. `kopi config set model.api_key cfut_...` routes to config.yaml

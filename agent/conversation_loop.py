@@ -17,7 +17,6 @@ resolved through :func:`_ra` so those patches keep working.
 from __future__ import annotations
 
 import json
-import functools
 import logging
 import os
 import random
@@ -79,29 +78,6 @@ from utils import base_url_host_matches, env_var_enabled
 
 logger = logging.getLogger(__name__)
 
-
-def _track_office_turn(func):
-    """Keep office presence paired across every return and exception path."""
-    @functools.wraps(func)
-    def wrapped(agent, user_message, *args, **kwargs):
-        try:
-            from tools.delegate_tool import mark_main_turn_start
-            positional_persisted = args[4] if len(args) > 4 else None
-            goal = kwargs.get("persist_user_message") or positional_persisted or user_message or ""
-            mark_main_turn_start(agent, goal)
-        except Exception:
-            pass
-        try:
-            return func(agent, user_message, *args, **kwargs)
-        finally:
-            try:
-                from tools.delegate_tool import mark_main_turn_end
-                mark_main_turn_end(agent)
-            except Exception:
-                pass
-
-    return wrapped
-
 # Stable prefix of the local interrupt status string emitted when a turn is
 # cancelled while waiting on the provider. Surfaces (ACP, TUI) match on this
 # to treat it as cancellation metadata rather than assistant prose.
@@ -116,11 +92,6 @@ INTERRUPT_WAITING_FOR_MODEL_PREFIX = "Operation interrupted: waiting for model r
 # itself, so every exception passes through them, which would make
 # _hit_local always True and misclassify transient API/network errors as
 # non-retryable local bugs. (#66267)
-#
-# AttributeError is handled separately in the outer except block — it is
-# ALWAYS a local programming bug when it targets agent attributes (especially
-# missing methods introduced by a commit splice after an auto-update rewrites
-# source underneath a live process). See the dedicated guard below. (#68178)
 _LOCAL_PROCESSING_MODULES = frozenset({
     "agent_runtime_helpers",
     "message_content",
@@ -130,6 +101,53 @@ _LOCAL_PROCESSING_MODULES = frozenset({
 _API_CALL_MODULES = frozenset({
     "chat_completion_helpers",
 })
+
+
+def _apply_active_turn_redirect(agent: Any, messages: List[Dict[str, Any]], text: str) -> None:
+    """Append a provider-safe checkpoint and correction to the live turn.
+
+    Incomplete provider reasoning blocks are not valid replay items (Anthropic
+    signs them; Responses reasoning items require their following output).
+    Preserve only what Kopi actually displayed, demoted to ordinary text,
+    then add the correction as a real user message. This keeps role alternation
+    valid and leaves every previously cached message byte-for-byte unchanged.
+    """
+    reasoning = str(
+        getattr(agent, "_current_streamed_reasoning_text", "") or ""
+    ).strip()
+    visible = agent._strip_think_blocks(
+        getattr(agent, "_current_streamed_assistant_text", "") or ""
+    ).strip()
+
+    checkpoint_parts = ["[This response was interrupted by a user correction.]"]
+    if reasoning:
+        checkpoint_parts.extend(
+            ["Reasoning shown before the interruption:", reasoning]
+        )
+    if visible:
+        checkpoint_parts.extend(
+            ["Visible response before the interruption:", visible]
+        )
+    checkpoint = "\n\n".join(checkpoint_parts)
+
+    # The normal live tail is user or tool, so an assistant checkpoint followed
+    # by the correction preserves strict alternation. If a transport already
+    # committed an assistant item, attribute the checkpoint inside the user
+    # correction instead of creating assistant→assistant.
+    if messages and messages[-1].get("role") == "assistant":
+        correction = (
+            "[Context from the interrupted assistant response]\n"
+            f"{checkpoint}\n\n"
+            f"{text}"
+        )
+        messages.append({"role": "user", "content": correction})
+    else:
+        messages.append({"role": "assistant", "content": checkpoint})
+        messages.append({"role": "user", "content": text})
+
+    agent._current_streamed_assistant_text = ""
+    agent._current_streamed_reasoning_text = ""
+    agent._stream_needs_break = True
 
 
 def _image_error_max_dimension(error: Exception) -> Optional[int]:
@@ -615,7 +633,6 @@ def _sync_failover_system_message(agent, api_messages, active_system_prompt):
     return sp
 
 
-@_track_office_turn
 def run_conversation(
     agent,
     user_message: Any,
@@ -763,39 +780,16 @@ def run_conversation(
         )
 
     while (api_call_count < agent.max_iterations and agent.iteration_budget.remaining > 0) or agent._budget_grace_call:
-        # ── Code skew guard (#68178) ───────────────────────────────
-        # Check whether the source tree has been updated underneath this
-        # long-lived process.  If so, a lazy import can resolve newly-added
-        # symbols against the stale in-memory AIAgent class, producing an
-        # AttributeError that would otherwise retry indefinitely.
-        # Perform the check on every iteration (it is cheap once confirmed).
-        _skew_warning = getattr(agent, "_check_code_skew_before_turn", lambda: None)()
-        if _skew_warning:
-            logger.warning("Code skew detected at API call #%d: %s", api_call_count + 1, _skew_warning)
-            _turn_exit_reason = "code_skew_detected"
-            final_response = (
-                f"I apologize, but the agent has detected that its source code "
-                f"has been updated while running. To avoid compatibility issues, "
-                f"please restart the application. ({_skew_warning})"
-            )
-            messages.append({"role": "assistant", "content": final_response})
-            return finalize_turn(
-                agent,
-                final_response=final_response,
-                api_call_count=api_call_count,
-                interrupted=False,
-                failed=True,
-                messages=messages,
-                conversation_history=conversation_history,
-                effective_task_id=effective_task_id,
-                turn_id=turn_id,
-                user_message=user_message,
-                original_user_message=original_user_message,
-                _should_review_memory=_should_review_memory,
-                _turn_exit_reason=_turn_exit_reason,
-                _pending_verification_response=_pending_verification_response,
-                _pending_verification_response_previewed=_pending_verification_response_previewed,
-            )
+        _redirect_text = agent._drain_pending_redirect()
+        if _redirect_text:
+            _apply_active_turn_redirect(agent, messages, _redirect_text)
+            if isinstance(original_user_message, str):
+                original_user_message = (
+                    f"{original_user_message}\n\n"
+                    f"User correction during the turn: {_redirect_text}"
+                )
+            agent._persist_session(messages, conversation_history)
+
         # Reset per-turn checkpoint dedup so each iteration can take one snapshot
         agent._checkpoint_mgr.new_turn()
 
@@ -1595,30 +1589,59 @@ def run_conversation(
 
                 from kopi_cli.middleware import run_llm_execution_middleware
 
-                # Pixel-office: flip the NPC back to "thinking" for the model
-                # phase; without this it keeps showing the last tool it ran.
+                _model_request_active = getattr(agent, "_model_request_active", None)
+                _redirect_lock = getattr(agent, "_pending_redirect_lock", None)
+                if _redirect_lock is not None:
+                    with _redirect_lock:
+                        if _model_request_active is not None:
+                            _model_request_active.set()
+                elif _model_request_active is not None:
+                    _model_request_active.set()
+                _redirect_crossed_response = False
                 try:
-                    from tools.delegate_tool import note_llm_activity
-                    note_llm_activity(agent)
-                except Exception:
-                    pass
-
-                response = run_llm_execution_middleware(
-                    api_kwargs,
-                    _perform_api_call,
-                    original_request=_original_api_kwargs,
-                    task_id=effective_task_id,
-                    turn_id=turn_id,
-                    api_request_id=api_request_id,
-                    session_id=agent.session_id or "",
-                    platform=agent.platform or "",
-                    model=agent.model,
-                    provider=agent.provider,
-                    base_url=agent.base_url,
-                    api_mode=agent.api_mode,
-                    api_call_count=api_call_count,
-                    middleware_trace=list(_llm_middleware_trace),
-                )
+                    response = run_llm_execution_middleware(
+                        api_kwargs,
+                        _perform_api_call,
+                        original_request=_original_api_kwargs,
+                        task_id=effective_task_id,
+                        turn_id=turn_id,
+                        api_request_id=api_request_id,
+                        session_id=agent.session_id or "",
+                        platform=agent.platform or "",
+                        model=agent.model,
+                        provider=agent.provider,
+                        base_url=agent.base_url,
+                        api_mode=agent.api_mode,
+                        api_call_count=api_call_count,
+                        middleware_trace=list(_llm_middleware_trace),
+                    )
+                finally:
+                    if _redirect_lock is not None:
+                        with _redirect_lock:
+                            if _model_request_active is not None:
+                                _model_request_active.clear()
+                            _redirect_crossed_response = bool(
+                                agent._pending_redirect
+                            )
+                    else:
+                        if _model_request_active is not None:
+                            _model_request_active.clear()
+                        _redirect_crossed_response = agent._has_pending_redirect()
+                if _redirect_crossed_response:
+                    # The response and redirect can cross on different threads:
+                    # redirect() observed the request as active just before this
+                    # call returned. Discard that now-stale response and rebuild
+                    # from the correction rather than silently losing it.
+                    if thinking_spinner:
+                        thinking_spinner.stop("")
+                        thinking_spinner = None
+                    if agent.thinking_callback:
+                        agent.thinking_callback("")
+                    if agent.clear_interrupt(preserve_redirect=True):
+                        _retry.restart_with_redirected_messages = True
+                    else:
+                        interrupted = True
+                    break
                 
                 api_duration = time.time() - api_start_time
                 
@@ -1852,11 +1875,6 @@ def run_conversation(
                     logger.warning(f"Invalid API response (retry {retry_count}/{max_retries}): {', '.join(error_details)} | Provider: {provider_name}")
                     
                     # Sleep in small increments to stay responsive to interrupts
-                    try:
-                        from tools.delegate_tool import note_waiting_activity
-                        note_waiting_activity(agent)  # pixel-office: park at the coffee machine
-                    except Exception:
-                        pass
                     sleep_end = time.time() + wait_time
                     _backoff_touch_counter = 0
                     while time.time() < sleep_end:
@@ -2585,6 +2603,15 @@ def run_conversation(
                     thinking_spinner = None
                 if agent.thinking_callback:
                     agent.thinking_callback("")
+                if agent._has_pending_redirect():
+                    # redirect() deliberately used the interrupt machinery to
+                    # cancel only this provider request. Keep its correction
+                    # queued, clear the cancellation bit, and let the outer
+                    # loop rebuild a clean request tail. Never materialize
+                    # incomplete signed/encrypted reasoning items.
+                    if agent.clear_interrupt(preserve_redirect=True):
+                        _retry.restart_with_redirected_messages = True
+                        break
                 api_elapsed = time.time() - api_start_time
                 agent._vprint(f"{agent.log_prefix}⚡ Interrupted during API call.", force=True)
                 interrupted = True
@@ -3090,7 +3117,7 @@ def run_conversation(
                         print(f"{agent.log_prefix}   Most likely: Portal OAuth expired, account out of credits, or agent key revoked.")
                     print(f"{agent.log_prefix}   Troubleshooting:")
                     print(f"{agent.log_prefix}     • Re-authenticate: kopi auth add nous")
-                    print(f"{agent.log_prefix}     • Check credits / billing: https://kopiaiagent.com/portal")
+                    print(f"{agent.log_prefix}     • Check credits / billing: https://portal.nousresearch.com")
                     print(f"{agent.log_prefix}     • Verify stored credentials: {_dhh}/auth.json")
                     print(f"{agent.log_prefix}     • Switch providers temporarily: /model <model> --provider openrouter")
                 if (
@@ -4147,7 +4174,7 @@ def run_conversation(
                                 agent._vprint(f"{agent.log_prefix}   💡 Nous Portal OAuth token was rejected (HTTP 401). Your token may be", force=True)
                                 agent._vprint(f"{agent.log_prefix}      expired, revoked, or your account may be out of credits. To fix:", force=True)
                                 agent._vprint(f"{agent.log_prefix}      1. Re-authenticate: kopi portal", force=True)
-                                agent._vprint(f"{agent.log_prefix}      2. Check your portal account: https://kopiaiagent.com/portal", force=True)
+                                agent._vprint(f"{agent.log_prefix}      2. Check your portal account: https://portal.nousresearch.com", force=True)
                                 # ``:free`` is OpenRouter slug syntax; Nous Portal will reject
                                 # the model name even after a successful re-auth.
                                 if isinstance(_model, str) and _model.endswith(":free"):
@@ -4507,11 +4534,6 @@ def run_conversation(
                 )
                 # Sleep in small increments so we can respond to interrupts quickly
                 # instead of blocking the entire wait_time in one sleep() call
-                try:
-                    from tools.delegate_tool import note_waiting_activity
-                    note_waiting_activity(agent)  # pixel-office: park at the coffee machine
-                except Exception:
-                    pass
                 sleep_end = time.time() + wait_time
                 _backoff_touch_counter = 0
                 while time.time() < sleep_end:
@@ -4538,6 +4560,15 @@ def run_conversation(
                             f"{int(sleep_end - time.time())}s remaining"
                         )
         
+        if _retry.restart_with_redirected_messages:
+            # The cancelled request produced no valid assistant item. Reuse the
+            # same logical iteration after the outer loop appends the displayed
+            # partial context and correction to ``messages``.
+            api_call_count -= 1
+            agent.iteration_budget.refund()
+            _retry.restart_with_redirected_messages = False
+            continue
+
         # If the API call was interrupted, skip response processing
         if interrupted:
             _turn_exit_reason = "interrupted_during_api_call"
@@ -5870,21 +5901,7 @@ def run_conversation(
 
             _is_local_processing_error = _hit_local and not _hit_api
 
-            # AttributeError on the agent object is ALWAYS a local bug —
-            # it means the live process is running spliced commits (the
-            # method does not exist on the in-memory AIAgent class but
-            # conversation_loop.py references it).  Circuit-break
-            # immediately to avoid burning provider API calls. (#68178)
-            _is_agent_attribute_error = (
-                isinstance(e, AttributeError)
-                and ("run_agent" in tb_module_names or "agent" in tb_module_names)
-            )
-
-            if _is_agent_attribute_error:
-                error_msg = (
-                    f"Fatal local code error in API call #{api_call_count}: {str(e)}"
-                )
-            elif _is_local_processing_error:
+            if _is_local_processing_error:
                 error_msg = (
                     f"Error during local message processing after "
                     f"OpenAI-compatible API call #{api_call_count}: {str(e)}"
@@ -5938,22 +5955,13 @@ def run_conversation(
             # role-alternation invariants.
 
             # If we're near the limit, break to avoid infinite loops.
-            # Local processing errors and agent AttributeError (commit-splice
-            # symptom) are deterministic — stop immediately rather than
-            # retrying until the budget is exhausted. (#68178)
+            # Local processing errors are deterministic — stop immediately
+            # rather than retrying until the budget is exhausted.
             if (
-                _is_agent_attribute_error
-                or _is_local_processing_error
+                _is_local_processing_error
                 or api_call_count >= agent.max_iterations - 1
             ):
-                if _is_agent_attribute_error:
-                    _turn_exit_reason = f"code_skew_attribute_error({error_msg[:80]})"
-                    final_response = (
-                        f"I apologize, but the agent process has detected a code "
-                        f"mismatch (running stale code after an update). "
-                        f"Please restart the application. Error: {error_msg}"
-                    )
-                elif _is_local_processing_error:
+                if _is_local_processing_error:
                     _turn_exit_reason = f"local_processing_error({error_msg[:80]})"
                     final_response = f"I apologize, but I encountered an error while processing the model response: {error_msg}"
                 else:

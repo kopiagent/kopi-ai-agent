@@ -1212,11 +1212,61 @@ def write_json(obj: dict) -> bool:
     return (current_transport() or _stdio_transport).write(obj)
 
 
-def _emit(event: str, sid: str, payload: dict | None = None):
-    params = {"type": event, "session_id": sid}
+def _event_frame(event: str, sid: str, payload: dict | None = None) -> dict:
+    params: dict = {"type": event, "session_id": sid}
     if payload is not None:
         params["payload"] = payload
-    write_json({"jsonrpc": "2.0", "method": "event", "params": params})
+    return {"jsonrpc": "2.0", "method": "event", "params": params}
+
+
+def _emit(event: str, sid: str, payload: dict | None = None):
+    write_json(_event_frame(event, sid, payload))
+
+
+# Live client transports, one per connected WS peer (maintained by tui_gateway.ws).
+# A session-less event from a background thread has neither a session transport
+# nor a contextvar binding, so write_json would drop it on stdio — this registry
+# is how such events reach WS clients at all. See _broadcast_global_event.
+_live_transports: set[Transport] = set()
+_live_transports_lock = threading.Lock()
+
+
+def register_live_transport(transport: Transport | None) -> None:
+    """Track a connected client transport for global broadcasts. Idempotent."""
+    if transport is None:
+        return
+    with _live_transports_lock:
+        _live_transports.add(transport)
+
+
+def unregister_live_transport(transport: Transport | None) -> None:
+    """Stop tracking a transport (call on disconnect). Idempotent."""
+    with _live_transports_lock:
+        _live_transports.discard(transport)
+
+
+def _broadcast_global_event(event: str, payload: dict | None = None) -> None:
+    """Fan a session-less, surface-global event (``skin.changed``) to every
+    connected client. Emitters like the skin watcher run on background threads
+    where ``write_json``'s ladder bottoms out at stdio and WS peers never see
+    the frame. No registered transports (stdio TUI, tests) → plain ``_emit``,
+    which that path already tees where it needs to go.
+    """
+    with _live_transports_lock:
+        targets = list(_live_transports)
+
+    if not targets:
+        _emit(event, "", payload)
+        return
+
+    frame = _event_frame(event, "", payload)
+    for transport in targets:
+        try:
+            transport.write(frame)
+        except Exception:
+            # One wedged peer must not stall the rest; disconnect teardown
+            # unregisters it.
+            logger.debug("global-event broadcast write failed type=%s", event, exc_info=True)
 
 
 _compute_host_supervisor = None
@@ -2477,7 +2527,7 @@ def _broadcast_skin_if_changed() -> None:
         return
     _last_skin_sig = sig
     try:
-        _emit("skin.changed", "", resolve_skin())
+        _broadcast_global_event("skin.changed", resolve_skin())
     except Exception:
         pass
 
@@ -5553,6 +5603,38 @@ def _coerce_message_text(content: Any) -> str:
     return str(content)
 
 
+_TEXT_ONLY_BUSY_PART_KINDS = frozenset({"text", "input_text", "output_text"})
+
+
+def _is_text_only_busy_payload(content: Any) -> bool:
+    """True when a busy submit carries only plain text, not attachments/media."""
+    if content is None:
+        return False
+    if isinstance(content, (str, int, float)):
+        return True
+    if isinstance(content, list):
+        if not content:
+            return False
+        for part in content:
+            if isinstance(part, str):
+                continue
+            if not isinstance(part, dict):
+                return False
+            kind = part.get("type")
+            if kind in _TEXT_ONLY_BUSY_PART_KINDS:
+                continue
+            if kind is None and isinstance(part.get("text"), str):
+                continue
+            return False
+        return True
+    if isinstance(content, dict):
+        kind = content.get("type")
+        if kind in _TEXT_ONLY_BUSY_PART_KINDS:
+            return True
+        return kind is None and isinstance(content.get("text"), str)
+    return False
+
+
 def _history_to_messages(history: list[dict]) -> list[dict]:
     messages = []
     tool_call_args = {}
@@ -5761,15 +5843,13 @@ def _handle_busy_submit(
     a turn is in flight, instead of rejecting it with ``session busy``.
 
     The old rejection forced clients into a deadline-bounded busy-retry that
-    silently dropped the send when turn teardown outlived the deadline (e.g. a
-    slow, non-interruptible tool like ``web_search`` running when the user hits
-    stop). The message is instead queued to run as the next turn — and, for the
-    default ``interrupt`` policy, the live turn is interrupted so it winds down
-    promptly. Drained in ``run``'s tail (see ``_run_prompt_submit``).
+    silently dropped the send when turn teardown outlived the deadline. The
+    default policy now redirects a capable core agent in place; older agents
+    retain the proven interrupt-and-queue path drained from ``run``'s tail.
 
-    Modes: ``interrupt`` (default) → interrupt + queue; ``queue`` → queue
-    without interrupting; ``steer`` → inject into the live turn if accepted,
-    else queue.
+    Modes: ``interrupt`` (default) → redirect the live turn, falling back to
+    hard interrupt + queue for older agents; ``queue`` → queue without
+    interrupting; ``steer`` → inject after the current atomic action.
     """
     mode = _load_busy_input_mode()
     agent = session.get("agent")
@@ -5778,14 +5858,34 @@ def _handle_busy_submit(
             # The turn ended between prompt.submit's first busy check and this
             # helper. Let the caller retry and claim the now-idle session.
             return None
-    if mode == "steer" and agent is not None and hasattr(agent, "steer"):
+    text_only = _is_text_only_busy_payload(text)
+    plain_text = _coerce_message_text(text).strip() if text_only else ""
+    if mode == "steer" and text_only and plain_text and agent is not None and hasattr(agent, "steer"):
         try:
-            if agent.steer(text):
+            if agent.steer(plain_text):
                 with session["history_lock"]:
                     session["last_active"] = time.time()
                 return _ok(rid, {"status": "steered"})
         except Exception:
             pass  # fall through to queue
+    # Text-only corrections redirect the live turn in place when the runtime
+    # supports it; media/attachment payloads and older agents fall through to
+    # the proven interrupt + queue path below.
+    if (
+        mode == "interrupt"
+        and text_only
+        and plain_text
+        and agent is not None
+        and getattr(agent, "_supports_active_turn_redirect", False) is True
+        and hasattr(agent, "redirect")
+    ):
+        try:
+            if agent.redirect(plain_text):
+                with session["history_lock"]:
+                    session["last_active"] = time.time()
+                return _ok(rid, {"status": "redirected"})
+        except Exception:
+            pass  # preserve the proven interrupt + queue fallback below
     # Queue before asking the live turn to stop. In particular, never call a
     # provider or compute-host method while holding history_lock: an interrupt
     # can wait behind the very operation it is trying to cancel.
@@ -9585,6 +9685,43 @@ def _(rid, params: dict) -> dict:
     return _ok(rid, {"status": "queued" if accepted else "rejected", "text": text})
 
 
+@method("session.redirect")
+def _(rid, params: dict) -> dict:
+    """Redirect the active model turn while preserving valid work/context."""
+    text = (params.get("text") or "").strip()
+    if not text:
+        return _err(rid, 4002, "text is required")
+    session, err = _sess_nowait(params, rid)
+    if err:
+        return err
+    agent = session.get("agent")
+    # Turn-build window: a fresh turn flips running=True and kicks off an async
+    # agent build, so session["agent"] is briefly None. That is not an
+    # unsupported runtime — queue the correction server-side so it reaches the
+    # model as the next turn, instead of a misleading 4010 the client silently
+    # swallows into a lost follow-up.
+    if agent is None and session.get("running"):
+        _enqueue_prompt(session, text, current_transport() or _stdio_transport)
+        session["last_active"] = time.time()
+        return _ok(rid, {"status": "queued", "text": text})
+    if (
+        agent is None
+        or getattr(agent, "_supports_active_turn_redirect", False) is not True
+        or not hasattr(agent, "redirect")
+    ):
+        return _err(rid, 4010, "agent does not support active-turn redirect")
+    try:
+        accepted = agent.redirect(text)
+    except Exception as exc:
+        return _err(rid, 5000, f"redirect failed: {exc}")
+    if accepted:
+        session["last_active"] = time.time()
+    return _ok(
+        rid,
+        {"status": "redirected" if accepted else "rejected", "text": text},
+    )
+
+
 @method("terminal.resize")
 def _(rid, params: dict) -> dict:
     session, err = _sess_nowait(params, rid)
@@ -10108,9 +10245,32 @@ def _wire_agent_terminal_output() -> None:
         process_registry.on_close = _emit_agent_terminal_close
 
 
+_desktop_ui_wired = False
+
+
+def _wire_desktop_ui() -> None:
+    """Bridge desktop-only tools (open_preview, focus_pane) to renderer events.
+
+    Idempotent. The tool hands back the turn's ``KOPI_UI_SESSION_ID`` as
+    ``sid`` so the event routes to the window that asked (``_emit`` /
+    ``write_json`` is ``_stdout_lock``-guarded, so calling it from the tool's
+    thread is safe)."""
+    global _desktop_ui_wired
+    if _desktop_ui_wired:
+        return
+    try:
+        from tools import desktop_ui
+    except Exception:
+        return
+
+    desktop_ui.set_emitter(lambda sid, event, payload: _emit(event, sid, payload))
+    _desktop_ui_wired = True
+
+
 def _start_notification_poller(sid: str, session: dict) -> threading.Event:
     """Start the background notification poller for a TUI session."""
     _wire_agent_terminal_output()
+    _wire_desktop_ui()
     stop = threading.Event()
     t = threading.Thread(
         target=_notification_poller_loop,
@@ -12114,9 +12274,10 @@ def _(rid, params: dict) -> dict:
                 _write_config_key(f"display.{key}", value)
                 nv = value
                 if key == "skin":
-                    _emit("skin.changed", "", resolve_skin())
-                    # Keep the reconcile baseline in sync so the per-tool check
-                    # doesn't re-broadcast the skin the /skin RPC just applied.
+                    # Every connected surface repaints, not just the RPC's
+                    # client; then sync the watcher baseline so the poll loop
+                    # doesn't re-broadcast the skin this RPC just applied.
+                    _broadcast_global_event("skin.changed", resolve_skin())
                     _note_skin_broadcast()
             resp = {"key": key, "value": nv}
             if key == "personality":
