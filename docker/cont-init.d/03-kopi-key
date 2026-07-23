@@ -15,6 +15,13 @@
 # The image itself never contains a key: it is injected per customer at
 # deploy time. Runs after 01-kopi-setup (volume chown/UID remap), so files
 # written here are re-owned to the runtime user explicitly.
+#
+# KEY-NAME MIRROR: the injected/persisted var is KOPI_PROXY_API_KEY, but the
+# generated config.yaml reads the model key as ${KOPI_API_KEY} (the same name
+# the native install writes). Without a mirror, ${KOPI_API_KEY} expands empty
+# and every model/chat call in the container is unauthenticated. So after the
+# key is resolved (any tier, incl. an upgraded volume that predates this),
+# mirror_kopi_api_key() copies KOPI_PROXY_API_KEY -> KOPI_API_KEY.
 # ============================================================================
 set -eu
 
@@ -23,27 +30,50 @@ ENV_FILE="$KOPI_HOME/.env"
 KOPI_UID="${KOPI_UID:-10000}"
 KOPI_GID="${KOPI_GID:-10000}"
 
+# Ensure config.yaml's ${KOPI_API_KEY} resolves by mirroring the proxy key.
+mirror_kopi_api_key() {
+    [ -f "$ENV_FILE" ] || return 0
+    proxy_key="$(grep -m1 '^KOPI_PROXY_API_KEY=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
+    [ -n "$proxy_key" ] || return 0
+    # Already mirrored with the current value? nothing to do (idempotent).
+    if grep -qxF "KOPI_API_KEY=${proxy_key}" "$ENV_FILE" 2>/dev/null; then
+        return 0
+    fi
+    # Drop any stale KOPI_API_KEY line, then append the current value.
+    grep -v '^KOPI_API_KEY=' "$ENV_FILE" > "$ENV_FILE.tmp" 2>/dev/null || true
+    mv "$ENV_FILE.tmp" "$ENV_FILE" 2>/dev/null || true
+    echo "KOPI_API_KEY=${proxy_key}" >> "$ENV_FILE"
+    echo "[03-kopi-key] mirrored KOPI_PROXY_API_KEY -> KOPI_API_KEY (config.yaml reads \${KOPI_API_KEY})"
+}
+
+finish() {
+    mirror_kopi_api_key
+    if [ -f "$ENV_FILE" ]; then
+        chown "$KOPI_UID:$KOPI_GID" "$ENV_FILE" 2>/dev/null || true
+        chmod 600 "$ENV_FILE" 2>/dev/null || true
+    fi
+    exit 0
+}
+
+# tier 1: key already on the data volume -> keep it (but still mirror, so an
+# upgraded volume written by an older image gets KOPI_API_KEY backfilled).
 if [ -f "$ENV_FILE" ] && grep -q '^KOPI_PROXY_API_KEY=' "$ENV_FILE" 2>/dev/null; then
     echo "[03-kopi-key] key already present in $ENV_FILE"
-    exit 0
+    finish
 fi
 
+# tier 2: injected via container environment (docker -e / compose / k8s Secret)
 if [ -n "${KOPI_PROXY_API_KEY:-}" ]; then
     mkdir -p "$KOPI_HOME"
     {
         echo "# KOPI Proxy key injected from container environment $(date -u +%Y-%m-%dT%H:%MZ)"
         echo "KOPI_PROXY_API_KEY=$KOPI_PROXY_API_KEY"
     } >> "$ENV_FILE"
-    chown "$KOPI_UID:$KOPI_GID" "$ENV_FILE" 2>/dev/null || true
-    chmod 600 "$ENV_FILE" 2>/dev/null || true
     echo "[03-kopi-key] persisted injected key to $ENV_FILE"
-    exit 0
+    finish
 fi
 
+# tier 3: no key anywhere -> best-effort auto-provision (fails soft)
 echo "[03-kopi-key] no key injected — trying auto-provision"
 /opt/kopi/scripts/auto-provision.sh || true
-if [ -f "$ENV_FILE" ]; then
-    chown "$KOPI_UID:$KOPI_GID" "$ENV_FILE" 2>/dev/null || true
-    chmod 600 "$ENV_FILE" 2>/dev/null || true
-fi
-exit 0
+finish
