@@ -234,3 +234,42 @@ def test_credential_env_precedence(monkeypatch):
     key, base = kb._resolve_kopi_credentials()
     assert base == "https://override.test/v2"
     assert key == "env-key"
+
+
+# --- pricing conversion + proxy detection ----------------------------------
+
+
+@pytest.mark.parametrize(
+    ("per_mtok", "expected_back"),
+    [(0.5, 0.5), (15.0, 15.0), (0.74, 0.74), (0.0, 0.0)],
+)
+def test_per_mtok_to_per_token_roundtrips(per_mtok, expected_back):
+    s = kb.per_mtok_to_per_token(per_mtok)
+    assert float(s) * 1_000_000 == pytest.approx(expected_back)
+
+
+def test_per_mtok_zero_is_free_marker():
+    # "0" flows through _format_price_per_mtok as "free".
+    assert kb.per_mtok_to_per_token(0) == "0"
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://kopiaiagent.com/v1", True),
+        ("https://kopiaiagent.com/v2", True),
+        ("https://api.kopiaiagent.com/v1", True),
+        ("kopiaiagent.com/v2", True),
+        ("https://api.openai.com/v1", False),
+        ("", False),
+    ],
+)
+def test_is_kopi_proxy_base(url, expected):
+    assert kb.is_kopi_proxy_base(url) is expected
+
+
+def test_is_kopi_proxy_base_self_hosted(monkeypatch):
+    # A self-hosted proxy matches when it equals the resolved KOPI base host.
+    monkeypatch.setattr(kb, "_resolve_kopi_credentials", lambda: ("k", "https://kopi.acme.internal/v1"))
+    assert kb.is_kopi_proxy_base("https://kopi.acme.internal/v1") is True
+    assert kb.is_kopi_proxy_base("https://other.internal/v1") is False

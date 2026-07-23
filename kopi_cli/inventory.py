@@ -260,7 +260,7 @@ def build_models_payload(
     if canonical_order:
         rows = _reorder_canonical(rows)
     if pricing:
-        _apply_pricing(rows, force_fresh_nous_tier=force_fresh_nous_tier)
+        _apply_pricing(rows, force_fresh_nous_tier=force_fresh_nous_tier, current_base_url=ctx.current_base_url)
     if capabilities:
         _apply_capabilities(rows)
 
@@ -524,6 +524,7 @@ def _apply_pricing(
     rows: list[dict],
     *,
     force_fresh_nous_tier: bool = False,
+    current_base_url: str = "",
 ) -> None:
     """Enrich each provider row with per-model pricing + Nous tier gating.
 
@@ -553,6 +554,28 @@ def _apply_pricing(
     # Resolve Nous free-tier once (cached in models.py for the TTL window).
     nous_free_tier: Optional[bool] = None
 
+    # The KOPI Proxy runs as a bare ``custom`` provider, so its models
+    # never match a canonical slug in get_pricing_for_provider. When the
+    # current custom row targets the proxy, fold in its /pricing table
+    # (token quota billing) converted to the per-token shape the shared
+    # formatter expects. Fetched at most once, best-effort.
+    from kopi_cli import kopi_balance
+
+    kopi_applies = kopi_balance.is_kopi_proxy_base(current_base_url)
+    _kopi_raw: Optional[dict] = None
+
+    def _kopi_pricing_raw() -> dict:
+        nonlocal _kopi_raw
+        if _kopi_raw is None:
+            _kopi_raw = {
+                mid: {
+                    "prompt": kopi_balance.per_mtok_to_per_token(pr.input_per_mtok),
+                    "completion": kopi_balance.per_mtok_to_per_token(pr.output_per_mtok),
+                }
+                for mid, pr in kopi_balance.fetch_kopi_pricing().items()
+            }
+        return _kopi_raw
+
     for row in rows:
         slug = str(row.get("slug", "")).lower()
         models = row.get("models") or []
@@ -562,6 +585,13 @@ def _apply_pricing(
             raw_pricing = get_pricing_for_provider(slug) or {}
         except Exception:
             raw_pricing = {}
+        # KOPI custom row: slug-based lookup returns nothing, so back-fill
+        # from the proxy's /pricing when this is the current KOPI provider.
+        if not raw_pricing and kopi_applies and row.get("is_current"):
+            try:
+                raw_pricing = _kopi_pricing_raw()
+            except Exception:
+                raw_pricing = {}
         if not raw_pricing:
             continue
 

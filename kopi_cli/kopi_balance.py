@@ -310,6 +310,46 @@ def format_quota_summary(balance: KopiBalance) -> str:
     )
 
 
+def per_mtok_to_per_token(price_per_mtok: float) -> str:
+    """Convert a KOPI $/1M-tokens price to the per-token string the pricing
+    pipeline expects (``models._format_price_per_mtok`` multiplies by 1e6).
+
+    KOPI's /pricing reports dollars per 1M tokens (input: 0.5); the shared
+    formatter wants per-token, so divide by 1e6. Zero stays "0" (→ "free").
+    """
+    if not price_per_mtok:
+        return "0"
+    return repr(price_per_mtok / 1_000_000)
+
+
+def _host(url: str) -> str:
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(url if "//" in url else "//" + url, scheme="https")
+        return (parsed.hostname or "").lower()
+    except Exception:
+        return ""
+
+
+def is_kopi_proxy_base(url: str) -> bool:
+    """True when ``url`` points at the KOPI Proxy — the signal that KOPI token
+    pricing applies to a ``custom``-provider row.
+
+    The proxy runs as a bare ``custom`` provider (config ``provider: custom``,
+    ``base_url: https://kopiaiagent.com/v2``), so it can't be matched by a
+    canonical slug. Matches the production host (and any subdomain) or, for a
+    self-hosted deployment, the host of the resolved KOPI base URL.
+    """
+    target = _host(url)
+    if not target:
+        return False
+    if target == "kopiaiagent.com" or target.endswith(".kopiaiagent.com"):
+        return True
+    _key, base = _resolve_kopi_credentials()
+    return target == _host(base)
+
+
 def reset_caches() -> None:
     """Drop the in-process balance/pricing caches (tests, key rotation)."""
     global _balance_cache, _pricing_cache

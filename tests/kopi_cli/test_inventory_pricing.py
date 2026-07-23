@@ -210,3 +210,59 @@ def test_apply_pricing_sale_chrome_nous_only(monkeypatch):
     assert "discount_percent" not in entry
     assert "was_input" not in entry
     assert "was_output" not in entry
+
+
+# --- KOPI Proxy custom row -------------------------------------------------
+#
+# The KOPI Proxy runs as a bare ``custom`` provider (config provider: custom,
+# base_url: https://kopiaiagent.com/v2), so get_pricing_for_provider("custom")
+# returns nothing. _apply_pricing must back-fill from the proxy's /pricing
+# table for the current custom row when its base_url is the KOPI proxy.
+
+
+def _patch_kopi_pricing(monkeypatch, models):
+    """Stub kopi_balance.fetch_kopi_pricing with {model: KopiModelPrice}."""
+    from kopi_cli import kopi_balance
+
+    monkeypatch.setattr(models_mod, "get_pricing_for_provider", lambda slug, **kw: {})
+    monkeypatch.setattr(kopi_balance, "fetch_kopi_pricing", lambda *, force_fresh=False: models)
+
+
+def test_apply_pricing_kopi_custom_row_gets_proxy_pricing(monkeypatch):
+    from kopi_cli.kopi_balance import KopiModelPrice
+
+    _patch_kopi_pricing(
+        monkeypatch,
+        {
+            "kopi-flash": KopiModelPrice("kopi-flash", 0.5, 1.5, 3, "128K", "DeepSeek"),
+            "kopi-gpt5": KopiModelPrice("kopi-gpt5", 5.0, 15.0, 1, "1.05M", "GPT-5.5"),
+        },
+    )
+    rows = [{"slug": "custom", "is_current": True, "models": ["kopi-flash", "kopi-gpt5", "kopi-unknown"]}]
+    inv._apply_pricing(rows, current_base_url="https://kopiaiagent.com/v2")
+
+    pricing = rows[0]["pricing"]
+    # $/1M-token prices round-trip through the shared per-token formatter.
+    assert pricing["kopi-flash"] == {"input": "$0.50", "output": "$1.50", "cache": None, "free": False}
+    assert pricing["kopi-gpt5"]["input"] == "$5.00" and pricing["kopi-gpt5"]["output"] == "$15.00"
+    # A model absent from /pricing simply gets no entry.
+    assert "kopi-unknown" not in pricing
+
+
+def test_apply_pricing_kopi_skipped_for_non_proxy_base(monkeypatch):
+    from kopi_cli.kopi_balance import KopiModelPrice
+
+    _patch_kopi_pricing(monkeypatch, {"kopi-flash": KopiModelPrice("kopi-flash", 0.5, 1.5, 3, "128K", "x")})
+    rows = [{"slug": "custom", "is_current": True, "models": ["kopi-flash"]}]
+    # A non-KOPI custom endpoint must NOT get KOPI proxy prices.
+    inv._apply_pricing(rows, current_base_url="https://api.openai.com/v1")
+    assert "pricing" not in rows[0]
+
+
+def test_apply_pricing_kopi_skipped_for_non_current_row(monkeypatch):
+    from kopi_cli.kopi_balance import KopiModelPrice
+
+    _patch_kopi_pricing(monkeypatch, {"kopi-flash": KopiModelPrice("kopi-flash", 0.5, 1.5, 3, "128K", "x")})
+    rows = [{"slug": "custom", "is_current": False, "models": ["kopi-flash"]}]
+    inv._apply_pricing(rows, current_base_url="https://kopiaiagent.com/v2")
+    assert "pricing" not in rows[0]
