@@ -273,3 +273,22 @@ def test_is_kopi_proxy_base_self_hosted(monkeypatch):
     monkeypatch.setattr(kb, "_resolve_kopi_credentials", lambda: ("k", "https://kopi.acme.internal/v1"))
     assert kb.is_kopi_proxy_base("https://kopi.acme.internal/v1") is True
     assert kb.is_kopi_proxy_base("https://other.internal/v1") is False
+
+
+# --- usage bar -------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("pct", "filled", "empty"),
+    [(0.0, 0, 20), (50.0, 10, 10), (100.0, 20, 0), (7.9, 2, 18)],
+)
+def test_format_quota_bar(pct, filled, empty):
+    bar = kb.format_quota_bar(pct)
+    assert bar.count("▓") == filled
+    assert bar.count("░") == empty
+    assert bar.endswith(f"{pct:.1f}%")
+
+
+def test_format_quota_bar_clamps_out_of_range():
+    assert kb.format_quota_bar(150).count("▓") == 20
+    assert kb.format_quota_bar(-5).count("▓") == 0

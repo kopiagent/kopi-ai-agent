@@ -9143,6 +9143,8 @@ class KopiCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
             self._show_subscription()
         elif canonical == "topup":
             self._show_billing(cmd_original)
+        elif canonical == "balance":
+            self._show_kopi_balance()
         elif canonical == "insights":
             self._show_insights(cmd_original)
         elif canonical == "copy":

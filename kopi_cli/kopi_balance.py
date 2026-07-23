@@ -350,6 +350,16 @@ def is_kopi_proxy_base(url: str) -> bool:
     return target == _host(base)
 
 
+def format_quota_bar(percentage_used: float, width: int = 20) -> str:
+    """Render a text usage bar for the CLI: filled = consumed quota.
+
+    ``format_quota_bar(7.9)`` -> '▓░░░░░░░░░░░░░░░░░░░ 7.9%'.
+    """
+    pct = max(0.0, min(100.0, float(percentage_used)))
+    filled = max(0, min(width, round(pct / 100 * width)))
+    return "▓" * filled + "░" * (width - filled) + f" {pct:.1f}%"
+
+
 def reset_caches() -> None:
     """Drop the in-process balance/pricing caches (tests, key rotation)."""
     global _balance_cache, _pricing_cache

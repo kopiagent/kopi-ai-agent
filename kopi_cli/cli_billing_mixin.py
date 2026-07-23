@@ -86,6 +86,52 @@ class CLIBillingMixin:
             print(f"  {line}")
         return True
 
+    def _show_kopi_balance(self) -> None:
+        """`/balance` -- the KOPI Proxy token-quota block.
+
+        KOPI is token-quota based (not USD credits like Nous): shows tokens
+        remaining out of the key's limit, a usage bar, the account identity,
+        and a low/exhausted hint. Top-ups are administered on the website (one
+        key per deployment), so this is read-only and never charges. Fail-open:
+        prints an "unavailable" line, never raises.
+        """
+        from cli import _cprint, _b, _d
+        from kopi_cli import kopi_balance as kb
+
+        try:
+            balance = kb.fetch_kopi_balance(force_fresh=True)
+        except Exception:
+            balance = None
+
+        print()
+        _cprint(f"  {_b('KOPI balance')}")
+        if balance is None:
+            _msg = "Unavailable right now -- the KOPI Proxy was unreachable. Check your connection or API key."
+            _cprint(f"  {_d(_msg)}")
+            return
+
+        _cprint(f"  {kb.format_quota_summary(balance)}")
+        if not balance.is_unlimited:
+            _cprint(f"  {kb.format_quota_bar(balance.percentage_used)}")
+
+        identity = balance.client_name or ""
+        if balance.key_prefix:
+            identity = (
+                f"{identity} \u00b7 key {balance.key_prefix}"
+                if identity
+                else f"key {balance.key_prefix}"
+            )
+        if identity:
+            _cprint(f"  {_d(identity)}")
+
+        if balance.is_depleted:
+            _cprint(
+                "  ! Quota exhausted -- new requests will fail (HTTP 402). "
+                "Contact your administrator to top up."
+            )
+        elif balance.is_low:
+            _cprint(f"  ! Low quota -- {balance.percentage_used}% used.")
+
     def _print_usage_cta(self) -> None:
         """Print the `/usage` call-to-action pointing at /subscription + /topup.
 
