@@ -51,11 +51,11 @@ export const it: Translations = {
 
   app: {
     brand: "Kopi Agent",
-    brandShort: "HA",
+    brandShort: "KA",
     closeNavigation: "Chiudi navigazione",
     closeModelTools: "Chiudi modello e strumenti",
     footer: {
-      org: "Nous Research",
+      org: "Kopi Ai Agent",
     },
     activeSessionsLabel: "Sessioni attive:",
     gatewayStatusLabel: "Stato gateway:",

@@ -51,11 +51,11 @@ export const uk: Translations = {
 
   app: {
     brand: "Kopi Agent",
-    brandShort: "HA",
+    brandShort: "KA",
     closeNavigation: "Закрити навігацію",
     closeModelTools: "Закрити модель та інструменти",
     footer: {
-      org: "Nous Research",
+      org: "Kopi Ai Agent",
     },
     activeSessionsLabel: "Активні сесії:",
     gatewayStatusLabel: "Стан шлюзу:",

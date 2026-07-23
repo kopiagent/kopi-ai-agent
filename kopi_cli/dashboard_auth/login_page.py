@@ -4,7 +4,7 @@ No React, no JavaScript dependency. Listed providers come from the
 registry; clicking a provider sends a GET to
 ``/auth/login?provider=<name>``.
 
-Visual styling mirrors the Nous Research design system (the
+Visual styling mirrors the KOPI Agent design system (the
 ``@nous-research/ui`` package the React dashboard uses): the same
 ``Collapse`` / ``Rules Compressed`` typeface, amber-on-dark colour
 tokens (``#170d02`` / ``#ffac02`` / ``#fff``), uppercase + wide-tracking
@@ -304,7 +304,7 @@ _LOGIN_HTML_TEMPLATE = """\
 </head>
 <body>
 <main>
-  <div class="brand">Nous<span class="dot"></span>Research</div>
+  <div class="brand">KOPI<span class="dot"></span>Agent</div>
   <div class="card">
     <h1>Sign in</h1>
     <p class="subtitle">Choose a sign-in method to continue to the Kopi Agent dashboard.</p>
