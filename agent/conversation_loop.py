@@ -16,6 +16,7 @@ resolved through :func:`_ra` so those patches keep working.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
@@ -84,6 +85,30 @@ from tools.skill_provenance import set_current_write_origin
 from utils import base_url_host_matches, env_var_enabled
 
 logger = logging.getLogger(__name__)
+
+
+def _track_office_turn(func):
+    """Keep office presence paired across every return and exception path."""
+    @functools.wraps(func)
+    def wrapped(agent, user_message, *args, **kwargs):
+        try:
+            from tools.delegate_tool import mark_main_turn_start
+            positional_persisted = args[4] if len(args) > 4 else None
+            goal = kwargs.get("persist_user_message") or positional_persisted or user_message or ""
+            mark_main_turn_start(agent, goal)
+        except Exception:
+            pass
+        try:
+            return func(agent, user_message, *args, **kwargs)
+        finally:
+            try:
+                from tools.delegate_tool import mark_main_turn_end
+                mark_main_turn_end(agent)
+            except Exception:
+                pass
+
+    return wrapped
+
 
 # Stable prefix of the local interrupt status string emitted when a turn is
 # cancelled while waiting on the provider. Surfaces (ACP, TUI) match on this
@@ -640,6 +665,7 @@ def _sync_failover_system_message(agent, api_messages, active_system_prompt):
     return sp
 
 
+@_track_office_turn
 def run_conversation(
     agent,
     user_message: Any,
@@ -4183,7 +4209,7 @@ def run_conversation(
                                 agent._vprint(f"{agent.log_prefix}   💡 Nous Portal OAuth token was rejected (HTTP 401). Your token may be", force=True)
                                 agent._vprint(f"{agent.log_prefix}      expired, revoked, or your account may be out of credits. To fix:", force=True)
                                 agent._vprint(f"{agent.log_prefix}      1. Re-authenticate: kopi portal", force=True)
-                                agent._vprint(f"{agent.log_prefix}      2. Check your portal account: https://portal.nousresearch.com", force=True)
+                                agent._vprint(f"{agent.log_prefix}      2. Check your portal account: https://kopiaiagent.com/portal", force=True)
                                 # ``:free`` is OpenRouter slug syntax; Nous Portal will reject
                                 # the model name even after a successful re-auth.
                                 if isinstance(_model, str) and _model.endswith(":free"):
