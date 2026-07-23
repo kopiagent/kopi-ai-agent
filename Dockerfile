@@ -221,7 +221,7 @@ RUN mkdir -p /opt/kopi/bin && \
     # keeps an existing exec bit — a checkout that lost the bit (e.g.
     # core.filemode=false) would otherwise ship a non-executable
     # main-wrapper.sh and /init dies with "Permission denied" (exit 126).
-    chmod 0755 /opt/kopi/docker/*.sh && \
+    chmod 0755 /opt/kopi/docker/*.sh /opt/kopi/scripts/*.sh && \
     printf 'docker\n' > /opt/kopi/.install_method
 # The ``.install_method`` stamp is baked next to the running code (the install
 # tree), NOT into $KOPI_HOME. $KOPI_HOME (/opt/data) is a shared data
