@@ -504,6 +504,29 @@ def check_compression_model_feasibility(agent: Any) -> None:
                     new_threshold / main_ctx
                 )
             safe_pct = int((aux_context / main_ctx) * 100) if main_ctx else 50
+            # The "lower the threshold" suggestion must survive the built-in
+            # trigger recomputation (#67422): _effective_threshold_percent()
+            # raises sub-75% values back up for main windows under 512K, and
+            # _compute_threshold_tokens() further applies the output-token
+            # reservation, the 64K floor, and the degenerate-window guard.
+            # Recommending a value those would override is silently ignored
+            # and this warning would reappear every session — so mirror the
+            # compressor's own math and only offer the option when the
+            # recomputed trigger actually fits the auxiliary model's context.
+            # External engines own compaction policy (#44439); the built-in
+            # floor doesn't apply to them, so keep the plain suggestion.
+            from agent.context_compressor import ContextCompressor as _CC
+
+            recomputed_threshold = None
+            if main_ctx and isinstance(agent.context_compressor, _CC):
+                recomputed_threshold = _CC._compute_threshold_tokens(
+                    main_ctx,
+                    _CC._effective_threshold_percent(main_ctx, safe_pct / 100),
+                    getattr(agent.context_compressor, "max_tokens", None),
+                )
+            threshold_suggestion_viable = (
+                recomputed_threshold is None or recomputed_threshold <= aux_context
+            )
             # Build human-readable "model (provider)" labels for both
             # the main model and the compression model so users can
             # tell at a glance which provider each side is actually
@@ -537,15 +560,32 @@ def check_compression_model_feasibility(agent: Any) -> None:
                 f"{old_threshold:,} tokens. "
                 f"Auto-lowered this session's threshold to "
                 f"{new_threshold:,} tokens so compression can run.\n"
-                f"  To make this permanent, edit config.yaml — either:\n"
-                f"  1. Use a larger compression model:\n"
-                f"       auxiliary:\n"
-                f"         compression:\n"
-                f"           model: <model-with-{old_threshold:,}+-context>\n"
-                f"  2. Lower the compression threshold:\n"
-                f"       compression:\n"
-                f"         threshold: 0.{safe_pct:02d}"
             )
+            if threshold_suggestion_viable:
+                msg += (
+                    f"  To make this permanent, edit config.yaml — either:\n"
+                    f"  1. Use a larger compression model:\n"
+                    f"       auxiliary:\n"
+                    f"         compression:\n"
+                    f"           model: <model-with-{old_threshold:,}+-context>\n"
+                    f"  2. Lower the compression threshold:\n"
+                    f"       compression:\n"
+                    f"         threshold: 0.{safe_pct:02d}"
+                )
+            else:
+                msg += (
+                    f"  To make this permanent, use a larger compression "
+                    f"model in config.yaml:\n"
+                    f"       auxiliary:\n"
+                    f"         compression:\n"
+                    f"           model: <model-with-{old_threshold:,}+-context>\n"
+                    f"  (Lowering compression.threshold cannot help here — "
+                    f"with {_main_label}'s {main_ctx:,}-token window, "
+                    f"Kopi's small-context floor and output reservation "
+                    f"would recompute the trigger to "
+                    f"{recomputed_threshold:,} tokens, still above the "
+                    f"compression model's {aux_context:,}.)"
+                )
             agent._compression_warning = msg
             agent._emit_status(msg)
             logger.warning(
@@ -754,6 +794,73 @@ def _ensure_compressed_has_user_turn(original_messages: list, compressed: list) 
     })
 
 
+_PENDING_CONTEXT_ENGINE_NOTIFICATION = (
+    "_pending_context_engine_compression_notification"
+)
+
+
+def _notify_context_engine_compression_complete(
+    agent: Any,
+    *,
+    new_session_id: str,
+    old_session_id: str,
+) -> bool:
+    """Notify the active context engine after a durable compression commit."""
+    callback = getattr(agent.context_compressor, "on_session_start", None)
+    if not callable(callback):
+        return False
+    try:
+        callback(
+            new_session_id,
+            boundary_reason="compression",
+            old_session_id=old_session_id,
+            platform=getattr(agent, "platform", None) or "cli",
+            conversation_id=getattr(agent, "_gateway_session_key", None),
+        )
+    except Exception:
+        # Context-engine hooks are observers. A callback failure must not undo
+        # history that the core or an outer host transaction already committed.
+        logger.debug(
+            "context engine on_session_start (compression) failed",
+            exc_info=True,
+        )
+        return False
+    return True
+
+
+def _queue_context_engine_compression_notification(
+    agent: Any,
+    *,
+    new_session_id: str,
+    old_session_id: str,
+) -> None:
+    """Stage exactly one existing hook call for an outer host transaction."""
+    if callable(getattr(agent, _PENDING_CONTEXT_ENGINE_NOTIFICATION, None)):
+        raise RuntimeError("a compression notification is already pending")
+
+    def _notify() -> bool:
+        return _notify_context_engine_compression_complete(
+            agent,
+            new_session_id=new_session_id,
+            old_session_id=old_session_id,
+        )
+
+    setattr(agent, _PENDING_CONTEXT_ENGINE_NOTIFICATION, _notify)
+
+
+def finalize_context_engine_compression_notification(
+    agent: Any,
+    *,
+    committed: bool,
+) -> bool:
+    """Emit or discard a deferred notification; repeated calls are no-ops."""
+    pending = getattr(agent, _PENDING_CONTEXT_ENGINE_NOTIFICATION, None)
+    setattr(agent, _PENDING_CONTEXT_ENGINE_NOTIFICATION, None)
+    if not committed or not callable(pending):
+        return False
+    return bool(pending())
+
+
 def compress_context(
     agent: Any,
     messages: list,
@@ -763,6 +870,7 @@ def compress_context(
     task_id: str = "default",
     focus_topic: Optional[str] = None,
     force: bool = False,
+    defer_context_engine_notification: bool = False,
 ) -> Tuple[list, str]:
     """Compress conversation context and split the session in SQLite.
 
@@ -780,6 +888,8 @@ def compress_context(
             by the manual ``/compress`` slash command so users can retry
             immediately after an auto-compress abort.  Auto-compress
             callers use the default ``False``.
+        defer_context_engine_notification: Delay the existing context-engine
+            hook until a manual host commits its outer history transaction.
 
     Returns:
         ``(compressed_messages, new_system_prompt)`` tuple.  When
@@ -788,6 +898,12 @@ def compress_context(
         prompt — the session is NOT rotated.  Callers should detect the
         no-op via ``len(returned) == len(input)`` and stop the retry loop.
     """
+    if (
+        defer_context_engine_notification
+        and callable(getattr(agent, _PENDING_CONTEXT_ENGINE_NOTIFICATION, None))
+    ):
+        raise RuntimeError("a compression notification is already pending")
+
     # Codex app-server sessions: the codex agent owns the real thread context;
     # Kopi' summarizer would only rewrite a local mirror without shrinking
     # the actual thread (#36801). Route compaction to the app server's own
@@ -1260,6 +1376,7 @@ def compress_context(
             new_system_prompt = agent._build_system_prompt(system_message)
             agent._cached_system_prompt = new_system_prompt
 
+        _session_commit_succeeded = False
         if agent._session_db:
             try:
                 # Trigger memory extraction on the current session before the
@@ -1440,6 +1557,7 @@ def compress_context(
                         for message in compressed
                         if isinstance(message, dict)
                     }
+                _session_commit_succeeded = True
             except Exception as e:
                 # If the rotation rolled back to the parent (orphan-avoidance
                 # above), agent.session_id is the still-indexed parent and
@@ -1460,6 +1578,9 @@ def compress_context(
         # id on rotation, the (unchanged) current id in-place.
         _old_sid = locals().get("old_session_id")
         _is_boundary = bool(_old_sid) or in_place
+        _context_engine_boundary_committed = _session_commit_succeeded and (
+            bool(_old_sid) or compacted_in_place
+        )
         _boundary_parent = _old_sid or agent.session_id or ""
 
         # Notify the context engine that a compaction boundary occurred. Plugin
@@ -1468,17 +1589,19 @@ def compress_context(
         # re-initializing fresh. See kopi-lcm#68. Built-in ContextCompressor
         # ignores kwargs. Fires in BOTH modes: rotation passes old→new ids; in-place
         # passes the SAME id (the boundary is real even though the id didn't move).
-        try:
-            if _is_boundary and hasattr(agent.context_compressor, "on_session_start"):
-                agent.context_compressor.on_session_start(
-                    agent.session_id or "",
-                    boundary_reason="compression",
+        if _context_engine_boundary_committed:
+            if defer_context_engine_notification:
+                _queue_context_engine_compression_notification(
+                    agent,
+                    new_session_id=agent.session_id or "",
                     old_session_id=_boundary_parent,
-                    platform=getattr(agent, "platform", None) or "cli",
-                    conversation_id=getattr(agent, "_gateway_session_key", None),
                 )
-        except Exception as _ce_err:
-            logger.debug("context engine on_session_start (compression): %s", _ce_err)
+            else:
+                _notify_context_engine_compression_complete(
+                    agent,
+                    new_session_id=agent.session_id or "",
+                    old_session_id=_boundary_parent,
+                )
 
         # Notify memory providers of the compaction boundary so provider-cached
         # per-session state (Hindsight's _document_id, accumulated turn buffers,

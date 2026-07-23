@@ -5928,26 +5928,37 @@ def test_session_compress_reports_aborted_summary_without_success(monkeypatch):
 
 
 def test_session_compress_syncs_session_key_after_rotation(monkeypatch):
-    """When AIAgent._compress_context rotates session_id (compression split),
-    the gateway session_key must follow so subsequent approval routing,
-    DB title/history lookups, and slash worker resume target the new
-    continuation session — mirrors KopiCLI._manual_compress's
-    session_id sync (cli.py).
-    """
-    agent = types.SimpleNamespace(session_id="rotated-id")
+    """LCM notification follows the TUI's final session-key transition."""
+    from agent.conversation_compression import (
+        _queue_context_engine_compression_notification,
+    )
+
+    events = []
+    agent = types.SimpleNamespace(
+        session_id="rotated-id",
+        context_compressor=types.SimpleNamespace(
+            on_session_start=lambda *_args, **_kwargs: events.append("notify")
+        ),
+    )
     server._sessions["sid"] = _session(agent=agent)
     server._sessions["sid"]["session_key"] = "old-key"
     server._sessions["sid"]["pending_title"] = "stale title"
 
-    monkeypatch.setattr(
-        server,
-        "_compress_session_history",
-        lambda session, focus_topic=None, **_kw: (2, {"total": 42}),
-    )
+    def _compress(session, focus_topic=None, **_kw):
+        _queue_context_engine_compression_notification(
+            session["agent"],
+            new_session_id="rotated-id",
+            old_session_id="old-key",
+        )
+        return 2, {"total": 42}
+
+    monkeypatch.setattr(server, "_compress_session_history", _compress)
     monkeypatch.setattr(server, "_session_info", lambda _agent, *a: {"model": "x"})
     restart_calls = []
     monkeypatch.setattr(
-        server, "_restart_slash_worker", lambda sid, s: restart_calls.append(s)
+        server,
+        "_restart_slash_worker",
+        lambda sid, s: (restart_calls.append(s), events.append("sync")),
     )
 
     try:
@@ -5963,6 +5974,52 @@ def test_session_compress_syncs_session_key_after_rotation(monkeypatch):
         assert server._sessions["sid"]["session_key"] == "rotated-id"
         assert server._sessions["sid"]["pending_title"] is None
         assert len(restart_calls) == 1
+        assert events == ["sync", "notify"]
+    finally:
+        server._sessions.pop("sid", None)
+
+
+def test_session_compress_sync_failure_discards_lcm_notification(monkeypatch):
+    from agent.conversation_compression import (
+        _queue_context_engine_compression_notification,
+    )
+
+    events = []
+    agent = types.SimpleNamespace(
+        session_id="rotated-id",
+        context_compressor=types.SimpleNamespace(
+            on_session_start=lambda *_args, **_kwargs: events.append("notify")
+        ),
+    )
+    server._sessions["sid"] = _session(agent=agent)
+    server._sessions["sid"]["session_key"] = "old-key"
+
+    def _compress(session, focus_topic=None, **_kw):
+        _queue_context_engine_compression_notification(
+            session["agent"],
+            new_session_id="rotated-id",
+            old_session_id="old-key",
+        )
+        return 2, {"total": 42}
+
+    monkeypatch.setattr(server, "_compress_session_history", _compress)
+    monkeypatch.setattr(
+        server,
+        "_session_info",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("finalization failed")),
+    )
+
+    try:
+        with patch("tui_gateway.server._emit"):
+            resp = server.handle_request(
+                {
+                    "id": "1",
+                    "method": "session.compress",
+                    "params": {"session_id": "sid"},
+                }
+            )
+        assert resp["error"]["code"] == 5005
+        assert events == []
     finally:
         server._sessions.pop("sid", None)
 
@@ -6418,6 +6475,30 @@ def test_commands_catalog_includes_tui_mouse_command():
 
     assert "/mouse" in pairs
     assert "/mouse" in tui_pairs
+
+
+def test_commands_catalog_has_no_duplicate_or_alias_colliding_names():
+    """No command may be advertised twice, and no advertised command may
+    shadow an alias of a different command (e.g. the historical /compact
+    collision where the registry aliased compact -> compress while the TUI
+    also registered its own /compact display toggle; see #57133)."""
+    resp = server.handle_request(
+        {"id": "1", "method": "commands.catalog", "params": {}}
+    )
+
+    names = [name for name, _ in resp["result"]["pairs"]]
+    dupes = {n for n in names if names.count(n) > 1}
+    assert not dupes, f"duplicate commands advertised in catalog: {sorted(dupes)}"
+
+    canon = resp["result"]["canon"]
+    colliding = {
+        name
+        for name in names
+        if canon.get(name.lower(), name) != name
+    }
+    assert not colliding, (
+        f"catalog commands shadow aliases of other commands: {sorted(colliding)}"
+    )
 
 
 def test_commands_catalog_filters_gateway_only_commands_and_keeps_status_visible():
