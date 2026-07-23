@@ -1229,6 +1229,7 @@ export const api = {
 
   // ── Admin: Portal ───────────────────────────────────────────────────
   getPortal: () => fetchJSON<PortalStatus>("/api/portal"),
+  getKopiBalance: () => fetchJSON<KopiBalance>("/api/kopi/balance"),
 
   // ── Admin: Diagnostics (backgrounded) ───────────────────────────────
   runPromptSize: () =>
@@ -1776,6 +1777,23 @@ export interface PortalStatus {
   provider: string;
   subscription_url: string;
   features: PortalFeature[];
+}
+
+export interface KopiBalance {
+  available: boolean;
+  quota_limit?: number;
+  quota_used?: number;
+  quota_remaining?: number;
+  percentage_used?: number;
+  total_requests?: number;
+  is_unlimited?: boolean;
+  is_low?: boolean;
+  is_depleted?: boolean;
+  client_name?: string;
+  key_prefix?: string;
+  summary?: string;
+  remaining_display?: string;
+  limit_display?: string;
 }
 
 export interface CheckpointSession {

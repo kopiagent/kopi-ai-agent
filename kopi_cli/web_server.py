@@ -3805,6 +3805,43 @@ async def get_portal_status():
     }
 
 
+@app.get("/api/kopi/balance")
+def get_kopi_balance():
+    """Return the KOPI Proxy token-quota balance for the dashboard usage card.
+
+    Token-quota based (not USD credits): raw counts + a percentage so the UI
+    can draw its own bar, plus preformatted display strings for a no-logic
+    render. Best-effort -- ``{"available": false}`` when the proxy is
+    unreachable, so the card degrades to "unavailable" instead of erroring.
+    Sync def, so FastAPI runs it in a threadpool and the blocking fetch (60s
+    cached) never stalls the event loop.
+    """
+    from kopi_cli import kopi_balance as kb
+
+    try:
+        bal = kb.fetch_kopi_balance()
+    except Exception:
+        bal = None
+    if bal is None:
+        return {"available": False}
+    return {
+        "available": True,
+        "quota_limit": bal.quota_limit,
+        "quota_used": bal.quota_used,
+        "quota_remaining": bal.quota_remaining,
+        "percentage_used": bal.percentage_used,
+        "total_requests": bal.total_requests,
+        "is_unlimited": bal.is_unlimited,
+        "is_low": bal.is_low,
+        "is_depleted": bal.is_depleted,
+        "client_name": bal.client_name,
+        "key_prefix": bal.key_prefix,
+        "summary": kb.format_quota_summary(bal),
+        "remaining_display": kb.format_token_count(bal.quota_remaining),
+        "limit_display": kb.format_token_count(bal.quota_limit),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Diagnostics: prompt-size, support dump, debug upload, config migrate.
 # All produce text output, so they spawn background actions tailed via

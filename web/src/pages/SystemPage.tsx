@@ -32,6 +32,7 @@ import { Button } from "@nous-research/ui/ui/components/button";
 import { Spinner } from "@nous-research/ui/ui/components/spinner";
 import { H2 } from "@nous-research/ui/ui/components/typography/h2";
 import { Card, CardContent } from "@nous-research/ui/ui/components/card";
+import { Progress } from "@nous-research/ui/ui/components/progress";
 import { Checkbox } from "@nous-research/ui/ui/components/checkbox";
 import { Input } from "@nous-research/ui/ui/components/input";
 import { Label } from "@nous-research/ui/ui/components/label";
@@ -57,6 +58,7 @@ import type {
   UpdateCheckResponse,
   CuratorStatus,
   PortalStatus,
+  KopiBalance,
   DebugShareResponse,
 } from "@/lib/api";
 
@@ -202,6 +204,7 @@ export default function SystemPage() {
   const [hooks, setHooks] = useState<HooksResponse | null>(null);
   const [curator, setCurator] = useState<CuratorStatus | null>(null);
   const [portal, setPortal] = useState<PortalStatus | null>(null);
+  const [kopiBalance, setKopiBalance] = useState<KopiBalance | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [activeAction, setActiveAction] = useState<string | null>(null);
@@ -262,11 +265,12 @@ export default function SystemPage() {
       api.getHooks(),
       api.getCurator(),
       api.getPortal(),
+      api.getKopiBalance(),
       // Cached (non-forced) check so the version row shows update status on
       // load without a separate effect / a forced network round-trip.
       api.checkKopiUpdate(false),
     ])
-      .then(([s, st, m, p, c, h, cur, prt, upd]) => {
+      .then(([s, st, m, p, c, h, cur, prt, kbal, upd]) => {
         if (s.status === "fulfilled") setStatus(s.value);
         if (st.status === "fulfilled") setStats(st.value);
         if (m.status === "fulfilled") setMemory(m.value);
@@ -275,6 +279,7 @@ export default function SystemPage() {
         if (h.status === "fulfilled") setHooks(h.value);
         if (cur.status === "fulfilled") setCurator(cur.value);
         if (prt.status === "fulfilled") setPortal(prt.value);
+        if (kbal.status === "fulfilled") setKopiBalance(kbal.value);
         if (upd.status === "fulfilled") setUpdateInfo(upd.value);
       })
       .finally(() => setLoading(false));
@@ -950,6 +955,68 @@ export default function SystemPage() {
                   </span>
                 )}
               </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ── KOPI usage ────────────────────────────────────────────── */}
+      <section className="flex flex-col gap-3">
+        <H2 variant="sm" className="flex items-center gap-2 text-muted-foreground">
+          <Activity className="h-4 w-4" /> KOPI usage
+        </H2>
+        <Card>
+          <CardContent className="flex flex-col gap-3 py-4">
+            {!kopiBalance?.available ? (
+              <p className="text-sm text-muted-foreground">
+                Balance unavailable — the KOPI Proxy was unreachable.
+              </p>
+            ) : kopiBalance.is_unlimited ? (
+              <div className="flex items-center gap-3">
+                <Badge tone="success">unlimited</Badge>
+                <span className="text-sm text-muted-foreground">
+                  {kopiBalance.total_requests ?? 0} requests
+                </span>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <Badge
+                    tone={
+                      kopiBalance.is_depleted
+                        ? "destructive"
+                        : kopiBalance.is_low
+                          ? "warning"
+                          : "success"
+                    }
+                  >
+                    {kopiBalance.percentage_used ?? 0}% used
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">
+                    {kopiBalance.remaining_display} / {kopiBalance.limit_display} tokens left
+                  </span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {kopiBalance.total_requests ?? 0} requests
+                  </span>
+                </div>
+                <Progress value={kopiBalance.percentage_used ?? 0} />
+                {kopiBalance.is_depleted && (
+                  <p className="text-xs text-destructive">
+                    Quota exhausted — new requests will fail (HTTP 402). Contact your
+                    administrator to top up.
+                  </p>
+                )}
+                {!kopiBalance.is_depleted && kopiBalance.is_low && (
+                  <p className="text-xs text-muted-foreground">
+                    Low quota — {kopiBalance.percentage_used}% used.
+                  </p>
+                )}
+                {kopiBalance.key_prefix && (
+                  <span className="border-t border-border pt-2 text-xs text-muted-foreground">
+                    {kopiBalance.client_name} · key {kopiBalance.key_prefix}
+                  </span>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
