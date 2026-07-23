@@ -281,6 +281,7 @@ COPY --chmod=0755 docker/cont-init.d/02-reconcile-profiles /etc/cont-init.d/02-r
 # 03-kopi-key seeds the per-customer KOPI Proxy API key (env var → volume
 # .env, else auto-provision). The image itself never contains a key.
 COPY --chmod=0755 docker/cont-init.d/03-kopi-key /etc/cont-init.d/03-kopi-key
+COPY --chmod=0755 docker/cont-init.d/04-dashboard-auth /etc/cont-init.d/04-dashboard-auth
 
 # ---------- Runtime ----------
 ENV KOPI_WEB_DIST=/opt/kopi/kopi_cli/web_dist
@@ -302,6 +303,19 @@ ENV KOPI_WEB_DIST=/opt/kopi/kopi_cli/web_dist
 # check. (A separate launcher hardening is tracked independently.)
 ENV KOPI_TUI_DIR=/opt/kopi/ui-tui
 ENV KOPI_HOME=/opt/data
+
+# ---------- Dashboard (web UI on 9119) defaults ----------
+# The dashboard auth gate engages automatically on non-loopback binds and
+# fails closed without a provider. cont-init.d/04-dashboard-auth seeds a basic-
+# auth credential into the volume .env so the web UI works out of the box.
+# The default PASSWORD is a shell fallback inside that script (kopi-admin) --
+# NOT baked into ENV (avoids the SecretsUsedInArgOrEnv footgun). It is SHARED
+# across instances until changed: override per customer with
+# KOPI_DASHBOARD_BASIC_AUTH_PASSWORD (k8s Secret), edit the volume .env, or set
+# KOPI_DASHBOARD=0 to disable the dashboard. Username is not a secret:
+ENV KOPI_DASHBOARD=1 \
+    KOPI_DASHBOARD_DEFAULT_USERNAME=admin
+EXPOSE 9119
 ENV KOPI_WRITE_SAFE_ROOT=/opt/data
 ENV KOPI_DISABLE_LAZY_INSTALLS=1
 # The published image seals /opt/kopi (root-owned, read-only) so a runtime

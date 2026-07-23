@@ -1,0 +1,84 @@
+#!/command/with-contenv sh
+# ============================================================================
+# Seed the dashboard basic-auth credential at container boot.
+#
+# Mirrors 03-kopi-key: tiered, idempotent, persisted to the data volume so it
+# is editable/overridable later. Resolution order (first hit wins), written to
+# $KOPI_HOME/.env (which kopi loads into the environment, same path the API
+# key uses):
+#   1. .env already has KOPI_DASHBOARD_BASIC_AUTH_USERNAME -> keep it (a
+#      customer-changed credential is NEVER clobbered on restart/upgrade).
+#   2. KOPI_DASHBOARD_BASIC_AUTH_PASSWORD env (docker -e / k8s Secret) -> hash
+#      it and persist (per-customer override; preferred for real deployments).
+#   3. Neither -> the image's baked default (KOPI_DASHBOARD_DEFAULT_USERNAME /
+#      _PASSWORD) so the dashboard works out of the box. NOTE: the baked
+#      default is SHARED across every instance of this image until changed --
+#      override per customer via tier 2, or edit the volume .env and restart.
+#
+# The plaintext password is NEVER written or logged: it is scrypt-hashed via
+# the bundled dashboard_auth/basic helper and only the hash is stored. A
+# per-instance token-signing SECRET is generated once if absent (never baked)
+# so dashboard sessions survive restarts. Fails soft: the container still boots.
+# ============================================================================
+set -eu
+
+KOPI_HOME="${KOPI_HOME:-/opt/data}"
+ENV_FILE="$KOPI_HOME/.env"
+KOPI_UID="${KOPI_UID:-10000}"
+KOPI_GID="${KOPI_GID:-10000}"
+VENV_PY="/opt/kopi/.venv/bin/python"
+
+# tier 1: already configured -> leave the customer's credential alone
+if [ -f "$ENV_FILE" ] && grep -q '^KOPI_DASHBOARD_BASIC_AUTH_USERNAME=' "$ENV_FILE" 2>/dev/null; then
+    echo "[04-dashboard-auth] dashboard credential already present in $ENV_FILE"
+    exit 0
+fi
+
+username="${KOPI_DASHBOARD_BASIC_AUTH_USERNAME:-${KOPI_DASHBOARD_DEFAULT_USERNAME:-admin}}"
+
+# tier 2 (env override) beats tier 3 (baked default)
+password="${KOPI_DASHBOARD_BASIC_AUTH_PASSWORD:-}"
+source="env"
+if [ -z "$password" ]; then
+    # Baked default lives here (shell fallback, not an ENV secret).
+    password="${KOPI_DASHBOARD_DEFAULT_PASSWORD:-kopi-admin}"
+    source="baked-default"
+fi
+
+if [ -z "$password" ]; then
+    echo "[04-dashboard-auth] no dashboard password configured (no env, no baked default) -- skipping." >&2
+    echo "[04-dashboard-auth] a non-loopback dashboard fails closed until you set KOPI_DASHBOARD_BASIC_AUTH_PASSWORD." >&2
+    exit 0
+fi
+
+# scrypt-hash the password (never persist plaintext)
+hash="$(cd /opt/kopi && PYTHONPATH=/opt/kopi "$VENV_PY" -c \
+    "import sys; from plugins.dashboard_auth.basic import hash_password; print(hash_password(sys.argv[1]))" \
+    "$password" 2>/dev/null || echo "")"
+if [ -z "$hash" ]; then
+    echo "[04-dashboard-auth] failed to hash the dashboard password -- skipping" >&2
+    exit 0
+fi
+
+# stable per-instance token-signing secret (generate once, never baked)
+secret="${KOPI_DASHBOARD_BASIC_AUTH_SECRET:-}"
+if [ -z "$secret" ]; then
+    secret="$(PYTHONPATH=/opt/kopi "$VENV_PY" -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || echo "")"
+fi
+
+mkdir -p "$KOPI_HOME"
+{
+    echo "# Dashboard basic-auth seeded at container boot ($(date -u +%Y-%m-%dT%H:%MZ); source=$source)"
+    echo "KOPI_DASHBOARD_BASIC_AUTH_USERNAME=$username"
+    echo "KOPI_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=$hash"
+    [ -n "$secret" ] && echo "KOPI_DASHBOARD_BASIC_AUTH_SECRET=$secret"
+} >> "$ENV_FILE"
+chown "$KOPI_UID:$KOPI_GID" "$ENV_FILE" 2>/dev/null || true
+chmod 600 "$ENV_FILE" 2>/dev/null || true
+
+echo "[04-dashboard-auth] seeded dashboard credential (user=$username, source=$source) into $ENV_FILE"
+if [ "$source" = "baked-default" ]; then
+    echo "[04-dashboard-auth] WARNING: using the image's SHARED default password. Override per customer:" >&2
+    echo "[04-dashboard-auth]   set KOPI_DASHBOARD_BASIC_AUTH_PASSWORD (Secret/-e), or edit $ENV_FILE and restart." >&2
+fi
+exit 0
