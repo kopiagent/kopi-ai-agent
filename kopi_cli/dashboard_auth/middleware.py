@@ -49,6 +49,9 @@ _log = logging.getLogger(__name__)
 _GATE_PUBLIC_PREFIXES: tuple[str, ...] = (
     "/auth/login",
     "/auth/callback",
+    # Platform SSO handoff from the KOPI website console (token-gated
+    # inside the route itself — see dashboard_auth/platform_sso.py).
+    "/sso",
     "/auth/native/authorize",
     "/auth/native/token",
     "/auth/native/refresh",
@@ -257,7 +260,7 @@ def _safe_next_target(request: Request) -> str:
     # Don't redirect back to the auth routes themselves — that loops.
     if any(
         path == p or path.startswith(p)
-        for p in ("/login", "/auth/", "/api/auth/")
+        for p in ("/login", "/auth/", "/api/auth/", "/sso")
     ):
         return ""
     # Reject ALL ``/api/*`` paths. The 401-envelope code path fires for

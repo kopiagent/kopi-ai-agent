@@ -258,6 +258,19 @@ class BasicAuthProvider(DashboardAuthProvider):
             raise InvalidCredentialsError("invalid username or password")
         return self._mint_session(self._username)
 
+    # ---- platform SSO (trusted mint) ---------------------------------------
+
+    def mint_trusted_session(self) -> Session:
+        """Mint a session without a password check.
+
+        ONLY for callers that already authenticated the request by other
+        means — today that is the ``/sso`` route after verifying the
+        platform handoff token (HMAC over the shared dashboard secret,
+        see ``kopi_cli/dashboard_auth/platform_sso.py``). Never expose
+        this on an unauthenticated path.
+        """
+        return self._mint_session(self._username)
+
     # ---- session lifecycle -------------------------------------------------
 
     def verify_session(self, *, access_token: str) -> Optional[Session]:

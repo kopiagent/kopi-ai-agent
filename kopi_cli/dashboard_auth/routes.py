@@ -968,3 +968,69 @@ async def auth_native_refresh(request: Request, body: _NativeRefreshBody):
         },
         status_code=401,
     )
+
+
+# ---------------------------------------------------------------------------
+# Platform SSO: website console → dashboard handoff (no second login).
+# The KOPI website signs a 60s HMAC token with the shared dashboard secret
+# and redirects here; we verify + mint a normal basic-provider session.
+# Token protocol lives in kopi_cli/dashboard_auth/platform_sso.py and must
+# stay in lockstep with saas-starter-kit/lib/instance-sso.ts.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sso", name="platform_sso")
+async def platform_sso(request: Request, token: str = ""):
+    import os
+
+    from kopi_cli.dashboard_auth.platform_sso import verify_platform_sso_token
+
+    prefix = _prefix(request)
+    login_url = f"{prefix}/login?error=sso"
+
+    secret = os.environ.get("KOPI_DASHBOARD_BASIC_AUTH_SECRET", "")
+    if not token or not secret:
+        return RedirectResponse(url=login_url, status_code=302)
+
+    ok, reason, customer_id = verify_platform_sso_token(
+        token, secret, instance=os.environ.get("INSTANCE") or None
+    )
+    if not ok:
+        audit_log(
+            AuditEvent.LOGIN_FAILURE,
+            provider="basic",
+            reason=f"platform_sso_{reason}",
+            ip=_client_ip(request),
+        )
+        return RedirectResponse(url=login_url, status_code=302)
+
+    p = get_provider("basic")
+    mint = getattr(p, "mint_trusted_session", None)
+    if p is None or mint is None:
+        # basic provider not configured on this instance — fall back to the
+        # normal login page rather than 500ing the handoff.
+        return RedirectResponse(url=login_url, status_code=302)
+
+    session = mint()
+    audit_log(
+        AuditEvent.LOGIN_SUCCESS,
+        provider="basic",
+        user_id=session.user_id,
+        email=session.email,
+        org_id=session.org_id,
+        ip=_client_ip(request),
+    )
+
+    expires_in = max(60, session.expires_at - int(time.time()))
+    resp = RedirectResponse(url=f"{prefix}/" if prefix else "/", status_code=302)
+    set_session_cookies(
+        resp,
+        access_token=session.access_token,
+        refresh_token=session.refresh_token,
+        access_token_expires_in=expires_in,
+        use_https=detect_https(request),
+        prefix=prefix,
+        provider=session.provider,
+    )
+    _log.info("platform SSO handoff accepted for customer %s", customer_id)
+    return resp
