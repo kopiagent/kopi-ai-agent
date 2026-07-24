@@ -1210,20 +1210,37 @@ clone_repo() {
                 autostash_ref="stash@{0}"
             fi
 
-            # Fetch only the target branch. A bare `git fetch origin` pulls
-            # every ref, and this repo carries thousands of auto-generated
-            # branches — on a non-single-branch checkout that turns each update
-            # into a multi-minute download that can stall the installer.
-            git remote set-branches origin "$BRANCH" 2>/dev/null || true
-            git fetch origin "$BRANCH"
-            git checkout "$BRANCH"
-            # Managed installs should follow origin/$BRANCH exactly. If the
-            # checkout has diverged (or has local-only commits), ff-only pull
-            # cannot succeed — mirror ``kopi update`` and reset to the
-            # fetched remote so bootstrap/install can recover.
-            if ! git pull --ff-only origin "$BRANCH"; then
-                log_warn "Fast-forward not possible; resetting managed install to origin/$BRANCH..."
-                git reset --hard "origin/$BRANCH"
+            # Update to the target ref, which may be a BRANCH, a TAG, or a
+            # commit. Do NOT pin the remote to a single branch: the old
+            # `git remote set-branches origin "$BRANCH"` wrote a
+            # +refs/heads/$BRANCH refspec, and for a TAG (release installs pass
+            # e.g. v1.22.0) that fetched nothing as a branch — hiding
+            # origin/main and bricking `kopi update` with
+            # "'origin/main' is not a commit". Keep a full refspec and fetch
+            # just the named ref (+ tags); naming the ref keeps it fast (only
+            # that ref downloads, not the thousands of auto-generated branches).
+            git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' 2>/dev/null || true
+            # Fetch the target ref AND main (both named, so still fast): a
+            # tag-pinned install must still leave origin/main resolvable, or
+            # `kopi update` (which switches to main) bricks with
+            # "'origin/main' is not a commit".
+            git fetch --tags origin "$BRANCH" main 2>/dev/null \
+                || git fetch --tags origin "$BRANCH" 2>/dev/null \
+                || git fetch --tags origin 2>/dev/null \
+                || git fetch origin 2>/dev/null || true
+            if git rev-parse --verify --quiet "refs/remotes/origin/$BRANCH" >/dev/null 2>&1; then
+                # Branch: follow origin/$BRANCH exactly (rolling).
+                git checkout -q -B "$BRANCH" "origin/$BRANCH"
+                if ! git pull --ff-only origin "$BRANCH" 2>/dev/null; then
+                    log_warn "Fast-forward not possible; resetting managed install to origin/$BRANCH..."
+                    git reset --hard "origin/$BRANCH"
+                fi
+            elif git rev-parse --verify --quiet "refs/tags/$BRANCH" >/dev/null 2>&1; then
+                # Tag: pin to it (detached). Tags are immutable — no pull/reset.
+                git checkout -q --force --detach "refs/tags/$BRANCH"
+            else
+                # Fallback: whatever the fetch resolved (e.g. a raw commit SHA).
+                git checkout -q --force --detach FETCH_HEAD
             fi
 
             if [ -n "$autostash_ref" ]; then
@@ -1307,6 +1324,12 @@ EOF
     fi
 
     cd "$INSTALL_DIR"
+
+    # `git clone --depth 1 --branch <ref>` sets a single-branch refspec; for a
+    # TAG that is a broken +refs/heads/<tag> that hides origin/main. Restore a
+    # full refspec so later `git fetch` / `kopi update` can resolve every
+    # branch (this was the root cause of the "Update didn't finish" bug).
+    git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' 2>/dev/null || true
 
     if [ -n "$INSTALL_COMMIT" ]; then
         log_info "Pinning checkout to commit $INSTALL_COMMIT..."
