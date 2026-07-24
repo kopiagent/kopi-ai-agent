@@ -62,6 +62,12 @@ def write_init(v):
     text = p.read_text(encoding="utf-8")
     new_text, n = re.subn(r'^__version__ = "[^"]+"', f'__version__ = "{v}"', text, count=1, flags=re.M)
     assert n == 1, "kopi_cli/__init__.py: 未找到 __version__"
+    # Stamp the release date to today so the banner "vX (date)" never goes
+    # stale (it used to be a separate hand-edited field that bumps forgot).
+    import datetime
+    today = datetime.date.today().isoformat()
+    new_text, n2 = re.subn(r'^__release_date__ = "[^"]+"', f'__release_date__ = "{today}"', new_text, count=1, flags=re.M)
+    assert n2 == 1, "kopi_cli/__init__.py: 未找到 __release_date__"
     p.write_text(new_text, encoding="utf-8")
 
 def write_agent_json(v):
