@@ -109,6 +109,22 @@ COMPRESSION_RETRY_CONTEXT_REDUCED_STATUS_TEMPLATE = (
     "🗜️ Context reduced to {new_ctx:,} tokens (was {old_ctx:,}), retrying..."
 )
 
+# FAILURE-CLASS notice — a deliberate carve-out from routine-compression
+# silence (#16775 class): the context is over the compression threshold but
+# compression is blocked (summary-LLM cooldown / anti-thrash breaker), so the
+# session will keep growing until the hard provider token limit kills it.
+# This MUST stay visible on chat gateways. Do NOT add it to
+# ROUTINE_COMPRESSION_STATUS_SAMPLES or the gateway noise regex
+# (_TELEGRAM_NOISY_STATUS_RE); it is pinned un-swallowed in
+# tests/gateway/test_telegram_noise_filter.py::VISIBLE_COMPRESSION_MESSAGES.
+CONTEXT_OVERFLOW_BLOCKED_WARNING_TEMPLATE = (
+    "⚠ Context is over the compression threshold "
+    "(~{tokens:,} tokens >= {threshold:,}) "
+    "but compression is currently blocked ({reason}). "
+    "The model may stop responding. Run /new to start a fresh "
+    "session or /compress to retry immediately."
+)
+
 # Sample-formatted instances of every routine compression status line, for
 # behavioral tests that iterate the ACTUAL emitted wording (formatted from the
 # same constants the emission sites use) through the gateway noise filter.
@@ -277,6 +293,7 @@ def _refresh_persisted_compression_guards(compressor: Any) -> None:
     method_calls = (
         ("get_active_compression_failure_cooldown", {"refresh": True}),
         ("_load_fallback_compression_streak", {}),
+        ("_load_ineffective_compression_count", {}),
     )
     for method_name, kwargs in method_calls:
         method = getattr(type(compressor), method_name, None)
@@ -1282,6 +1299,12 @@ def compress_context(
     _try_acquire_lock = None
     _lock_lookup_error: Optional[Exception] = None
     _legacy_session_db_without_lock_api = False
+    # Clear any stale lock-skip signal from a prior call so this call's
+    # outcome alone determines what callers see.  Without this an
+    # auto-compress lock-skip followed by a successful manual /compress
+    # would falsely report "Compression already in progress" and discard
+    # the compression results.
+    agent._compression_skipped_due_to_lock = None
     if _lock_db is not None:
         try:
             _legacy_session_db_without_lock_api = _lock_api_is_absent_on_session_db(
@@ -1369,6 +1392,11 @@ def compress_context(
                 _lock_sid, existing,
             )
             _lock_holder = None  # don't release a lock we don't own
+            # Signal to callers that this no-op is due to a concurrent lock,
+            # not a genuine "nothing to compress" or aux-model failure.
+            # Manual /compress callers can surface a clear status message
+            # instead of the misleading "No changes from compression" text.
+            agent._compression_skipped_due_to_lock = existing or True
             # Surface to the user once — quiet for downstream auto-compress loops
             if getattr(agent, "_last_compression_lock_warning_sid", None) != _lock_sid:
                 agent._last_compression_lock_warning_sid = _lock_sid

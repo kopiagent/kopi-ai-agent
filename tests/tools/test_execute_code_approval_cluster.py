@@ -464,6 +464,7 @@ def test_env_scrub_kopi_allowlist_and_secret_blocks():
         # operational allowlist → kept
         "KOPI_HOME": "/h", "KOPI_PROFILE": "p",
         "KOPI_CONFIG": "/c.yaml", "KOPI_ENV": "/e",
+        "KOPI_DELEGATED_CHILD_CONTEXT": "1",
         # other KOPI_* → dropped (broad prefix removed)
         "KOPI_BASE_URL": "https://x", "KOPI_INTERACTIVE": "1",
         "KOPI_KANBAN_DB": "postgres://u:p@h/db",
@@ -475,7 +476,10 @@ def test_env_scrub_kopi_allowlist_and_secret_blocks():
     }
     out = _scrub_child_env(env, is_passthrough=lambda _: False, is_windows=False)
 
-    for kept in ("KOPI_HOME", "KOPI_PROFILE", "KOPI_CONFIG", "KOPI_ENV", "PATH"):
+    for kept in (
+        "KOPI_HOME", "KOPI_PROFILE", "KOPI_CONFIG", "KOPI_ENV",
+        "KOPI_DELEGATED_CHILD_CONTEXT", "PATH",
+    ):
         assert kept in out, f"{kept} should be kept"
     for dropped in (
         "KOPI_BASE_URL", "KOPI_INTERACTIVE", "KOPI_KANBAN_DB",

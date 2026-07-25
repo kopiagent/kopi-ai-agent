@@ -151,6 +151,32 @@ class TestBrowserPassthroughPattern:
         assert "TELEGRAM_BOT_TOKEN" not in env
 
 
+class TestDelegatedChildMarker:
+    def test_delegated_child_context_scrubs_parent_kanban_keys_and_sets_marker(self):
+        from agent.delegation_context import delegated_child_context
+
+        with patch.dict(
+            os.environ,
+            {
+                **_SAFE_SAMPLE,
+                "KOPI_KANBAN_TASK": "t_parent",
+                "KOPI_KANBAN_RUN_ID": "123",
+                "KOPI_KANBAN_DB": "/tmp/parent-kanban.db",
+                "KOPI_KANBAN_WORKSPACE": "/tmp/parent-workspace",
+            },
+            clear=True,
+        ):
+            with delegated_child_context():
+                env = kopi_subprocess_env(inherit_credentials=True)
+
+        assert env["KOPI_DELEGATED_CHILD_CONTEXT"] == "1"
+        assert "KOPI_KANBAN_TASK" not in env
+        assert "KOPI_KANBAN_RUN_ID" not in env
+        assert "KOPI_KANBAN_DB" not in env
+        assert "KOPI_KANBAN_WORKSPACE" not in env
+        assert env["MY_APP_VAR"] == "keep-me"
+
+
 _INTERNAL_DYNAMIC_SAMPLE = {
     "AUXILIARY_VISION_API_KEY": "sk-vision",
     "AUXILIARY_VISION_BASE_URL": "http://internal:1234/v1",

@@ -9483,9 +9483,12 @@ class KopiCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
                             # has all API keys in os.environ.
                             from tools.environments.local import _sanitize_subprocess_env
                             sanitized_env = _sanitize_subprocess_env(os.environ.copy())
+                            from kopi_cli._subprocess_compat import windows_hide_flags
                             result = subprocess.run(
                                 exec_cmd, shell=True, capture_output=True,
-                                text=True, timeout=30, env=sanitized_env
+                                text=True, timeout=30, env=sanitized_env,
+                                # No console flash on Windows (#56747).
+                                creationflags=windows_hide_flags(),
                             )
                             output = result.stdout.strip() or result.stderr.strip()
                             if output:
@@ -10175,6 +10178,39 @@ class KopiCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
                     force=True,
                     defer_context_engine_notification=True,
                 )
+
+                # If _compress_context returned unchanged because a
+                # concurrent compression lock is held, tell the user
+                # clearly instead of showing the misleading
+                # "No changes from compression" no-op text. The wording
+                # distinguishes a confirmed holder from an unconfirmed
+                # acquisition failure (describe_compression_lock_skip).
+                # Type-pinned check (is True / str): the flag's only real
+                # values are None/True/holder-string, and a bare getattr
+                # truthiness test is fooled by MagicMock auto-attributes on
+                # test-double agents (skill pitfall: MagicMock vs hasattr).
+                _lock_skip_signal = getattr(
+                    self.agent, "_compression_skipped_due_to_lock", None
+                )
+                if _lock_skip_signal is True or isinstance(_lock_skip_signal, str):
+                    from agent.manual_compression_feedback import (
+                        describe_compression_lock_skip,
+                    )
+                    print(
+                        "  "
+                        + describe_compression_lock_skip(
+                            self.agent._compression_skipped_due_to_lock
+                        )
+                    )
+                    self.agent._compression_skipped_due_to_lock = None
+                    # No boundary was committed on a lock-skip; discard the
+                    # deferred context-engine notification (exactly-once).
+                    finalize_context_engine_compression_notification(
+                        self.agent,
+                        committed=False,
+                    )
+                    return
+
                 if partial and tail:
                     compressed = rejoin_compressed_head_and_tail(compressed, tail)
                 self.conversation_history = compressed
