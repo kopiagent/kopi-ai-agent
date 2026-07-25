@@ -4279,6 +4279,51 @@ class GatewaySlashCommandsMixin:
             lines.append("Top up and manage billing in the browser — your balance updates here after.")
         return "\n".join(lines)
 
+    async def _handle_balance_command(self, event: MessageEvent) -> str:
+        """Handle /balance -- show the KOPI Proxy token-quota balance.
+
+        KOPI is token-quota based (not USD credits): tokens remaining out of
+        the key's limit, a usage bar, account identity, and a low/exhausted
+        hint. Read-only (top-ups are administered on the website). Fetched off
+        the event loop; fail-open to an "unavailable" line so it never crashes
+        the bot.
+        """
+        from kopi_cli import kopi_balance as kb
+
+        try:
+            balance = await asyncio.to_thread(kb.fetch_kopi_balance, force_fresh=True)
+        except Exception:
+            balance = None
+
+        if balance is None:
+            return (
+                "\U0001F4CA **KOPI balance**\n"
+                "Unavailable right now -- couldn't reach the KOPI Proxy. "
+                "Check your connection or API key and try again."
+            )
+
+        lines: list[str] = ["\U0001F4CA **KOPI balance**", kb.format_quota_summary(balance)]
+        if not balance.is_unlimited:
+            lines.append(kb.format_quota_bar(balance.percentage_used))
+
+        identity = balance.client_name or ""
+        if balance.key_prefix:
+            identity = f"{identity} \u00b7 key {balance.key_prefix}" if identity else f"key {balance.key_prefix}"
+        if identity:
+            lines.append("")
+            lines.append(identity)
+
+        if balance.is_depleted:
+            lines.append("")
+            lines.append(
+                "\u26A0\uFE0F Quota exhausted -- new requests will fail (HTTP 402). "
+                "Contact your administrator to top up."
+            )
+        elif balance.is_low:
+            lines.append("")
+            lines.append(f"\u26A0\uFE0F Low quota -- {balance.percentage_used}% used.")
+        return "\n".join(lines)
+
     def _context_breakdown_lines(self, agent, source) -> list[str]:
         """Render the per-category context breakdown for /usage.
 
