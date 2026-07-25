@@ -57,7 +57,7 @@ def remove_path_from_shell_configs():
     
     for config_path in configs:
         try:
-            content = config_path.read_text()
+            content = config_path.read_text(encoding="utf-8")
             original_content = content
             
             # Remove lines containing kopi-ai-agent or kopi PATH entries
@@ -87,7 +87,7 @@ def remove_path_from_shell_configs():
                 new_content = new_content.replace('\n\n\n', '\n\n')
             
             if new_content != original_content:
-                config_path.write_text(new_content)
+                config_path.write_text(new_content, encoding="utf-8")
                 removed_from.append(config_path)
                 
         except Exception as e:
@@ -108,7 +108,7 @@ def remove_wrapper_script():
         if wrapper.exists():
             try:
                 # Check if it's our wrapper (contains kopi_cli reference)
-                content = wrapper.read_text()
+                content = wrapper.read_text(encoding="utf-8")
                 if 'kopi_cli' in content or 'kopi-ai-agent' in content:
                     wrapper.unlink()
                     removed.append(wrapper)

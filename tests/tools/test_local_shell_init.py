@@ -194,12 +194,12 @@ class TestSnapshotEndToEnd:
         env = LocalEnvironment(cwd=str(tmp_path), timeout=15)
         try:
             first = env.execute(
-                'export KOPI_SESSION_ENV_PROBE="sticky"; '
+                'export KOPI_STICKY_ENV_PROBE="sticky"; '
                 'export PATH="/tmp/kopi-session-bin:$PATH"; '
-                'echo "first=$KOPI_SESSION_ENV_PROBE"'
+                'echo "first=$KOPI_STICKY_ENV_PROBE"'
             )
             second = env.execute(
-                'echo "second=$KOPI_SESSION_ENV_PROBE"; echo "PATH=$PATH"'
+                'echo "second=$KOPI_STICKY_ENV_PROBE"; echo "PATH=$PATH"'
             )
         finally:
             env.cleanup()

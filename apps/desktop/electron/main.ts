@@ -15,6 +15,7 @@ import { stopBackendChild as stopBackendChildImpl } from './backend-child'
 import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
 import { createBackendConnectionState } from './backend-connection-state'
 import { buildDesktopBackendEnv, normalizeKopiHomeRoot } from './backend-env'
+import { waitForKopiReady } from './backend-health'
 import { canImportKopiCli, shouldTrustKopiOverride, verifyKopiCli } from './backend-probes'
 import { waitForDashboardPortAnnouncement } from './backend-ready'
 import { shouldLatchBackendStartFailure } from './backend-start-failure'
@@ -2989,6 +2990,7 @@ function preflightStateDb(kopiHome, rememberLog) {
 
   if (!fileExists(stateDbPath)) {
     rememberLog('[updates] state.db pre-flight: not found (fresh install?)')
+
     return
   }
 
@@ -3019,23 +3021,19 @@ function preflightStateDb(kopiHome, rememberLog) {
 
       // Emergency timestamped backup, separate from the Python-level snapshot.
       const ts = new Date().toISOString().replace(/[:.]/g, '-')
-      const emergencyPath = path.join(
-        kopiHome,
-        `state.db.pre-update-emergency-${ts}.bak`
-      )
+
+      const emergencyPath = path.join(kopiHome, `state.db.pre-update-emergency-${ts}.bak`)
 
       try {
         fs.copyFileSync(stateDbPath, emergencyPath)
         const emergStat = fs.statSync(emergencyPath)
 
-        rememberLog(
-          `[updates] emergency state.db backup: ${emergencyPath} ` +
-            `(${emergStat.size} bytes)`
-        )
+        rememberLog(`[updates] emergency state.db backup: ${emergencyPath} ` + `(${emergStat.size} bytes)`)
 
         // Prune to the 2 most recent emergency backups.
         try {
           const homeDir = fs.readdirSync(kopiHome)
+
           const backups = homeDir
             .filter(
               f =>
@@ -3057,19 +3055,13 @@ function preflightStateDb(kopiHome, rememberLog) {
           void 0
         }
       } catch (copyErr) {
-        rememberLog(
-          `[updates] emergency state.db backup failed: ${copyErr.message}`
-        )
+        rememberLog(`[updates] emergency state.db backup failed: ${copyErr.message}`)
       }
     } else {
-      rememberLog(
-        `[updates] state.db too small (${stat.size} bytes) for a valid SQLite database`
-      )
+      rememberLog(`[updates] state.db too small (${stat.size} bytes) for a valid SQLite database`)
     }
   } catch (statErr) {
-    rememberLog(
-      `[updates] could not stat state.db before update: ${statErr.message}`
-    )
+    rememberLog(`[updates] could not stat state.db before update: ${statErr.message}`)
   }
 }
 
@@ -3087,6 +3079,7 @@ async function applyUpdatesPosixInApp(opts: any) {
 
   if (!kopi) {
     emitUpdateProgress({ stage: 'manual', message: 'kopi update', percent: null })
+
     return { ok: true, manual: true, command: 'kopi update', kopiRoot: updateRoot }
   }
 
@@ -4825,39 +4818,12 @@ function closePreviewWatchers() {
 }
 
 async function waitForKopi(baseUrl, token, signal?) {
-  const deadline = Date.now() + 45_000
-  let lastError = null
-
-  while (Date.now() < deadline) {
-    if (signal?.aborted) {
-      const error: any = new Error('SSH bootstrap was superseded by newer connection settings.')
-      error.kind = 'superseded'
-      throw error
-    }
-
-    try {
-      await fetchJson(`${baseUrl}/api/status`, token)
-
-      return
-    } catch (error) {
-      lastError = error
-      await new Promise((resolve, reject) => {
-        const timer = setTimeout(resolve, 500)
-        signal?.addEventListener(
-          'abort',
-          () => {
-            clearTimeout(timer)
-            const aborted: any = new Error('SSH bootstrap was superseded by newer connection settings.')
-            aborted.kind = 'superseded'
-            reject(aborted)
-          },
-          { once: true }
-        )
-      })
-    }
-  }
-
-  throw new Error(`Kopi backend did not become ready: ${lastError?.message || 'timeout'}`)
+  return waitForKopiReady(baseUrl, {
+    token,
+    signal,
+    fetchPublicJson,
+    fetchJson
+  })
 }
 
 function getWindowButtonPosition() {
