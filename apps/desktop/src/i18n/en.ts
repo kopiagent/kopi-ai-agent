@@ -2139,8 +2139,7 @@ export const en: Translations = {
     installTo: 'Will install to',
     retryAfterRun: 'I’ve run it -- retry',
     setupChoiceTitle: 'Set up Kopi Desktop',
-    setupChoiceDesc:
-      'Connect this app to a Kopi gateway you already run, or install Kopi locally on this computer.',
+    setupChoiceDesc: 'Connect this app to a Kopi gateway you already run, or install Kopi locally on this computer.',
     connectExistingTitle: 'Connect to existing Kopi',
     connectExistingShort: 'Connect existing',
     connectExistingDesc: 'Use a remote backend with a session token or browser sign-in. No local install will start.',
