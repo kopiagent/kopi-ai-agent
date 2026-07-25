@@ -237,6 +237,7 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
   // current snapshot via getBootstrapState() to recover after a devtools
   // reload mid-bootstrap.
   getBootstrapState: () => ipcRenderer.invoke('kopi:bootstrap:get'),
+  continueBootstrapLocal: () => ipcRenderer.invoke('kopi:bootstrap:continue-local'),
   resetBootstrap: () => ipcRenderer.invoke('kopi:bootstrap:reset'),
   repairBootstrap: () => ipcRenderer.invoke('kopi:bootstrap:repair'),
   cancelBootstrap: () => ipcRenderer.invoke('kopi:bootstrap:cancel'),
