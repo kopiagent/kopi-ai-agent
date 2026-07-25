@@ -13,9 +13,9 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import type { KopiGitWorktree } from '@/global'
-import { useI18n } from '@/i18n'
 import type { SessionInfo } from '@/kopi'
-import { $dismissedWorktreeIds, dismissWorktree } from '@/store/layout'
+import { useI18n } from '@/i18n'
+import { $dismissedWorktreeIds, dismissWorktree, setWorkspaceNodeOpen } from '@/store/layout'
 import { notifyError } from '@/store/notifications'
 import { removeWorktreePath } from '@/store/projects'
 
@@ -257,7 +257,15 @@ function RepoFlatSection({
       <WorkspaceHeader
         action={
           onNewSession && (
-            <WorkspaceAddButton label={s.newSessionIn(repo.label)} onClick={() => onNewSession(repo.path)} />
+            <WorkspaceAddButton
+              label={s.newSessionIn(repo.label)}
+              onClick={() => {
+                // Reveal the repo the new session targets if the user had it
+                // collapsed — the session lands in one of its lanes.
+                setWorkspaceNodeOpen(repo.id, true)
+                onNewSession(repo.path)
+              }}
+            />
           )
         }
         count={repoCount}

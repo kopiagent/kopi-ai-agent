@@ -4,8 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Input } from '@/components/ui/input'
-import { useI18n } from '@/i18n'
+import { Progress } from '@/components/ui/progress'
 import { getGlobalModelOptions } from '@/kopi'
+import { useI18n } from '@/i18n'
 import { Check, ChevronDown, ChevronLeft, KeyRound, Loader2 } from '@/lib/icons'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { cn } from '@/lib/utils'
@@ -65,59 +66,44 @@ export interface ApiKeyOption {
 
 // Curated order mirrors CANONICAL_PROVIDERS: Fireworks sits #2 overall (after
 // Nous Portal OAuth), ahead of OpenRouter and the rest of the key catalog.
-// KOPI fork: OAuth provider ids allowed in the onboarding picker. Empty =
-// no OAuth picker (only the KOPI Agent key form shows). kopi-proxy is an
-// api-key provider, not OAuth, so it isn't listed here.
-const KOPI_ONLY_OAUTH: string[] = []
-
-// KOPI fork: only the KOPI Proxy endpoint is offered. The other vendors are
-// commented out (not deleted) so they can be restored if the product ever
-// opens up to more providers.
 const API_KEY_OPTIONS: ApiKeyOption[] = [
   {
-    id: 'kopi-proxy',
-    name: 'KOPI Agent',
-    envKey: 'KOPI_API_KEY',
-    description: 'Connect to KOPI Agent (kopiaiagent.com).',
-    docsUrl: 'https://kopiaiagent.com'
+    id: 'fireworks',
+    name: 'Fireworks AI',
+    envKey: 'FIREWORKS_API_KEY',
+    docsUrl: 'https://app.fireworks.ai/settings/users/api-keys'
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    envKey: 'OPENROUTER_API_KEY',
+    docsUrl: 'https://openrouter.ai/keys'
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    envKey: 'OPENAI_API_KEY',
+    docsUrl: 'https://platform.openai.com/api-keys'
+  },
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    envKey: 'GEMINI_API_KEY',
+    docsUrl: 'https://aistudio.google.com/app/apikey'
+  },
+  {
+    id: 'xai',
+    name: 'xAI Grok',
+    envKey: 'XAI_API_KEY',
+    docsUrl: 'https://console.x.ai/'
+  },
+  {
+    id: 'local',
+    name: 'Local / custom endpoint',
+    envKey: 'OPENAI_BASE_URL',
+    docsUrl: 'https://github.com/kopiagent/kopi-ai-agent#bring-your-own-endpoint',
+    placeholder: 'http://127.0.0.1:8000/v1'
   }
-  // {
-  //   id: 'fireworks',
-  //   name: 'Fireworks AI',
-  //   envKey: 'FIREWORKS_API_KEY',
-  //   docsUrl: 'https://app.fireworks.ai/settings/users/api-keys'
-  // },
-  // {
-  //   id: 'openrouter',
-  //   name: 'OpenRouter',
-  //   envKey: 'OPENROUTER_API_KEY',
-  //   docsUrl: 'https://openrouter.ai/keys'
-  // },
-  // {
-  //   id: 'openai',
-  //   name: 'OpenAI',
-  //   envKey: 'OPENAI_API_KEY',
-  //   docsUrl: 'https://platform.openai.com/api-keys'
-  // },
-  // {
-  //   id: 'gemini',
-  //   name: 'Google Gemini',
-  //   envKey: 'GEMINI_API_KEY',
-  //   docsUrl: 'https://aistudio.google.com/app/apikey'
-  // },
-  // {
-  //   id: 'xai',
-  //   name: 'xAI Grok',
-  //   envKey: 'XAI_API_KEY',
-  //   docsUrl: 'https://console.x.ai/'
-  // },
-  // {
-  //   id: 'local',
-  //   name: 'Local / custom endpoint',
-  //   envKey: 'OPENAI_BASE_URL',
-  //   docsUrl: 'https://github.com/kopiagent/kopi-ai-agent#bring-your-own-endpoint',
-  //   placeholder: 'http://127.0.0.1:8000/v1'
-  // }
 ]
 
 // Build the FULL API-key provider catalog from the backend model options so the
@@ -387,15 +373,12 @@ function Preparing({ boot }: { boot: DesktopBootState }) {
       <p className="text-sm text-muted-foreground">
         {installing ? t.onboarding.preparingInstall : t.onboarding.starting}
       </p>
-      <div className="h-2 overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn(
-            'h-full rounded-full bg-primary transition-[width] duration-300 ease-out',
-            hasError && 'bg-destructive'
-          )}
-          style={{ width: `${progress}%` }}
-        />
-      </div>
+      <Progress
+        aria-label={installing ? t.onboarding.preparingInstall : t.onboarding.starting}
+        destructive={hasError}
+        size="lg"
+        value={progress / 100}
+      />
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
         <span className="truncate">{boot.message}</span>
         <span>{progress}%</span>
@@ -450,16 +433,7 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
     setOnboardingMode('apikey')
   }
 
-  // KOPI fork: only KOPI Agent is offered, so the OAuth provider picker
-  // (Nous Portal / OpenAI / Anthropic / ...) is suppressed. kopi-proxy is an
-  // api-key provider, so this list is empty and the flow falls straight
-  // through to the KOPI key form below. To restore the multi-provider OAuth
-  // picker, add ids to KOPI_ONLY_OAUTH (module scope above).
-  const ordered = useMemo(
-    () => (providers ? sortProviders(providers).filter(p => KOPI_ONLY_OAUTH.includes(p.id)) : []),
-    [providers]
-  )
-
+  const ordered = useMemo(() => (providers ? sortProviders(providers) : []), [providers])
   const hasOauth = ordered.length > 0
   const apiKeyOptions = useApiKeyCatalog()
 

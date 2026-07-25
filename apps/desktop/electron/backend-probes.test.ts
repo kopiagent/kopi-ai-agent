@@ -12,7 +12,12 @@ import path from 'node:path'
 
 import { test } from 'vitest'
 
-import { canImportKopiCli, kopiRuntimeImportProbe, shouldTrustKopiOverride, verifyKopiCli } from './backend-probes'
+import {
+  canImportKopiCli,
+  kopiRuntimeImportProbe,
+  shouldTrustKopiOverride,
+  verifyKopiCli
+} from './backend-probes'
 
 // Resolve the host's own Node binary -- guaranteed to be on disk and
 // runnable. We use it as both a stand-in for "a python that doesn't
