@@ -17,10 +17,12 @@ kopi memory setup honcho   # configure Honcho directly (works on a fresh install
 kopi memory setup          # generic picker, choose Honcho from the list
 ```
 
-For cloud, the wizard asks **OAuth or API key**. OAuth opens a browser
-sign-in and stores the grant itself — nothing to copy; tokens refresh
-automatically. The desktop app offers the same flow as a **Connect** link
-next to the memory-provider dropdown.
+For cloud, the wizard asks **OAuth, device code, or API key**. OAuth opens a
+browser sign-in and stores the grant itself — nothing to copy; tokens refresh
+automatically. On SSH/headless machines choose **device**: the CLI prints a
+short code and a link you open in a browser on any other machine; setup
+completes once you approve there. The desktop app offers the browser flow as
+a **Connect** link next to the memory-provider dropdown.
 
 Or manually:
 ```bash
@@ -233,13 +235,13 @@ The Honcho session name determines which conversation bucket memory lands in. Re
 | 2 | `/title` command (mid-session rename) | `"refactor-auth"` |
 | 3 | Gateway session key (Telegram, Discord, etc.) | `"agent-main-telegram-dm-8439114563"` |
 | 4 | `per-session` strategy | Kopi session ID (`20260415_a3f2b1`) |
-| 5 | `per-repo` strategy | Git root directory name (`kopi-agent`) |
+| 5 | `per-repo` strategy | Git root directory name (`kopi-ai-agent`) |
 | 6 | `per-directory` strategy | Current directory basename (`src`) |
 | 7 | `global` strategy | Workspace name (`kopi`) |
 
 Gateway platforms always resolve via priority 3 (per-chat isolation) regardless of `sessionStrategy`. The strategy setting only affects CLI sessions.
 
-If `sessionPeerPrefix` is `true`, the peer name is prepended: `alice-kopi-agent`.
+If `sessionPeerPrefix` is `true`, the peer name is prepended: `alice-kopi-ai-agent`.
 
 #### What each strategy produces
 
@@ -347,7 +349,8 @@ Presets:
 | `HONCHO_OAUTH_DASHBOARD` | OAuth authorize origin (default: cloud dashboard; local-dev `localhost:3000`) |
 | `HONCHO_OAUTH_AUTHORIZE_URL` | Full authorize URL (overrides the dashboard origin) |
 | `HONCHO_OAUTH_TOKEN_URL` | Token endpoint (default: cloud API; local-dev `localhost:8000`) |
-| `HONCHO_OAUTH_CLIENT_ID` | OAuth client (default `kopi-agent`) |
+| `HONCHO_OAUTH_DEVICE_AUTH_URL` | Device-authorization endpoint (default: derived from the token URL) |
+| `HONCHO_OAUTH_CLIENT_ID` | OAuth client (default `kopi-ai-agent`) |
 | `HONCHO_OAUTH_SCOPE` | Requested scope (default `write`) |
 
 ## CLI Commands

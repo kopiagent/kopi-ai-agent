@@ -1,6 +1,6 @@
 ---
 name: openclaw-migration
-description: Migrate a user's OpenClaw customization footprint into Kopi Agent. Imports Kopi-compatible memories, SOUL.md, command allowlists, user skills, and selected workspace assets from ~/.openclaw, then reports exactly what could not be migrated and why.
+description: Import an OpenClaw setup (memories, skills) into Kopi.
 version: 1.0.0
 author: Kopi Agent (Nous Research)
 license: MIT

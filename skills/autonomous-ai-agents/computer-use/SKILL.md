@@ -12,7 +12,7 @@ metadata:
   kopi:
     tags: [computer-use, desktop, automation, gui, cross-platform]
     category: desktop
-    related_skills: [browser]
+    related_skills: []
 ---
 
 # Computer Use (universal, any-model, cross-platform)

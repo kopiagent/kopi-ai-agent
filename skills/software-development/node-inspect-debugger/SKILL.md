@@ -8,7 +8,7 @@ platforms: [linux, macos, windows]
 metadata:
   kopi:
     tags: [debugging, nodejs, node-inspect, cdp, breakpoints, ui-tui]
-    related_skills: [systematic-debugging, python-debugpy, debugging-kopi-tui-commands]
+    related_skills: [systematic-debugging, python-debugpy]
 ---
 
 # Node.js Inspect Debugger

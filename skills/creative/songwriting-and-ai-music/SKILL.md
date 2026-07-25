@@ -298,7 +298,7 @@ cover this (heavy dependencies, so not installed by default):
   `kopi skills install official/creative/heartmula`
 - **audiocraft** — Meta's MusicGen (instrumental text-to-music) and
   AudioGen (sound effects):
-  `kopi skills install official/creative/audiocraft`
+  `kopi skills install official/creative/audiocraft-audio-generation`
 
 The lyric-writing and prompting craft in this skill applies to
 heartmula too — its input format is lyrics with bracketed structure

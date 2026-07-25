@@ -8,7 +8,7 @@ platforms: [linux, macos]
 metadata:
   kopi:
     tags: [MCP, OAuth, PKCE, Remote-Deployment]
-    related_skills: [native-mcp, mcporter, fastmcp]
+    related_skills: [kopi-ai-agent, mcporter, fastmcp]
 ---
 
 # MCP OAuth on a Remote Kopi Gateway

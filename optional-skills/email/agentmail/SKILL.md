@@ -1,6 +1,6 @@
 ---
 name: agentmail
-description: Give the agent its own dedicated email inbox via AgentMail. Send, receive, and manage email autonomously using agent-owned email addresses (e.g. kopi-agent@agentmail.to).
+description: "Give the agent its own inbox: send and receive email."
 version: 1.0.0
 platforms: [linux, macos, windows]
 metadata:
@@ -71,8 +71,8 @@ All 11 AgentMail tools are now available automatically.
 
 ### Create an inbox and send an email
 1. Create a dedicated inbox:
-   - Use `create_inbox` with a username (e.g. `kopi-agent`)
-   - The agent gets address: `kopi-agent@agentmail.to`
+   - Use `create_inbox` with a username (e.g. `kopi-ai-agent`)
+   - The agent gets address: `kopi-ai-agent@agentmail.to`
 2. Send an email:
    - Use `send_message` with `inbox_id`, `to`, `subject`, `text`
 3. Check for replies:

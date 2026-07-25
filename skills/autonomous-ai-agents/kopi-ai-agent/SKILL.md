@@ -1,7 +1,7 @@
 ---
 name: kopi-ai-agent
 description: "Use, configure, theme, extend, and orchestrate Kopi Agent."
-version: 3.0.0
+version: 3.1.0
 author: Kopi Agent + Teknium
 license: MIT
 platforms: [linux, macos, windows]
