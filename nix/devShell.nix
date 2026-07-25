@@ -57,6 +57,11 @@
 
           # for the devshell to pick up the src
           export KOPI_PYTHON_SRC_ROOT=$(git rev-parse --show-toplevel)
+
+          # Let `uv run --active --no-sync` reuse Nix's provisioned Python
+          # environment instead of creating an empty project .venv.
+          export VIRTUAL_ENV="$(dirname "$(dirname "$(readlink -f "$(command -v python)")")")"
+
           echo "Kopi Agent dev shell in $KOPI_PYTHON_SRC_ROOT"
           echo "Ready. Run 'kopi' or 'sandbox kopi' to start."
         '';

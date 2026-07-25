@@ -3683,6 +3683,7 @@ def _retry_same_provider_sync(
         extra_body=effective_extra_body,
         reasoning_config=reasoning_config,
         base_url=retry_base or resolved_base_url,
+        task=task,
     )
     if _is_anthropic_compat_endpoint(resolved_provider, retry_base):
         retry_kwargs["messages"] = _convert_openai_images_to_anthropic(retry_kwargs["messages"])
@@ -3742,6 +3743,7 @@ async def _retry_same_provider_async(
         extra_body=effective_extra_body,
         reasoning_config=reasoning_config,
         base_url=retry_base or resolved_base_url,
+        task=task,
     )
     if _is_anthropic_compat_endpoint(resolved_provider, retry_base):
         retry_kwargs["messages"] = _convert_openai_images_to_anthropic(retry_kwargs["messages"])
@@ -3930,7 +3932,7 @@ def _call_fallback_candidate_sync(
         temperature=temperature, max_tokens=max_tokens,
         tools=tools, timeout=effective_timeout,
         extra_body=effective_extra_body, reasoning_config=reasoning_config,
-        base_url=fb_base)
+        base_url=fb_base, task=task)
     try:
         return _validate_llm_response(
             fb_client.chat.completions.create(**fb_kwargs), task)
@@ -3947,7 +3949,7 @@ def _call_fallback_candidate_sync(
                     tools=tools, timeout=effective_timeout,
                     extra_body=effective_extra_body,
                     reasoning_config=reasoning_config,
-                    base_url=str(getattr(retry_client, "base_url", "") or fb_base))
+                    base_url=str(getattr(retry_client, "base_url", "") or fb_base), task=task)
                 try:
                     return _validate_llm_response(
                         retry_client.chat.completions.create(**retry_kwargs), task)
@@ -3996,7 +3998,7 @@ async def _call_fallback_candidate_async(
         temperature=temperature, max_tokens=max_tokens,
         tools=tools, timeout=effective_timeout,
         extra_body=effective_extra_body, reasoning_config=reasoning_config,
-        base_url=fb_base)
+        base_url=fb_base, task=task)
     try:
         return _validate_llm_response(
             await fb_client.chat.completions.create(**fb_kwargs), task)
@@ -4014,7 +4016,7 @@ async def _call_fallback_candidate_async(
                     tools=tools, timeout=effective_timeout,
                     extra_body=effective_extra_body,
                     reasoning_config=reasoning_config,
-                    base_url=str(getattr(retry_client, "base_url", "") or fb_base))
+                    base_url=str(getattr(retry_client, "base_url", "") or fb_base), task=task)
                 try:
                     return _validate_llm_response(
                         await retry_client.chat.completions.create(**retry_kwargs), task)
@@ -6776,6 +6778,7 @@ def _build_call_kwargs(
     extra_body: Optional[dict] = None,
     reasoning_config: Optional[dict] = None,
     base_url: Optional[str] = None,
+    task: Optional[str] = None,
 ) -> dict:
     """Build kwargs for .chat.completions.create() with model/provider adjustments."""
     kwargs: Dict[str, Any] = {
@@ -6830,11 +6833,32 @@ def _build_call_kwargs(
             _provider_norm in {"nvidia", "nvidia-nim", "nim", "build-nvidia", "nemotron"}
             or base_url_host_matches(_effective_base, "integrate.api.nvidia.com")
         )
+        _is_moa = bool(task) and str(task) == "moa_reference"
+        # Gemini's native generateContent maps max_tokens → maxOutputTokens and,
+        # when it is omitted, applies a fixed 65,535-token ceiling rather than
+        # "the model's full budget" (see gemini_native_adapter.build_gemini_request).
+        # So an explicit cap is both safe and the ONLY way to honor it here —
+        # dropping max_tokens silently makes MoA's reference_max_tokens a no-op
+        # for gemini advisors (they run effectively uncapped).
+        _is_gemini_native = _provider_norm in {
+            "gemini", "google", "google-gemini", "google-ai-studio",
+        }
+        if not _is_gemini_native and _effective_base:
+            try:
+                from agent.gemini_native_adapter import is_native_gemini_base_url
+                _is_gemini_native = is_native_gemini_base_url(_effective_base)
+            except Exception:
+                pass
         if (
             _is_anthropic_compat_endpoint(provider, _effective_base)
             or _is_nvidia_nim
+            or _is_moa
+            or _is_gemini_native
         ):
-            kwargs["max_tokens"] = max_tokens
+            # Use auxiliary_max_tokens_param() so models that require
+            # max_completion_tokens (GPT-5 family, Copilot) get the right
+            # parameter name instead of a hardcoded max_tokens that 400s.
+            kwargs.update(auxiliary_max_tokens_param(max_tokens, model=model))
 
     if tools:
         # Defensive dedup: providers like Google Vertex, Azure, and Bedrock
@@ -7203,7 +7227,7 @@ def call_llm(
         temperature=temperature, max_tokens=max_tokens,
         tools=tools, timeout=effective_timeout, extra_body=effective_extra_body,
         reasoning_config=reasoning_config,
-        base_url=_base_info or resolved_base_url)
+        base_url=_base_info or resolved_base_url, task=task)
 
     # Convert image blocks for Anthropic-compatible endpoints (e.g. MiniMax)
     _client_base = str(getattr(client, "base_url", "") or "")
@@ -7819,7 +7843,7 @@ async def async_call_llm(
         temperature=temperature, max_tokens=max_tokens,
         tools=tools, timeout=effective_timeout, extra_body=effective_extra_body,
         reasoning_config=reasoning_config,
-        base_url=_client_base or resolved_base_url)
+        base_url=_client_base or resolved_base_url, task=task)
 
     # Convert image blocks for Anthropic-compatible endpoints (e.g. MiniMax)
     if _is_anthropic_compat_endpoint(resolved_provider, _client_base):
