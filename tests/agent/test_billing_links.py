@@ -18,7 +18,7 @@ def test_nous_route_by_provider_slug():
     assert block.is_nous is True
     assert block.provider_label == "Nous Portal"
     # Nous always resolves an in-app/portal billing URL as a fallback.
-    assert block.billing_url and "nousresearch.com" in block.billing_url
+    assert block.billing_url and "kopiaiagent.com" in block.billing_url  # KOPI rebrand: nous_portal_billing_url -> kopiaiagent.com/portal
 
 
 def test_nous_route_by_base_url_host():
