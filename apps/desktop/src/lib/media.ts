@@ -58,6 +58,30 @@ export function mediaMarkdownHref(path: string): string {
   return `#media:${encodeURIComponent(path)}`
 }
 
+export function isInlineMediaSrc(path: string): boolean {
+  return /^(?:https?|data):/i.test(path)
+}
+
+function isFileMediaPath(path: string): boolean {
+  return /^(?:file:|\/|~\/|[a-z]:[\\/]|\\\\)/i.test(path)
+}
+
+export async function resolveMediaDisplaySrc(path: string): Promise<string> {
+  if (isInlineMediaSrc(path) || !isFileMediaPath(path)) {
+    return path
+  }
+
+  if (window.kopiDesktop && isRemoteGateway()) {
+    return gatewayMediaDataUrl(path)
+  }
+
+  if (!window.kopiDesktop?.readFileDataUrl) {
+    return mediaExternalUrl(path)
+  }
+
+  return window.kopiDesktop.readFileDataUrl(filePathFromMediaPath(path))
+}
+
 // Resolve a media path to a URL the shell can open. Remote mode rewrites
 // gateway-local paths to an authenticated /api/files/download URL (the file
 // lives on the gateway, not this disk); local mode keeps the file:// form.

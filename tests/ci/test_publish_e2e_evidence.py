@@ -124,6 +124,89 @@ def test_upload_evidence_rejects_unexpected_gh_image_output(tmp_path, monkeypatc
         )
 
 
+def test_upload_evidence_reports_gh_image_error(tmp_path, monkeypatch, capsys):
+    shot = tmp_path / "shot.png"
+    shot.write_bytes(_png())
+
+    def fake_run(args, **kwargs):
+        raise _mod.subprocess.CalledProcessError(
+            1,
+            args,
+            output="upload output",
+            stderr="upload error",
+        )
+
+    monkeypatch.setattr(_mod.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="Failed to upload shot.png.*upload error"):
+        _mod.upload_evidence(
+            [_mod.EvidenceFile("shot.png", "new screenshot: shot.png")],
+            tmp_path,
+            "NousResearch/kopi-ai-agent",
+            "bot-session-token",
+        )
+
+    captured = capsys.readouterr()
+    assert "Failed to upload shot.png" in captured.err
+    assert "upload output" in captured.err
+    assert "upload error" in captured.err
+
+
+def test_publish_marks_evidence_upload_failure_in_pr_comment(tmp_path, monkeypatch):
+    comment = {
+        "id": 123,
+        "body": "before\n<!-- kopi-e2e-evidence:start -->\npending\n<!-- kopi-e2e-evidence:end -->\nafter",
+    }
+    updates = []
+
+    monkeypatch.setattr(
+        _mod,
+        "load_evidence",
+        lambda evidence_dir: (
+            [_mod.EvidenceFile("shot.png", "new screenshot: shot.png")],
+            {},
+        ),
+    )
+    monkeypatch.setattr(_mod, "_wait_for_review_comment", lambda *args: comment)
+    monkeypatch.setattr(
+        _mod,
+        "upload_evidence",
+        lambda *args: (_ for _ in ()).throw(
+            RuntimeError("Failed to upload shot.png: bad <response>")
+        ),
+    )
+    monkeypatch.setattr(
+        _mod,
+        "_api_request",
+        lambda url, token, method, payload: updates.append((
+            url,
+            token,
+            method,
+            payload,
+        )),
+    )
+
+    with pytest.raises(RuntimeError, match="Failed to upload shot.png"):
+        _mod.publish(
+            "github-token",
+            "NousResearch/kopi-ai-agent",
+            tmp_path,
+            "69868",
+            "image-token",
+        )
+
+    assert updates == [
+        (
+            "https://api.github.com/repos/NousResearch/kopi-ai-agent/issues/comments/123",
+            "github-token",
+            "PATCH",
+            {
+                "body": "before\n<!-- kopi-e2e-evidence:start -->\n<sub>inline evidence upload failed.</sub>\n\n<pre>Failed to upload shot.png: bad &lt;response&gt;</pre>\n<!-- kopi-e2e-evidence:end -->\nafter"
+            },
+        )
+    ]
+
+
 def test_find_review_comment_requires_the_evidence_marker():
     pending = "<!-- kopi-ci-review-bot -->\n<!-- kopi-e2e-evidence:start -->\npending\n<!-- kopi-e2e-evidence:end -->"
 

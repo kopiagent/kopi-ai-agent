@@ -2411,7 +2411,7 @@ def _enable_gateway_prompts() -> None:
 # ── Blocking prompt factory ──────────────────────────────────────────
 
 
-def _block(event: str, sid: str, payload: dict, timeout: int = 300) -> str:
+def _block(event: str, sid: str, payload: dict, timeout: float | None = 300) -> str:
     rid = uuid.uuid4().hex[:8]
     ev = threading.Event()
     with _prompt_lock:
@@ -2423,7 +2423,10 @@ def _block(event: str, sid: str, payload: dict, timeout: int = 300) -> str:
     answer_present = False
     try:
         _emit(event, sid, payload)
-        answered = ev.wait(timeout=timeout)
+        # Natural Event semantics: None → wait forever (clarify configured with
+        # clarify_timeout <= 0, released only by a real answer or
+        # session.interrupt), 0 → return immediately, > 0 → bounded wait.
+        answered = ev.wait(timeout)
     finally:
         with _prompt_lock:
             _pending.pop(rid, None)
@@ -2431,13 +2434,38 @@ def _block(event: str, sid: str, payload: dict, timeout: int = 300) -> str:
             answer_present = rid in _answers
             answer = _answers.pop(rid, "")
 
-    if not answered and not answer_present and event in {"secret.request", "sudo.request"}:
+    # Emit an `.expire` notification on timeout for every blocking request type
+    # whose `*.respond` handler tolerates a late reply (allow_expired=True).
+    # All four blocking bridges — secret, sudo, clarify, terminal.read — share
+    # the same lifecycle: the tool gives up on timeout and returns empty, but a
+    # slow renderer (or a reconnect that dropped tool.complete) can still answer
+    # afterward. Without this the late `*.respond` would hit the generic 4009
+    # "no pending request" error and clients would surface a raw JSON-RPC string.
+    if not answered and not answer_present and event in {
+        "secret.request",
+        "sudo.request",
+        "clarify.request",
+        "terminal.read.request",
+    }:
         _emit(
             f"{event.removesuffix('.request')}.expire",
             sid,
             {"request_id": rid},
         )
     return answer
+
+
+def _clarify_timeout_seconds() -> float | None:
+    """Clarify wait (seconds) for the TUI/desktop bridge, from the same
+    canonical config the messaging gateway and CLI use. Falls back to the
+    historical 300s _block default if config can't be read. ``<= 0`` in config
+    means unlimited and is returned as ``None`` (never auto-skip)."""
+    try:
+        from tools.clarify_gateway import get_clarify_timeout
+        timeout = get_clarify_timeout()
+        return timeout if timeout > 0 else None
+    except Exception:
+        return 300
 
 
 def _clear_pending(sid: str | None = None) -> None:
@@ -3271,6 +3299,14 @@ def _tool_progress_enabled(sid: str) -> bool:
     return _session_tool_progress_mode(sid) != "off"
 
 
+def _tool_lifecycle_required_for_ui(name: str) -> bool:
+    """Return True for tool events that are interactive UI, not optional chrome."""
+    # Desktop renders the clarify choices/question from the tool-call part, then
+    # wires request_id from clarify.request. If tool progress is off, suppressing
+    # clarify's lifecycle events leaves only the sidebar attention dot visible.
+    return name == "clarify"
+
+
 def _restart_slash_worker(sid: str, session: dict):
     worker = session.get("slash_worker")
     if worker:
@@ -3613,10 +3649,29 @@ def _compress_session_history(
     before_messages: list | None = None,
     history_version: int | None = None,
 ) -> tuple[int, dict]:
+    """Compress a session's history — the single choke point shared by all
+    three manual-compress routes (session.compress RPC, command.dispatch
+    /compress|/compact, and the slash-exec mirror).
+
+    ``focus_topic`` is the RAW argument string after ``/compress``. It is
+    parsed here with :func:`parse_partial_compress_args` so boundary-aware
+    forms (``here [N]``, ``up to here``, ``--keep N``) trigger a partial
+    compress — head summarized, most recent ``keep_last`` exchanges kept
+    verbatim — on EVERY route, mirroring cli.py's ``_manual_compress`` and
+    gateway/slash_commands.py (PR #35252). Parsing at the choke point (not
+    per-route) is what fixes #35533: previously "/compress here 3" reached
+    this helper unparsed and ran a FULL compress focused on the literal
+    text "here 3".
+    """
     from agent.conversation_compression import (
         finalize_context_engine_compression_notification,
     )
     from agent.model_metadata import estimate_request_tokens_rough
+    from kopi_cli.partial_compress import (
+        parse_partial_compress_args,
+        rejoin_compressed_head_and_tail,
+        split_history_for_partial_compress,
+    )
 
     agent = session["agent"]
     # Snapshot history under the lock so the LLM-bound compression call
@@ -3631,6 +3686,18 @@ def _compress_session_history(
     if len(history) < 4:
         usage = _get_usage(agent)
         return 0, usage
+    partial, keep_last, focus_topic = parse_partial_compress_args(focus_topic or "")
+    # Boundary-aware split: only the head is summarized; the most recent
+    # `keep_last` exchanges ride along verbatim. A degenerate split (empty
+    # tail — everything would be kept, or no head left to compress) falls
+    # back to full compression so the user still gets an action.
+    tail: list = []
+    head = history
+    if partial:
+        head, tail = split_history_for_partial_compress(history, keep_last)
+        if not tail:
+            partial = False
+            head = history
     if approx_tokens is None:
         # Include system prompt + tool schemas so the figure reflects real
         # request pressure, not a transcript-only underestimate (#6217).
@@ -3651,9 +3718,12 @@ def _compress_session_history(
     # and gateway handlers.
     try:
         compressed, _ = agent._compress_context(
-            history,
+            head,
             None,
             approx_tokens=approx_tokens,
+            # Partial compress has no focus topic (the modes are exclusive;
+            # parse_partial_compress_args returns focus_topic=None for the
+            # boundary-aware forms).
             focus_topic=focus_topic or None,
             force=True,
             defer_context_engine_notification=True,
@@ -3664,6 +3734,8 @@ def _compress_session_history(
             committed=False,
         )
         raise
+    if partial and tail:
+        compressed = rejoin_compressed_head_and_tail(compressed, tail)
     with session["history_lock"]:
         if int(session.get("history_version", 0)) != history_version:
             # External mutation during compaction — drop the compressed
@@ -3830,11 +3902,15 @@ def _get_usage(agent) -> dict:
 
 
 def _probe_credentials(agent) -> str:
-    """Light credential check at session creation — returns warning or ''."""
+    """Light credential check at session creation — returns warning or ''.
+
+    ``no-key-required`` is a valid sentinel for keyless custom providers; only
+    warn when the key is genuinely missing.
+    """
     try:
         key = getattr(agent, "api_key", "") or ""
         provider = getattr(agent, "provider", "") or ""
-        if not key or key == "no-key-required":
+        if not key:
             return f"No API key configured for provider '{provider}'. First message will fail."
     except Exception:
         pass
@@ -4208,7 +4284,7 @@ def _on_tool_start(sid: str, tool_call_id: str, name: str, args: dict):
         except Exception:
             pass
         session.setdefault("tool_started_at", {})[tool_call_id] = time.time()
-    if _tool_progress_enabled(sid):
+    if _tool_progress_enabled(sid) or _tool_lifecycle_required_for_ui(name):
         payload = {
             "tool_id": tool_call_id,
             "name": name,
@@ -4266,7 +4342,7 @@ def _on_tool_complete(sid: str, tool_call_id: str, name: str, args: dict, result
             payload["inline_diff"] = "\n".join(rendered)
     except Exception:
         pass
-    if _tool_progress_enabled(sid) or payload.get("inline_diff"):
+    if _tool_progress_enabled(sid) or payload.get("inline_diff") or _tool_lifecycle_required_for_ui(name):
         _emit("tool.complete", sid, payload)
 
 
@@ -4519,7 +4595,10 @@ def _agent_cbs(sid: str) -> dict:
             "notification.clear", sid, {"key": key}
         ),
         "clarify_callback": lambda q, c: _block(
-            "clarify.request", sid, {"question": q, "choices": c}
+            "clarify.request",
+            sid,
+            {"question": q, "choices": c},
+            timeout=_clarify_timeout_seconds(),
         ),
         # read_terminal tool (desktop GUI): same blocking bridge as clarify — the
         # renderer answers terminal.read.respond with the serialized buffer.
@@ -5631,6 +5710,20 @@ def _is_text_only_busy_payload(content: Any) -> bool:
     return False
 
 
+def _is_display_hidden_marker(role: str | None, text: str) -> bool:
+    """Gateway bookkeeping notices (model-switch, personality) are persisted as
+    role=user ``[System: …]`` rows so strict providers accept them mid-history.
+    They are model-facing runtime metadata, not user turns, and must never
+    render as a user bubble in ANY client transcript (desktop, TUI, CLI, web).
+
+    Filtering here — the single display projection every surface reads — hides
+    them everywhere while the raw marker stays in ``session["history"]`` for the
+    model. It also removes the stored marker from the payload the desktop
+    reconciles against, so it can no longer shift user-message ordinals and
+    duplicate the optimistic prompt (#67603)."""
+    return role == "user" and text.lstrip().startswith("[System:")
+
+
 def _history_to_messages(history: list[dict]) -> list[dict]:
     messages = []
     tool_call_args = {}
@@ -5642,6 +5735,8 @@ def _history_to_messages(history: list[dict]) -> list[dict]:
         if role not in {"user", "assistant", "tool", "system"}:
             continue
         content_text = _coerce_message_text(m.get("content"))
+        if _is_display_hidden_marker(role, content_text):
+            continue
         if role == "assistant" and m.get("tool_calls"):
             for tc in m["tool_calls"]:
                 fn = tc.get("function", {})
@@ -10460,6 +10555,9 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                         _provider,
                         _model,
                         _cfg,
+                        requested_provider=getattr(
+                            agent, "requested_provider", ""
+                        ),
                     )
                     if getattr(agent, "api_mode", "") == "codex_app_server":
                         _mode = "text"
@@ -11745,13 +11843,20 @@ def _respond(rid, params, key, *, allow_expired=False):
 
 @method("clarify.respond")
 def _(rid, params: dict) -> dict:
-    return _respond(rid, params, "answer")
+    # allow_expired=True: a clarify can time out server-side (its entry is popped
+    # from _pending) while the card is still visible — common when a WebSocket
+    # reconnect during the wait drops tool.complete. A late answer must resolve
+    # gracefully instead of hitting the raw 4009 "no pending answer request".
+    return _respond(rid, params, "answer", allow_expired=True)
 
 
 @method("terminal.read.respond")
 def _(rid, params: dict) -> dict:
     # `text` is a JSON string of the serialized terminal buffer + line metadata.
-    return _respond(rid, params, "text")
+    # allow_expired=True: the read_terminal tool's _block() uses a short 30s
+    # timeout, so a slow renderer losing the race is the common case — a late
+    # response must not error after the tool already returned empty.
+    return _respond(rid, params, "text", allow_expired=True)
 
 
 @method("sudo.respond")
@@ -15391,6 +15496,10 @@ def _mirror_slash_side_effects(sid: str, session: dict, command: str) -> str:
                 else 0
             )
 
+            # The raw argument goes through unparsed: _compress_session_history
+            # (the choke point shared by all three manual-compress routes)
+            # parses the boundary-aware forms (here [N], up to here, --keep N)
+            # and does the partial head/tail split there (#35533).
             _compress_session_history(session, arg)
             _sync_session_key_after_compress(sid, session)
 
