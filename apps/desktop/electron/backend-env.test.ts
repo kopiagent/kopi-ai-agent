@@ -68,6 +68,24 @@ test('buildDesktopBackendEnv extends PYTHONPATH and backend PATH together', () =
   assert.ok(env.PATH.includes('/opt/homebrew/bin'))
 })
 
+test('buildDesktopBackendEnv forces PYTHONUTF8 unless the user set it explicitly', () => {
+  const defaulted = buildDesktopBackendEnv({
+    kopiHome: '/Users/test/.kopi',
+    currentEnv: { PATH: '/usr/bin' },
+    platform: 'darwin',
+    pathModule: path.posix
+  })
+  assert.equal(defaulted.PYTHONUTF8, '1')
+
+  const optedOut = buildDesktopBackendEnv({
+    kopiHome: '/Users/test/.kopi',
+    currentEnv: { PATH: '/usr/bin', PYTHONUTF8: '0' },
+    platform: 'darwin',
+    pathModule: path.posix
+  })
+  assert.equal(optedOut.PYTHONUTF8, '0')
+})
+
 test('normalizeKopiHomeRoot maps profile homes back to the global Kopi root', () => {
   assert.equal(
     normalizeKopiHomeRoot('/Users/test/.kopi/profiles/oracle', { pathModule: path.posix }),

@@ -1,6 +1,8 @@
 .DS_Store
 /venv/
 /venv.old/
+/venv.stale.runtime-*/
+/.kopi-runtime/
 /_pycache/
 *.pyc*
 __pycache__/
