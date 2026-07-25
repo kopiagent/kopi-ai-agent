@@ -518,7 +518,7 @@ class KopiMemoryProvider(MemoryProvider):
 
         existing = {}
         if config_file.exists():
-            existing = _json.loads(config_file.read_text())
+            existing = _json.loads(config_file.read_text(encoding="utf-8"))
 
         existing.update(values)
         config_file.write_text(

@@ -130,7 +130,7 @@ def main() -> None:
     # 5. Set default model
     config.setdefault("model", "kopi-o")
 
-    CONFIG_PATH.write_text(yaml.safe_dump(config, default_flow_style=False, allow_unicode=True))
+    CONFIG_PATH.write_text(yaml.safe_dump(config, default_flow_style=False, allow_unicode=True), encoding="utf-8")
     print("✓ MCP servers configured: filesystem, time, github, kopi-mcp, obsidian")
     print(f"✓ Obsidian vault (mcpvault) ready at: {OBSIDIAN_VAULT}")
     print("✓ KOPI Proxy added as custom provider (kopi-o / kopi-o-flash / kopi-flash)")
