@@ -1510,11 +1510,18 @@ class APIServerAdapter(BasePlatformAdapter):
 
     def _check_auth(self, request: "web.Request") -> Optional["web.Response"]:
         """
-        Validate Bearer token from Authorization header.
+        Validate the API key from ``Authorization: Bearer`` or ``X-Kopi-Api-Key``.
 
         Returns None if auth is OK, or a 401 web.Response on failure.
         connect() refuses to start the API server without API_SERVER_KEY, so
         the no-key branch only exists for tests or unsupported manual wiring.
+
+        Two accepted transports, both carrying the same ``API_SERVER_KEY``:
+          - ``Authorization: Bearer <key>`` — the normal path.
+          - ``X-Kopi-Api-Key: <key>`` — used when reached through the K8s API
+            server's service proxy, which consumes the ``Authorization`` header
+            for cluster auth and does NOT forward it to the backing service.
+            ``Authorization`` wins when present; the alt header is the fallback.
         """
         if not self._api_key:
             return None
@@ -1522,14 +1529,16 @@ class APIServerAdapter(BasePlatformAdapter):
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:].strip()
-            # Compare as bytes: ``hmac.compare_digest`` raises TypeError on a
-            # str containing non-ASCII characters, and ``token`` is the raw
-            # client-supplied header. A stray non-ASCII byte in the key would
-            # otherwise crash this handler (500) instead of returning a clean
-            # 401. Encoding both sides keeps the timing-safe comparison and
-            # matches web_server.py's dashboard-token check.
-            if hmac.compare_digest(token.encode(), self._api_key.encode()):
-                return None  # Auth OK
+        else:
+            token = request.headers.get("X-Kopi-Api-Key", "").strip()
+        # Compare as bytes: ``hmac.compare_digest`` raises TypeError on a
+        # str containing non-ASCII characters, and ``token`` is the raw
+        # client-supplied header. A stray non-ASCII byte in the key would
+        # otherwise crash this handler (500) instead of returning a clean
+        # 401. Encoding both sides keeps the timing-safe comparison and
+        # matches web_server.py's dashboard-token check.
+        if hmac.compare_digest(token.encode(), self._api_key.encode()):
+            return None  # Auth OK
 
         logger.warning(
             "API server rejected invalid API key: %s",
@@ -2800,6 +2809,9 @@ class APIServerAdapter(BasePlatformAdapter):
             "auth": {
                 "type": "bearer",
                 "required": bool(self._api_key),
+                # Same key also accepted via this header, for callers behind the
+                # K8s API server service proxy (which consumes Authorization).
+                "header_alt": "X-Kopi-Api-Key",
             },
             "runtime": {
                 "mode": "server_agent",

@@ -221,3 +221,19 @@ class TestCapabilities:
         assert data["features"]["manage_api"] is True
         assert "manage_pairing" in data["endpoints"]
         assert "manage_skills_set" in data["endpoints"]
+        assert data["auth"]["header_alt"] == "X-Kopi-Api-Key"
+
+    @pytest.mark.asyncio
+    async def test_manage_endpoint_accepts_x_kopi_api_key(self, manage_env):
+        """Reached through the K8s service proxy, callers auth via the alt
+        header instead of Authorization: Bearer."""
+        app = _app_from_route_table(_make_adapter())
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.get(
+                "/v1/manage/pairing", headers={"X-Kopi-Api-Key": KEY}
+            )
+            assert resp.status == 200
+            resp = await cli.get(
+                "/v1/manage/pairing", headers={"X-Kopi-Api-Key": "wrong"}
+            )
+            assert resp.status == 401

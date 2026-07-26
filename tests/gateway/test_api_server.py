@@ -563,6 +563,39 @@ class TestAuth:
         mock_request.headers = {"Authorization": "Bearer sk-tést-kéy"}
         assert adapter._check_auth(mock_request) is None
 
+    def test_x_kopi_api_key_header_authenticates(self):
+        """The X-Kopi-Api-Key header carries the same key for callers behind the
+        K8s API server service proxy (which consumes Authorization)."""
+        config = PlatformConfig(enabled=True, extra={"key": "sk-test123"})
+        adapter = APIServerAdapter(config)
+        mock_request = MagicMock()
+        mock_request.headers = {"X-Kopi-Api-Key": "sk-test123"}
+        assert adapter._check_auth(mock_request) is None
+
+    def test_wrong_x_kopi_api_key_header_returns_401(self):
+        config = PlatformConfig(enabled=True, extra={"key": "sk-test123"})
+        adapter = APIServerAdapter(config)
+        mock_request = MagicMock()
+        mock_request.headers = {"X-Kopi-Api-Key": "wrong-key"}
+        result = adapter._check_auth(mock_request)
+        assert result is not None
+        assert result.status == 401
+
+    def test_bearer_takes_priority_over_x_kopi_api_key(self):
+        """A present Authorization: Bearer wins; the alt header is only the
+        fallback, so a valid Bearer + bogus alt header still authenticates and a
+        bogus Bearer is NOT rescued by a valid alt header."""
+        config = PlatformConfig(enabled=True, extra={"key": "sk-test123"})
+        adapter = APIServerAdapter(config)
+
+        ok = MagicMock()
+        ok.headers = {"Authorization": "Bearer sk-test123", "X-Kopi-Api-Key": "wrong"}
+        assert adapter._check_auth(ok) is None
+
+        bad = MagicMock()
+        bad.headers = {"Authorization": "Bearer wrong", "X-Kopi-Api-Key": "sk-test123"}
+        assert adapter._check_auth(bad).status == 401
+
 
 # ---------------------------------------------------------------------------
 # Concurrency cap (gateway.api_server.max_concurrent_runs) — #7483
