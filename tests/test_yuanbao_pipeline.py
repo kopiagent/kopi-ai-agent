@@ -711,8 +711,8 @@ class TestAutoSetHomeMiddleware:
         )
         next_fn = AsyncMock()
 
-        with patch("gateway.pairing.PairingStore") as mock_store_cls:
-            mock_store_cls.return_value.is_approved.return_value = False
+        with patch("gateway.pairing.get_pairing_store") as mock_get_store:
+            mock_get_store.return_value.is_approved.return_value = False
             await AutoSetHomeMiddleware()(ctx, next_fn)
 
         assert "YUANBAO_HOME_CHANNEL" not in os.environ
@@ -745,8 +745,8 @@ class TestAutoSetHomeMiddleware:
         )
         next_fn = AsyncMock()
 
-        with patch("gateway.pairing.PairingStore") as mock_store_cls:
-            mock_store_cls.return_value.is_approved.return_value = True
+        with patch("gateway.pairing.get_pairing_store") as mock_get_store:
+            mock_get_store.return_value.is_approved.return_value = True
             await AutoSetHomeMiddleware()(ctx, next_fn)
 
         assert os.environ.get("YUANBAO_HOME_CHANNEL") == "direct:approved-sender"
@@ -802,8 +802,8 @@ class TestSenderMayDesignateHome:
             from_account="unapproved-sender",
         )
 
-        with patch("gateway.pairing.PairingStore") as mock_store_cls:
-            mock_store_cls.return_value.is_approved.return_value = False
+        with patch("gateway.pairing.get_pairing_store") as mock_get_store:
+            mock_get_store.return_value.is_approved.return_value = False
             assert adapter._sender_may_designate_home(ctx) is False
 
     def test_pairing_approved_sender_allowed(self):
@@ -820,8 +820,8 @@ class TestSenderMayDesignateHome:
             from_account="approved-sender",
         )
 
-        with patch("gateway.pairing.PairingStore") as mock_store_cls:
-            mock_store_cls.return_value.is_approved.return_value = True
+        with patch("gateway.pairing.get_pairing_store") as mock_get_store:
+            mock_get_store.return_value.is_approved.return_value = True
             assert adapter._sender_may_designate_home(ctx) is True
 
     def test_allowlist_sender_allowed(self):
