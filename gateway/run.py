@@ -10892,9 +10892,12 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                         await adapter.send(
                             source.chat_id,
                             f"Hi~ I don't recognize you yet!\n\n"
-                            f"Here's your pairing code: `{code}`\n\n"
-                            f"Ask the bot owner to run:\n"
-                            f"`kopi pairing approve {platform_name} {code}`"
+                            f"✅ Your access request has been submitted to the "
+                            f"admin console — an admin can review and approve it "
+                            f"there.\n\n"
+                            f"Here's your pairing code: `{code}`\n"
+                            f"(The bot owner can also approve via "
+                            f"`kopi pairing approve {platform_name} {code}`.)"
                         )
                 else:
                     adapter = self._adapter_for_source(source)
