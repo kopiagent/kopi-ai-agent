@@ -15,10 +15,10 @@ import { stopBackendChild as stopBackendChildImpl } from './backend-child'
 import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
 import { createBackendConnectionState } from './backend-connection-state'
 import { buildDesktopBackendEnv, normalizeKopiHomeRoot } from './backend-env'
-import { waitForKopiReady } from './backend-health'
+import { isReauthRequiredError, waitForKopiReady } from './backend-health'
 import { canImportKopiCli, shouldTrustKopiOverride, verifyKopiCli } from './backend-probes'
 import { waitForDashboardPortAnnouncement } from './backend-ready'
-import { shouldLatchBackendStartFailure } from './backend-start-failure'
+import { shouldLatchBackendStartFailure, shouldLatchRemoteReauthFailure } from './backend-start-failure'
 import { detectRemoteDisplay, isWindowsBinaryPathInWsl, isWslEnvironment } from './bootstrap-platform'
 import { runBootstrap } from './bootstrap-runner'
 import { applyConnectionChange, resolveTerminalConnection } from './connection-apply'
@@ -100,7 +100,13 @@ import {
 } from './hardening'
 import { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } from './link-title-window'
 import { ensureMainWindow } from './main-window-lifecycle'
-import { oauthSessionIsLive, resolveJsonBody, resolveOauthRestAuth } from './native-auth-decisions'
+import {
+  oauthGuardMayHardFail,
+  oauthSessionIsLive,
+  resolveJsonBody,
+  resolveOauthRestAuth,
+  resolveReadinessProbeAuth
+} from './native-auth-decisions'
 import {
   nativeRefreshUrl,
   type NativeTokenSet,
@@ -1020,6 +1026,13 @@ let bootstrapFailure = null
 // Latched non-bootstrap backend spawn failure — stops getConnection() from
 // respawning kopi serve backend children in a tight loop while boot is broken.
 let backendStartFailure = null
+// Latched CONFIRMED remote reauth failure. Remote failures deliberately do not
+// latch via backendStartFailure (they're usually transient and must stay
+// retryable), but a rejected session cannot self-heal — and the non-latching
+// path actively breaks recovery: each retry re-emits running:true and hides
+// the boot-failure overlay, so the "Sign in" button flickers away before it
+// can be clicked. Cleared on every recovery path and on a confirmed sign-in.
+let remoteReauthFailure = null
 // Active first-launch install, so the renderer's Cancel button (and app quit)
 // can abort the in-flight install.sh/ps1 instead of leaving it running.
 let bootstrapAbortController = null
@@ -4817,12 +4830,87 @@ function closePreviewWatchers() {
   }
 }
 
-async function waitForKopi(baseUrl, token, signal?) {
+// Best-effort read of a gateway's advertised auth providers, cached per base
+// URL for the life of the process. Used by the oauth pre-flight guard to tell
+// a password-provider gateway (which cannot satisfy the bearer/cookie checks
+// by design) from a real OAuth one. Any failure returns [] so callers keep the
+// strict guard — backends predating /api/auth/providers are unaffected.
+const gatewayAuthProvidersCache = new Map<string, any[]>()
+
+async function gatewayAuthProviders(baseUrl) {
+  const cached = gatewayAuthProvidersCache.get(baseUrl)
+
+  if (cached) {
+    return cached
+  }
+
+  let providers = []
+
+  try {
+    const body = (await fetchPublicJson(`${baseUrl}/api/auth/providers`, { timeoutMs: 8_000 })) as any
+
+    if (Array.isArray(body?.providers)) {
+      providers = body.providers
+        .filter(p => p && typeof p === 'object')
+        .map(p => ({ name: String(p.name || ''), supportsPassword: Boolean(p.supports_password) }))
+        .filter(p => p.name)
+    }
+  } catch {
+    // Optional metadata — an unreadable list keeps the strict guard.
+  }
+
+  gatewayAuthProvidersCache.set(baseUrl, providers)
+
+  return providers
+}
+
+// Build the readiness probe for a connection's auth mode. A gated gateway
+// must be probed with the SAME credentials the rest of the connection uses:
+// an anonymous probe 401s forever against a live session, and it can never
+// see the 404 that identifies a backend predating /api/health (the auth gate
+// answers before the SPA catch-all). `probeIsCredentialed` tells
+// waitForKopiReady how to read a 401 — rejected session vs gated route.
+async function buildReadinessHealthProbe(baseUrl, authMode, token) {
+  const nativeAt = authMode === 'oauth' ? await ensureNativeAccessToken(baseUrl).catch(() => null) : null
+  const probeAuth = resolveReadinessProbeAuth(authMode, nativeAt, token)
+
+  if (probeAuth.kind === 'bearer') {
+    return {
+      // fetchJson takes the bearer via `options.bearer` — a raw `headers`
+      // option is ignored, so passing one here would silently probe
+      // uncredentialed and reintroduce the 401 loop.
+      probeHealth: (url, options: any = {}) => fetchJson(url, null, { ...options, bearer: probeAuth.token }),
+      probeIsCredentialed: true
+    }
+  }
+
+  if (probeAuth.kind === 'cookie') {
+    return {
+      probeHealth: (url, options: any = {}) => fetchJsonViaOauthSession(url, options),
+      probeIsCredentialed: true
+    }
+  }
+
+  if (probeAuth.kind === 'token' && probeAuth.token) {
+    return {
+      probeHealth: (url, options: any = {}) => fetchJson(url, probeAuth.token, options),
+      probeIsCredentialed: true
+    }
+  }
+
+  return { probeHealth: fetchPublicJson, probeIsCredentialed: false }
+}
+
+async function waitForKopi(baseUrl, token, signal?, authMode?) {
+  const { probeHealth, probeIsCredentialed } = await buildReadinessHealthProbe(baseUrl, authMode, token)
+
   return waitForKopiReady(baseUrl, {
     token,
     signal,
     fetchPublicJson,
-    fetchJson
+    fetchJson: probeIsCredentialed ? (url, _token, options) => probeHealth(url, options) : fetchJson,
+    probeHealth,
+    probeIsCredentialed
   })
 }
 
@@ -6824,7 +6912,10 @@ async function buildRemoteConnection(
     // here would reject a freshly-completed native sign-in and loop the UI back
     // into "not signed in" even though mintGatewayWsTicket would succeed with
     // the stored bearer.
-    if (!oauthSessionIsLive(hasNativeSession(baseUrl), await hasLiveOauthSession(baseUrl))) {
+    if (
+      !oauthSessionIsLive(hasNativeSession(baseUrl), await hasLiveOauthSession(baseUrl)) &&
+      oauthGuardMayHardFail(await gatewayAuthProviders(baseUrl))
+    ) {
       const err = new Error(
         'Remote Kopi gateway uses OAuth, but you are not signed in. ' +
           'Open Settings → Gateway and click "Sign in", or switch back to Local.'
@@ -7065,7 +7156,7 @@ async function bootstrapSshConnectionInner(profile, sshConfig, reuseToken, sourc
       forward: (localPort, remotePort) => ssh.forward(localPort, remotePort),
       cancelForward: (localPort, remotePort) => ssh.cancelForward(localPort, remotePort),
       pickLocalPort,
-      waitForKopi: (baseUrl, token) => waitForKopi(baseUrl, token, lease.signal),
+      waitForKopi: (baseUrl, token) => waitForKopi(baseUrl, token, lease.signal, 'token'),
       probeReuseProof: sshProbeReuseProof,
       adoptServedToken: adoptServedDashboardToken,
       rememberLog: sshRememberLog,
@@ -7538,6 +7629,7 @@ function stopBackendChild(child) {
 // switch / crash recovery), which still resets boot progress + reloads.
 function resetKopiConnection({ soft = false } = {}) {
   backendStartFailure = null
+  remoteReauthFailure = null
   remoteLiveness.clear()
   const kopiProcess = backendConnectionState.invalidate()
   stopBackendChild(kopiProcess)
@@ -7738,7 +7830,7 @@ async function spawnPoolBackend(profile, entry) {
   const remote = await resolveRemoteBackend(profile)
 
   if (remote) {
-    await waitForKopi(remote.baseUrl, remote.token)
+    await waitForKopi(remote.baseUrl, remote.token, undefined, remote.authMode)
 
     return {
       ...remote,
@@ -7930,6 +8022,13 @@ async function startKopi() {
     throw backendStartFailure
   }
 
+  // A confirmed remote reauth rejection is terminal until the user signs in.
+  // Short-circuiting here keeps the boot-failure overlay latched and its
+  // "Sign in" button clickable, instead of re-driving boot on every retry.
+  if (remoteReauthFailure) {
+    throw remoteReauthFailure
+  }
+
   // E2E: simulate a boot failure without breaking the real backend. The boot
   // progresses a few steps, then fails with the given error message.
   if (BOOT_FAKE_ERROR) {
@@ -7956,7 +8055,7 @@ async function startKopi() {
   const connectionPromise = (async () => {
     const connectRemote = async remote => {
       await advanceBootProgress('backend.remote', `Connecting to remote Kopi backend at ${remote.baseUrl}`, 24)
-      await waitForKopi(remote.baseUrl, remote.token)
+      await waitForKopi(remote.baseUrl, remote.token, undefined, remote.authMode)
       updateBootProgress({
         phase: 'backend.ready',
         message: 'Remote Kopi backend is ready',
@@ -8188,6 +8287,12 @@ async function startKopi() {
     // "Sign out & sign in" reload, and the wake-recovery revalidate path.
     if (shouldLatchBackendStartFailure({ attemptedRemote })) {
       backendStartFailure = error instanceof Error ? error : new Error(message)
+    }
+
+    // A confirmed reauth rejection latches separately: it can't self-heal, and
+    // leaving it unlatched hides the overlay's "Sign in" button on every retry.
+    if (shouldLatchRemoteReauthFailure({ attemptedRemote, isReauth: isReauthRequiredError(error) })) {
+      remoteReauthFailure = error instanceof Error ? error : new Error(message)
     }
 
     updateBootProgress(
@@ -8993,6 +9098,7 @@ ipcMain.handle('kopi:bootstrap:reset', async () => {
   await teardownPrimaryBackendAndWait()
   bootstrapFailure = null
   backendStartFailure = null
+  remoteReauthFailure = null
   getFirstRunSetupGate().resetForRetry()
   resetBootstrapSnapshot()
 
@@ -9015,6 +9121,7 @@ ipcMain.handle('kopi:bootstrap:repair', async () => {
 
   bootstrapFailure = null
   backendStartFailure = null
+  remoteReauthFailure = null
   getFirstRunSetupGate().resetForRepair()
   resetKopiConnection()
 
@@ -9124,6 +9231,9 @@ ipcMain.handle('kopi:connection-config:oauth-login', async (_event, rawUrl) => {
       })
 
       _storeNativeTokens(baseUrl, tokens)
+      // Confirmed sign-in — release the reauth latch so the next
+      // startKopi() re-dials instead of replaying the stale rejection.
+      remoteReauthFailure = null
 
       return { ok: true, baseUrl, connected: true }
     } catch (error) {
@@ -9140,7 +9250,16 @@ ipcMain.handle('kopi:connection-config:oauth-login', async (_event, rawUrl) => {
   // Legacy embedded-webview cookie flow.
   await openOauthLoginWindow(baseUrl)
 
-  return { ok: true, baseUrl, connected: await hasOauthSessionCookie(baseUrl) }
+  const connected = await hasOauthSessionCookie(baseUrl)
+
+  // Only a CONFIRMED sign-in releases the latch. A cancelled/closed login
+  // window must leave it set, or the overlay's "Sign in" button starts
+  // flickering again on the next retry.
+  if (connected) {
+    remoteReauthFailure = null
+  }
+
+  return { ok: true, baseUrl, connected }
 })
 ipcMain.handle('kopi:connection-config:oauth-logout', async (_event, rawUrl) => {
   const baseUrl = rawUrl ? normalizeRemoteBaseUrl(rawUrl) : ''
