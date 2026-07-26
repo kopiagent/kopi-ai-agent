@@ -36,4 +36,14 @@ describe('kopiDirectiveFormatter.parse', () => {
       { kind: 'text', text: ' the entry point' }
     ])
   })
+
+  it('parses session links with profile/id values', () => {
+    const segments = kopiDirectiveFormatter.parse('see @session:work/20260101_abc123 next')
+
+    expect(segments).toEqual([
+      { kind: 'text', text: 'see ' },
+      { kind: 'mention', type: 'session', label: '20260101…', id: 'work/20260101_abc123' },
+      { kind: 'text', text: ' next' }
+    ])
+  })
 })
