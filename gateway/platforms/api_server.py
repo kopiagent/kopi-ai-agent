@@ -1763,6 +1763,13 @@ class APIServerAdapter(BasePlatformAdapter):
             ("GET", "/v1/capabilities", self._handle_capabilities),
             ("GET", "/v1/skills", self._handle_skills),
             ("GET", "/v1/toolsets", self._handle_toolsets),
+            # Instance management surface (console/website; NOT the chat data
+            # plane). Shares the listener + API_SERVER_KEY auth.
+            ("GET", "/v1/manage/pairing", self._handle_manage_pairing_list),
+            ("POST", "/v1/manage/pairing/approve", self._handle_manage_pairing_approve),
+            ("POST", "/v1/manage/pairing/revoke", self._handle_manage_pairing_revoke),
+            ("GET", "/v1/manage/skills", self._handle_manage_skills_get),
+            ("POST", "/v1/manage/skills", self._handle_manage_skills_post),
             ("GET", "/api/sessions", self._handle_list_sessions),
             ("POST", "/api/sessions", self._handle_create_session),
             ("GET", "/api/sessions/{session_id}", self._handle_get_session),
@@ -2826,6 +2833,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 "jobs_admin": False,
                 "memory_write_api": False,
                 "skills_api": True,
+                "manage_api": True,
                 "audio_api": False,
                 "realtime_voice": False,
                 "session_continuity_header": "X-Kopi-Session-Id",
@@ -2846,6 +2854,11 @@ class APIServerAdapter(BasePlatformAdapter):
                 "run_stop": {"method": "POST", "path": "/v1/runs/{run_id}/stop"},
                 "skills": {"method": "GET", "path": "/v1/skills"},
                 "toolsets": {"method": "GET", "path": "/v1/toolsets"},
+                "manage_pairing": {"method": "GET", "path": "/v1/manage/pairing"},
+                "manage_pairing_approve": {"method": "POST", "path": "/v1/manage/pairing/approve"},
+                "manage_pairing_revoke": {"method": "POST", "path": "/v1/manage/pairing/revoke"},
+                "manage_skills_get": {"method": "GET", "path": "/v1/manage/skills"},
+                "manage_skills_set": {"method": "POST", "path": "/v1/manage/skills"},
                 "sessions": {"method": "GET", "path": "/api/sessions"},
                 "session_create": {"method": "POST", "path": "/api/sessions"},
                 "session": {"method": "GET", "path": "/api/sessions/{session_id}"},
@@ -2889,6 +2902,308 @@ class APIServerAdapter(BasePlatformAdapter):
             "object": "list",
             "data": skills,
         })
+
+    # ------------------------------------------------------------------
+    # Instance management surface (/v1/manage/*)
+    # ------------------------------------------------------------------
+    # Remote read/write of the pairing allowlist and skill toggles for the
+    # website/console. These endpoints share the API server's listener and
+    # bearer auth but are NOT part of the chat data plane: they never create
+    # an AIAgent, never open a session, never spend tokens, never notify.
+    # They are pure state read/write over the same files the gateway loop
+    # touches — which is exactly why every write MUST go through the
+    # get_pairing_store() singleton (shared RLock) rather than a fresh
+    # PairingStore(). See docs/engineering/给引擎侧-实例管理面端点实现说明.md.
+
+    @staticmethod
+    def _validate_manage_platform_user(
+        platform: str, user_id: str, *, platform_required: bool = True
+    ) -> Optional["web.Response"]:
+        """400 on empty user_id or an unknown platform; None if OK.
+
+        Platform validity is decided by ``Platform(value)`` — the enum accepts
+        built-ins and bundled plugin adapters and rejects arbitrary strings via
+        its ``_missing_`` hook, so it is the authoritative name check.
+        """
+        if not user_id:
+            return web.json_response(
+                _openai_error("user_id is required", err_type="invalid_request_error", param="user_id"),
+                status=400,
+            )
+        if platform_required or platform:
+            try:
+                from gateway.config import Platform
+
+                Platform(platform.strip().lower())
+            except Exception:
+                return web.json_response(
+                    _openai_error(
+                        f"Unknown platform: {platform!r}",
+                        err_type="invalid_request_error",
+                        param="platform",
+                    ),
+                    status=400,
+                )
+        return None
+
+    @staticmethod
+    def _build_pairing_activity_index(rows: list) -> Dict[tuple, dict]:
+        """Map (platform, user_id) -> {last_active, chat_type} from gateway sessions.
+
+        ``session_key`` is ``agent:main:<platform>:<chat_type>:<user_id...>``;
+        ``list_gateway_sessions`` already returns the newest row per key with a
+        computed ``last_active``. Malformed keys are skipped.
+        """
+        index: Dict[tuple, dict] = {}
+        for row in rows or []:
+            key = row.get("session_key") or ""
+            parts = key.split(":")
+            # agent : main : <platform> : <chat_type> : <user_id...>
+            if len(parts) < 5 or parts[0] != "agent":
+                continue
+            plat, chat_type, uid = parts[2], parts[3], ":".join(parts[4:])
+            index[(plat, uid)] = {
+                "last_active": row.get("last_active"),
+                "chat_type": chat_type or None,
+            }
+        return index
+
+    async def _manage_activity_index(self, profile, platform) -> Dict[tuple, dict]:
+        """Fetch the (platform,user_id)->activity index for the active profile."""
+        try:
+            with self._profile_scope(profile):
+                db = await self._ensure_session_db_async()
+                if db is None:
+                    return {}
+                rows = await asyncio.to_thread(
+                    db.list_gateway_sessions, platform=platform, active_only=False
+                )
+            return self._build_pairing_activity_index(rows)
+        except Exception:
+            logger.exception("GET /v1/manage/pairing activity lookup failed")
+            return {}
+
+    async def _handle_manage_pairing_list(self, request: "web.Request") -> "web.Response":
+        """GET /v1/manage/pairing[?platform=...] — pending + approved rows."""
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        profile = self._resolve_request_profile(request)
+        if profile is _PROFILE_REJECTED:
+            return web.json_response(
+                _openai_error("Unknown profile", err_type="invalid_request_error"), status=404
+            )
+        platform = request.query.get("platform") or None
+        if platform is not None:
+            # user_id is irrelevant for the list filter; the placeholder is
+            # non-empty so the only thing this can reject is a bad platform.
+            err = self._validate_manage_platform_user(platform, "_", platform_required=True)
+            if err is not None:
+                return err
+
+        from gateway.pairing import get_pairing_store
+
+        store = get_pairing_store(profile if profile is not None else None)
+        pending, approved = await asyncio.to_thread(
+            lambda: (store.list_pending(platform), store.list_approved(platform))
+        )
+        activity = await self._manage_activity_index(profile, platform)
+        for row in approved:
+            act = activity.get((row.get("platform"), row.get("user_id")), {})
+            row["_last_active"] = act.get("last_active")
+            row["_chat_type"] = act.get("chat_type")
+
+        return web.json_response({
+            "object": "kopi.pairing.list",
+            "pending": [
+                {
+                    "user_id": r.get("user_id", ""),
+                    "user_name": r.get("user_name", ""),
+                    "age_minutes": r.get("age_minutes"),
+                }
+                for r in pending
+            ],
+            "approved": [
+                {
+                    "user_id": r.get("user_id", ""),
+                    "user_name": r.get("user_name", ""),
+                    "approved_at": r.get("approved_at"),
+                    "last_active": r.get("_last_active"),
+                    "chat_type": r.get("_chat_type"),
+                }
+                for r in approved
+            ],
+        })
+
+    async def _handle_manage_pairing_approve(self, request: "web.Request") -> "web.Response":
+        """POST /v1/manage/pairing/approve — approve a pending user by user_id."""
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        profile = self._resolve_request_profile(request)
+        if profile is _PROFILE_REJECTED:
+            return web.json_response(
+                _openai_error("Unknown profile", err_type="invalid_request_error"), status=404
+            )
+        body, err = await self._read_json_body(request)
+        if err:
+            return err
+        platform = str(body.get("platform") or "").strip()
+        user_id = str(body.get("user_id") or "").strip()
+        verr = self._validate_manage_platform_user(platform, user_id)
+        if verr:
+            return verr
+
+        from gateway.pairing import get_pairing_store
+
+        store = get_pairing_store(profile if profile is not None else None)
+        # notfound / already are business results (not transport errors) -> 200.
+        result = await asyncio.to_thread(store.approve_user, platform, user_id)
+        return web.json_response({"object": "kopi.pairing.approve", "result": result})
+
+    async def _handle_manage_pairing_revoke(self, request: "web.Request") -> "web.Response":
+        """POST /v1/manage/pairing/revoke — revoke an approved user by user_id."""
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        profile = self._resolve_request_profile(request)
+        if profile is _PROFILE_REJECTED:
+            return web.json_response(
+                _openai_error("Unknown profile", err_type="invalid_request_error"), status=404
+            )
+        body, err = await self._read_json_body(request)
+        if err:
+            return err
+        platform = str(body.get("platform") or "").strip()
+        user_id = str(body.get("user_id") or "").strip()
+        verr = self._validate_manage_platform_user(platform, user_id)
+        if verr:
+            return verr
+
+        from gateway.pairing import get_pairing_store
+
+        store = get_pairing_store(profile if profile is not None else None)
+        ok = await asyncio.to_thread(store.revoke, platform, user_id)
+        return web.json_response(
+            {"object": "kopi.pairing.revoke", "result": "ok" if ok else "notfound"}
+        )
+
+    async def _handle_manage_skills_get(self, request: "web.Request") -> "web.Response":
+        """GET /v1/manage/skills — full available set + current disabled sets."""
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        profile = self._resolve_request_profile(request)
+        if profile is _PROFILE_REJECTED:
+            return web.json_response(
+                _openai_error("Unknown profile", err_type="invalid_request_error"), status=404
+            )
+
+        def _work():
+            from tools.skills_tool import _find_all_skills, _sort_skills
+            from agent.skill_utils import get_disabled_skill_names
+            from kopi_cli.config import load_config
+
+            skills = _sort_skills(_find_all_skills(skip_disabled=False))
+            cfg = load_config()
+            skills_cfg = (cfg.get("skills", {}) or {}) if isinstance(cfg, dict) else {}
+            platform_disabled = skills_cfg.get("platform_disabled", {}) or {}
+            return skills, sorted(get_disabled_skill_names()), platform_disabled
+
+        try:
+            with self._profile_scope(profile):
+                skills, disabled, platform_disabled = await asyncio.to_thread(_work)
+        except Exception:
+            logger.exception("GET /v1/manage/skills failed")
+            return web.json_response(
+                _openai_error("Failed to read skills config", err_type="server_error"), status=500
+            )
+        return web.json_response({
+            "object": "kopi.skills.config",
+            "available": skills,
+            "disabled": disabled,
+            "platform_disabled": platform_disabled,
+        })
+
+    async def _handle_manage_skills_post(self, request: "web.Request") -> "web.Response":
+        """POST /v1/manage/skills — replace disabled / platform_disabled sets (PUT semantics)."""
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        profile = self._resolve_request_profile(request)
+        if profile is _PROFILE_REJECTED:
+            return web.json_response(
+                _openai_error("Unknown profile", err_type="invalid_request_error"), status=404
+            )
+        body, err = await self._read_json_body(request)
+        if err:
+            return err
+
+        disabled = body.get("disabled")
+        platform_disabled = body.get("platform_disabled")
+        if disabled is not None and not (
+            isinstance(disabled, list) and all(isinstance(x, str) for x in disabled)
+        ):
+            return web.json_response(
+                _openai_error("disabled must be a list of strings", err_type="invalid_request_error", param="disabled"),
+                status=400,
+            )
+        if platform_disabled is not None and not (
+            isinstance(platform_disabled, dict)
+            and all(
+                isinstance(k, str)
+                and isinstance(v, list)
+                and all(isinstance(x, str) for x in v)
+                for k, v in platform_disabled.items()
+            )
+        ):
+            return web.json_response(
+                _openai_error(
+                    "platform_disabled must be an object of {platform: [skill, ...]}",
+                    err_type="invalid_request_error",
+                    param="platform_disabled",
+                ),
+                status=400,
+            )
+        if disabled is None and platform_disabled is None:
+            return web.json_response(
+                _openai_error(
+                    "at least one of disabled / platform_disabled is required",
+                    err_type="invalid_request_error",
+                ),
+                status=400,
+            )
+
+        def _work():
+            from kopi_cli.config import load_config, save_config
+
+            cfg = load_config()
+            if not isinstance(cfg, dict):
+                cfg = {}
+            skills_cfg = dict(cfg.get("skills", {}) or {})
+            if disabled is not None:
+                skills_cfg["disabled"] = list(disabled)
+            if platform_disabled is not None:
+                skills_cfg["platform_disabled"] = dict(platform_disabled)
+            cfg["skills"] = skills_cfg
+            # merge_existing=True keeps unrelated config sections the caller
+            # didn't send; never rewrite the whole YAML by hand.
+            save_config(cfg, merge_existing=True)
+
+        try:
+            with self._profile_scope(profile):
+                await asyncio.to_thread(_work)
+        except Exception:
+            logger.exception("POST /v1/manage/skills failed")
+            return web.json_response(
+                _openai_error("Failed to write skills config", err_type="server_error"), status=500
+            )
+        # restart_required is always false: _load_raw_config is mtime+size
+        # cached (picks up the edit) and _find_all_skills' cache signature
+        # includes the disabled set (TTL 30s). Kept as a forward-compat field.
+        return web.json_response(
+            {"object": "kopi.skills.config", "result": "ok", "restart_required": False}
+        )
 
     async def _handle_toolsets(self, request: "web.Request") -> "web.Response":
         """GET /v1/toolsets — list toolsets and their resolved tools.

@@ -27,7 +27,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from gateway.whatsapp_identity import (
     expand_whatsapp_aliases,
@@ -536,6 +536,51 @@ class PairingStore:
                 "user_name": matched_entry.get("user_name", ""),
             }
 
+    def approve_user(self, platform: str, user_id: str) -> str:
+        """Approve a pending user by platform user_id (operator-initiated).
+
+        This is the console/management path, distinct from ``approve_code``
+        (where the end user supplies the plaintext code). The operator picks
+        a row from ``list_pending()``, which only exposes the first 8 hex
+        chars of the code hash — the plaintext code is not recoverable — so
+        matching is by ``user_id`` rather than by code.
+
+        Two deliberate differences from ``approve_code``:
+          - No lockout / ``_record_failed_attempt``: that machinery defends
+            against brute-forcing an unknown code. Approving a known user_id
+            from the console isn't guessing, and an operator's mis-click must
+            not lock the whole platform out.
+          - On a miss we check ``is_approved`` first, so the caller can tell
+            an idempotent replay ("already") from a stale/absent request
+            ("notfound").
+
+        Returns "ok" | "already" | "notfound".
+        """
+        with self._lock:
+            self._cleanup_expired(platform)
+            pending = self._load_json(self._pending_path(platform))
+
+            matched_key = None
+            matched_entry = None
+            for entry_id, entry in pending.items():
+                if not isinstance(entry, dict):
+                    continue
+                if self._user_ids_match(platform, str(entry.get("user_id", "")), user_id):
+                    matched_key, matched_entry = entry_id, entry
+                    break
+
+            if matched_key is None:
+                return "already" if self.is_approved(platform, user_id) else "notfound"
+
+            del pending[matched_key]
+            self._save_json(self._pending_path(platform), pending)
+            self._approve_user(
+                platform,
+                matched_entry.get("user_id", user_id),
+                matched_entry.get("user_name", ""),
+            )
+            return "ok"
+
     def list_pending(self, platform: str = None) -> list:
         """List pending pairing requests, optionally filtered by platform.
 
@@ -659,3 +704,33 @@ class PairingStore:
                 if not platform.startswith("_"):
                     platforms.append(platform)
         return platforms
+
+
+# ---------------------------------------------------------------------------
+# Process-wide singleton
+# ---------------------------------------------------------------------------
+# The RLock that guards every read-modify-write cycle is an *instance*
+# attribute (see PairingStore.__init__). Two PairingStore() instances therefore
+# hold two independent locks and cannot serialize writes to the same JSON
+# files — a plain `PairingStore()` in a new caller silently reintroduces the
+# lost-update race the lock exists to prevent. Every in-process user (gateway
+# loop, platform adapters, api_server management endpoints) MUST obtain its
+# store through get_pairing_store() so they share one lock per profile.
+_STORES: Dict[Optional[str], "PairingStore"] = {}
+_STORES_LOCK = threading.Lock()
+
+
+def get_pairing_store(profile: Optional[str] = None) -> "PairingStore":
+    """Return the process-wide PairingStore for *profile* (None = global store).
+
+    All callers share one instance — and therefore one ``_lock`` — per profile,
+    so concurrent read-modify-write cycles on the pairing JSON files serialize
+    correctly. Constructing PairingStore() directly bypasses this and each
+    instance gets its own lock, so don't.
+    """
+    with _STORES_LOCK:
+        store = _STORES.get(profile)
+        if store is None:
+            store = PairingStore(profile=profile)
+            _STORES[profile] = store
+        return store

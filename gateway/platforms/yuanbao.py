@@ -5297,9 +5297,9 @@ class YuanbaoAdapter(BasePlatformAdapter):
             if policy.is_dm_allowed(sender):
                 return True
             if policy.dm_policy == "pairing":
-                from gateway.pairing import PairingStore
+                from gateway.pairing import get_pairing_store
 
-                return PairingStore().is_approved(Platform.YUANBAO.value, sender)
+                return get_pairing_store().is_approved(Platform.YUANBAO.value, sender)
             return False
         if ctx.chat_type == "group":
             group_code = str(ctx.group_code or "").strip()
