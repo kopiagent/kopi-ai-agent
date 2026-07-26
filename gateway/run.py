@@ -3658,8 +3658,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         # ``pairing_stores`` is the per-profile map used by
         # ``authz_mixin._is_user_authorized`` to route checks to the right
         # whitelist (one per profile in multiplex mode).
-        from gateway.pairing import PairingStore
-        self.pairing_store = PairingStore()
+        from gateway.pairing import PairingStore, get_pairing_store
+        self.pairing_store = get_pairing_store()
         self.pairing_stores: Dict[str, "PairingStore"] = {}
         
         # Event hook system
@@ -10003,7 +10003,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         # Record served profiles in runtime status for `kopi status`.
         try:
             from gateway.status import write_runtime_status
-            from gateway.pairing import PairingStore
+            from gateway.pairing import get_pairing_store
             served = [active] + sorted(self._profile_adapters.keys())
             # Per-profile PairingStores so authz_mixin can route pairing
             # checks to the right whitelist. The active profile gets a store
@@ -10011,7 +10011,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             # profiles/<name>/pairing/. See gateway.pairing.PairingStore.
             for name in served:
                 if name and name not in self.pairing_stores:
-                    self.pairing_stores[name] = PairingStore(profile=name)
+                    self.pairing_stores[name] = get_pairing_store(profile=name)
             write_runtime_status(served_profiles=served)
         except Exception:
             logger.debug("could not record served_profiles", exc_info=True)
