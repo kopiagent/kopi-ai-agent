@@ -86,11 +86,11 @@ Prefer a native app over the terminal? **Kopi Desktop** is a full-featured Elect
 
 | Platform | Download |
 |----------|----------|
-| **macOS** (Apple Silicon) | [Kopi-1.22.4-mac-arm64.dmg](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.4/Kopi-1.22.4-mac-arm64.dmg) · [zip](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.4/Kopi-1.22.4-mac-arm64.zip) |
-| **Windows** (x64) | [Kopi-1.22.4-win-x64.exe](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.4/Kopi-1.22.4-win-x64.exe) |
-| **Linux** | [AppImage](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.4/Kopi-1.22.4-linux-x86_64.AppImage) · [deb](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.4/Kopi-1.22.4-linux-amd64.deb) · [rpm](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.4/Kopi-1.22.4-linux-x86_64.rpm) |
+| **macOS** (Apple Silicon) | [Kopi-mac-arm64.dmg](https://github.com/kopiagent/kopi-ai-agent/releases/latest/download/Kopi-mac-arm64.dmg) · [zip](https://github.com/kopiagent/kopi-ai-agent/releases/latest/download/Kopi-mac-arm64.zip) |
+| **Windows** (x64) | [Kopi-win-x64.exe](https://github.com/kopiagent/kopi-ai-agent/releases/latest/download/Kopi-win-x64.exe) |
+| **Linux** | [AppImage](https://github.com/kopiagent/kopi-ai-agent/releases/latest/download/Kopi-linux-x86_64.AppImage) · [deb](https://github.com/kopiagent/kopi-ai-agent/releases/latest/download/Kopi-linux-amd64.deb) · [rpm](https://github.com/kopiagent/kopi-ai-agent/releases/latest/download/Kopi-linux-x86_64.rpm) |
 
-> **Latest release:** [v1.22.4](https://github.com/kopiagent/kopi-ai-agent/releases/latest) · **All releases:** [here](https://github.com/kopiagent/kopi-ai-agent/releases)
+> **Links auto-redirect to the latest version.** All releases: [here](https://github.com/kopiagent/kopi-ai-agent/releases).
 
 ### System Requirements
 
