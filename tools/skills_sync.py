@@ -46,7 +46,7 @@ for _stream in (sys.stdout, sys.stderr):
             pass
 from kopi_constants import get_bundled_skills_dir, get_kopi_home, get_optional_skills_dir
 from agent.skill_utils import is_excluded_skill_path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from utils import atomic_replace
 
 logger = logging.getLogger(__name__)
@@ -315,6 +315,56 @@ def _optional_skill_index() -> Dict[str, Tuple[str, str, Path]]:
         index[folder_name] = value
         index[frontmatter_name] = value
     return index
+
+
+def list_optional_skills() -> List[Dict[str, Any]]:
+    """List the image's bundled optional skills (the install catalog).
+
+    Unlike ``tools.skills_tool._find_all_skills`` (which lists what's ACTIVE in
+    ``~/.kopi/skills``), this returns what can still be *installed* from
+    ``optional-skills/`` — the source the console needs to validate paid-pack
+    skill names against and to drive one-click install. Read-only, offline.
+
+    Returns dicts ``{name, description, category, installed}`` where ``name`` is
+    the folder slug (the key ``restore_official_optional_skill`` accepts), and
+    ``installed`` reflects whether the skill already exists in the active tree.
+    """
+    from agent.skill_utils import parse_frontmatter
+
+    index = _optional_skill_index()
+    # _optional_skill_index double-keys by folder name AND frontmatter name;
+    # dedupe by the source dir so each skill appears once.
+    seen_src: Set[Path] = set()
+    out: List[Dict[str, Any]] = []
+    for folder_name, install_path, src in index.values():
+        if src in seen_src:
+            continue
+        seen_src.add(src)
+
+        display_name = folder_name
+        description = ""
+        try:
+            frontmatter, _ = parse_frontmatter((src / "SKILL.md").read_text(encoding="utf-8")[:4000])
+            display_name = str(frontmatter.get("name") or folder_name)
+            description = str(frontmatter.get("description") or "")
+        except Exception:
+            logger.debug("optional skill %s: frontmatter unreadable", folder_name, exc_info=True)
+        # Category is the folder structure the skill installs into
+        # (``install_path`` is ``<category>/<slug>``); "" when top-level.
+        category = install_path.rsplit("/", 1)[0] if "/" in install_path else ""
+
+        installed = (SKILLS_DIR / Path(*install_path.split("/"))).exists() or (
+            _find_installed_skill_dir_by_name(folder_name) is not None
+        )
+        out.append({
+            "name": folder_name,
+            "display_name": display_name,
+            "description": description,
+            "category": category,
+            "installed": installed,
+        })
+    out.sort(key=lambda s: (s["category"], s["name"]))
+    return out
 
 
 def _move_to_restore_backup(path: Path, backup_root: Path) -> str:
