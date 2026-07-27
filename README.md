@@ -8,6 +8,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-8B4513?style=for-the-badge)](LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/kopiagent/kopi-ai-agent?style=for-the-badge&label=Kopi%20Desktop&color=6F4E37)](https://github.com/kopiagent/kopi-ai-agent/releases/latest)
 [![Docs](https://img.shields.io/badge/Docs-kopiaiagent.com-2563EB?style=for-the-badge)](https://kopiaiagent.com/docs/)
 [![中文](https://img.shields.io/badge/Lang-中文-red?style=for-the-badge)](README.zh-CN.md)
 [![Español](https://img.shields.io/badge/Lang-Español-orange?style=for-the-badge)](README.es.md)
@@ -74,6 +75,53 @@ kopi              # start chatting!
 ```
 
 Your first conversation is on us — 5M tokens included.
+
+---
+
+## 🖥️ Kopi Desktop App
+
+Prefer a native app over the terminal? **Kopi Desktop** is a full-featured Electron app for macOS, Windows, and Linux — with a built-in terminal, multi-session management, and one-click model switching.
+
+### Download
+
+| Platform | Download |
+|----------|----------|
+| **macOS** (Apple Silicon) | [Kopi-1.22.4-mac-arm64.dmg](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.4/Kopi-1.22.4-mac-arm64.dmg) · [zip](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.4/Kopi-1.22.4-mac-arm64.zip) |
+| **Windows** (x64) | [Kopi-1.22.4-win-x64.exe](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.4/Kopi-1.22.4-win-x64.exe) |
+| **Linux** | [AppImage](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.4/Kopi-1.22.4-linux-x86_64.AppImage) · [deb](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.4/Kopi-1.22.4-linux-amd64.deb) · [rpm](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.4/Kopi-1.22.4-linux-x86_64.rpm) |
+
+> **Latest release:** [v1.22.4](https://github.com/kopiagent/kopi-ai-agent/releases/latest) · **All releases:** [here](https://github.com/kopiagent/kopi-ai-agent/releases)
+
+### System Requirements
+
+| Platform | Minimum |
+|----------|---------|
+| macOS | 12.0+ (Monterey), Apple Silicon (M1+) |
+| Windows | 10 (1809+), x64 |
+| Linux | glibc 2.31+ (Ubuntu 20.04+, Fedora 35+, Arch) |
+| RAM | 4 GB minimum, 8 GB recommended |
+
+### macOS First-Launch
+
+macOS builds are ad-hoc signed (not notarized yet). On first launch, approve the app under **System Settings → Privacy & Security → Open Anyway**, or run:
+
+```bash
+xattr -cr /Applications/Kopi.app
+```
+
+The Desktop app bundles its own backend — no separate `kopi` CLI install needed. Just launch and start chatting.
+
+---
+
+## System Requirements (CLI)
+
+| Component | Minimum |
+|-----------|---------|
+| OS | Linux, macOS, WSL2, Termux, or Windows (native) |
+| Python | 3.10+ (auto-installed by the installer) |
+| RAM | 1 GB minimum |
+| Disk | ~500 MB (includes uv, Node.js, ripgrep, ffmpeg) |
+| Network | Outbound HTTPS (443) |
 
 ---
 
