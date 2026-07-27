@@ -36,6 +36,41 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
       return () => ipcRenderer.removeListener('kopi:pet-overlay:control', listener)
     }
   },
+  // Quick Entry: the global-hotkey mini composer window. Main owns the OS
+  // shortcut + the persisted preference; the quick window only captures text
+  // and hands it back, and the primary renderer submits it through the normal
+  // prompt path.
+  quickEntry: {
+    getSettings: () => ipcRenderer.invoke('kopi:quick-entry:settings:get'),
+    setSettings: patch => ipcRenderer.invoke('kopi:quick-entry:settings:set', patch),
+    submit: payload => ipcRenderer.send('kopi:quick-entry:submit', payload),
+    dismiss: () => ipcRenderer.send('kopi:quick-entry:dismiss'),
+    // Primary renderer → main → quick window: gateway connection state + the
+    // recent-session options the target picker offers. Main caches the latest
+    // payload so a freshly spawned quick window starts from truth.
+    pushState: payload => ipcRenderer.send('kopi:quick-entry:state', payload),
+    // Quick window subscribes to those pushes.
+    onState: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('kopi:quick-entry:state', listener)
+
+      return () => ipcRenderer.removeListener('kopi:quick-entry:state', listener)
+    },
+    // Main → primary renderer: a submit captured by the quick window.
+    onSubmit: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('kopi:quick-entry:submit', listener)
+
+      return () => ipcRenderer.removeListener('kopi:quick-entry:submit', listener)
+    },
+    // Main → quick window: you were just summoned (reset draft + refocus).
+    onShown: callback => {
+      const listener = () => callback()
+      ipcRenderer.on('kopi:quick-entry:shown', listener)
+
+      return () => ipcRenderer.removeListener('kopi:quick-entry:shown', listener)
+    }
+  },
   getBootProgress: () => ipcRenderer.invoke('kopi:boot-progress:get'),
   getConnectionConfig: profile => ipcRenderer.invoke('kopi:connection-config:get', profile),
   saveConnectionConfig: payload => ipcRenderer.invoke('kopi:connection-config:save', payload),
@@ -268,5 +303,19 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
   themes: {
     fetchMarketplace: id => ipcRenderer.invoke('kopi:vscode-theme:fetch', id),
     searchMarketplace: query => ipcRenderer.invoke('kopi:vscode-theme:search', query)
+  },
+  // Find-in-page (Ctrl/Cmd+F): delegates to Electron's
+  // webContents.findInPage on the IPC sender's window so a Cmd+F pressed
+  // in a secondary session window searches THAT window, not the primary.
+  // `onFoundInPage` returns the unsubscribe fn; the renderer wires it via
+  // `initFindInPageListener` in store/find-in-page.ts and tears it down
+  // when the FindBar unmounts.
+  findInPage: (query, options) => ipcRenderer.invoke('kopi:find-in-page', query, options),
+  stopFindInPage: () => ipcRenderer.invoke('kopi:stop-find-in-page'),
+  onFoundInPage: callback => {
+    const listener = (_event, result) => callback(result)
+    ipcRenderer.on('kopi:found-in-page', listener)
+
+    return () => ipcRenderer.removeListener('kopi:found-in-page', listener)
   }
 })

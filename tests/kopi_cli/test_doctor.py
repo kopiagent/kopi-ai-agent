@@ -32,6 +32,26 @@ class TestDoctorPlatformHints:
         assert doctor._python_install_cmd() == "uv pip install"
         assert doctor._system_package_install_cmd("ripgrep") == "sudo apt install ripgrep"
 
+    def test_sqlite_upgrade_hint_recreates_docker_containers(self, monkeypatch):
+        monkeypatch.setattr(doctor, "detect_install_method", lambda _root: "docker")
+
+        hint = doctor._sqlite_upgrade_hint()
+
+        assert "docker pull nousresearch/kopi-ai-agent:latest" in hint
+        assert "recreate all Kopi containers" in hint
+        assert "kopi update" not in hint
+
+    def test_sqlite_upgrade_hint_keeps_git_runtime_repair(self):
+        hint = doctor._sqlite_upgrade_hint("git")
+
+        assert "run `kopi update`" in hint
+
+    def test_sqlite_upgrade_hint_uses_nix_package_manager(self):
+        hint = doctor._sqlite_upgrade_hint("nix")
+
+        assert "Nix source that installed it" in hint
+        assert "kopi update" not in hint
+
 
 class TestProviderEnvDetection:
     def test_detects_openai_api_key(self):
