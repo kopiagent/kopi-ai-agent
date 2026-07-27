@@ -206,6 +206,7 @@ const {
   BrowserWindow,
   clipboard,
   dialog,
+  globalShortcut,
   net: electronNet,
   ipcMain,
   Menu,
