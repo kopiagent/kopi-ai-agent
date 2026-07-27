@@ -182,7 +182,7 @@
         ]
       }
     ],
-    "artifactName": "Kopi-${version}-${os}-${arch}.${ext}",
+    "artifactName": "Kopi-${os}-${arch}.${ext}",
     "icon": "assets/icon",
     "directories": {
       "output": "release"
