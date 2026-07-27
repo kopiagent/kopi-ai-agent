@@ -1779,6 +1779,8 @@ class APIServerAdapter(BasePlatformAdapter):
             ("POST", "/v1/manage/pairing/revoke", self._handle_manage_pairing_revoke),
             ("GET", "/v1/manage/skills", self._handle_manage_skills_get),
             ("POST", "/v1/manage/skills", self._handle_manage_skills_post),
+            ("GET", "/v1/manage/skills/optional", self._handle_manage_skills_optional),
+            ("POST", "/v1/manage/skills/install", self._handle_manage_skills_install),
             ("GET", "/v1/manage/mcp", self._handle_manage_mcp_get),
             ("POST", "/v1/manage/mcp", self._handle_manage_mcp_post),
             ("GET", "/api/sessions", self._handle_list_sessions),
@@ -2873,6 +2875,8 @@ class APIServerAdapter(BasePlatformAdapter):
                 "manage_pairing_revoke": {"method": "POST", "path": "/v1/manage/pairing/revoke"},
                 "manage_skills_get": {"method": "GET", "path": "/v1/manage/skills"},
                 "manage_skills_set": {"method": "POST", "path": "/v1/manage/skills"},
+                "manage_skills_optional": {"method": "GET", "path": "/v1/manage/skills/optional"},
+                "manage_skills_install": {"method": "POST", "path": "/v1/manage/skills/install"},
                 "manage_mcp_get": {"method": "GET", "path": "/v1/manage/mcp"},
                 "manage_mcp_set": {"method": "POST", "path": "/v1/manage/mcp"},
                 "sessions": {"method": "GET", "path": "/api/sessions"},
@@ -3220,6 +3224,110 @@ class APIServerAdapter(BasePlatformAdapter):
         return web.json_response(
             {"object": "kopi.skills.config", "result": "ok", "restart_required": False}
         )
+
+    async def _handle_manage_skills_optional(self, request: "web.Request") -> "web.Response":
+        """GET /v1/manage/skills/optional — the install catalog (uninstalled + installed).
+
+        Unlike GET /v1/manage/skills (what's ACTIVE), this lists what can still be
+        installed from the image's optional-skills/, so the console can validate
+        paid-pack skill names and drive one-click install. Read-only, offline.
+        """
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        profile = self._resolve_request_profile(request)
+        if profile is _PROFILE_REJECTED:
+            return web.json_response(
+                _openai_error("Unknown profile", err_type="invalid_request_error"), status=404
+            )
+
+        def _work():
+            from tools.skills_sync import list_optional_skills
+
+            return list_optional_skills()
+
+        try:
+            with self._profile_scope(profile):
+                data = await asyncio.to_thread(_work)
+        except Exception:
+            logger.exception("GET /v1/manage/skills/optional failed")
+            return web.json_response(
+                _openai_error("Failed to list optional skills", err_type="server_error"), status=500
+            )
+        return web.json_response({"object": "kopi.skills.optional", "data": data})
+
+    async def _handle_manage_skills_install(self, request: "web.Request") -> "web.Response":
+        """POST /v1/manage/skills/install — install optional skills by name.
+
+        Body: ``{"names": ["dcf-model", ...]}``. Deterministic (no model), offline,
+        idempotent. Partial success is reported, not failed as a batch: each name
+        lands in ``installed`` / ``already`` / ``unknown`` so the caller (whose
+        downstream is refund/reconciliation) can act per skill.
+        """
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        profile = self._resolve_request_profile(request)
+        if profile is _PROFILE_REJECTED:
+            return web.json_response(
+                _openai_error("Unknown profile", err_type="invalid_request_error"), status=404
+            )
+        body, err = await self._read_json_body(request)
+        if err:
+            return err
+
+        names = body.get("names")
+        if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+            return web.json_response(
+                _openai_error("names must be a list of strings", err_type="invalid_request_error", param="names"),
+                status=400,
+            )
+        # Names are joined into an in-instance path by the installer; reject path
+        # traversal / overlong names up front (the installer only matches known
+        # index keys, but defense in depth — mirrors the website-side check).
+        for n in names:
+            if not n or len(n) > 40 or "/" in n or ".." in n:
+                return web.json_response(
+                    _openai_error(f"Invalid skill name: {n!r}", err_type="invalid_request_error", param="names"),
+                    status=400,
+                )
+
+        def _work():
+            from tools.skills_sync import restore_official_optional_skill
+
+            installed: list = []
+            already: list = []
+            unknown: list = []
+            for name in names:
+                result = restore_official_optional_skill(name, restore=True)
+                if not result.get("ok"):
+                    # index.get(name) was None -> not a known optional skill
+                    unknown.append(name)
+                elif result.get("restored"):
+                    # A fresh copytree happened (per-name call -> at most this one).
+                    installed.append(name)
+                else:
+                    # ok, but nothing copied -> canonical copy already present.
+                    already.append(name)
+            return installed, already, unknown
+
+        try:
+            with self._profile_scope(profile):
+                installed, already, unknown = await asyncio.to_thread(_work)
+        except Exception:
+            logger.exception("POST /v1/manage/skills/install failed")
+            return web.json_response(
+                _openai_error("Failed to install skills", err_type="server_error"), status=500
+            )
+        return web.json_response({
+            "object": "kopi.skills.install",
+            "installed": installed,
+            "already": already,
+            "unknown": unknown,
+            # Skill scan is mtime-keyed + 30s TTL (same as /v1/manage/skills),
+            # so a freshly-copied skill dir is picked up without a restart.
+            "restart_required": False,
+        })
 
     async def _handle_manage_mcp_get(self, request: "web.Request") -> "web.Response":
         """GET /v1/manage/mcp — the full mcp_servers map from config.yaml.

@@ -276,6 +276,89 @@ class TestMcpEndpoints:
         assert data["issues"]
 
 
+class TestSkillsInstallEndpoints:
+    @pytest.mark.asyncio
+    async def test_optional_requires_auth(self, manage_env):
+        app = _app_from_route_table(_make_adapter())
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.get("/v1/manage/skills/optional", headers=_auth("wrong"))
+            assert resp.status == 401
+
+    @pytest.mark.asyncio
+    async def test_optional_lists_catalog(self, manage_env):
+        """Reads the image's optional-skills/ (repo-relative, read-only)."""
+        app = _app_from_route_table(_make_adapter())
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.get("/v1/manage/skills/optional", headers=_auth())
+            assert resp.status == 200
+            data = await resp.json()
+        assert data["object"] == "kopi.skills.optional"
+        assert isinstance(data["data"], list) and data["data"]
+        row = data["data"][0]
+        assert set(row) >= {"name", "description", "category", "installed"}
+
+    @pytest.mark.asyncio
+    async def test_install_bad_shape_400(self, manage_env):
+        app = _app_from_route_table(_make_adapter())
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.post(
+                "/v1/manage/skills/install", headers=_auth(), json={"names": "notalist"}
+            )
+            assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_install_rejects_path_traversal_400(self, manage_env):
+        app = _app_from_route_table(_make_adapter())
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.post(
+                "/v1/manage/skills/install", headers=_auth(), json={"names": ["../evil"]}
+            )
+            assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_install_unknown_name_is_200_unknown(self, manage_env):
+        """A name absent from the optional index -> unknown bucket, 200 (no copy)."""
+        app = _app_from_route_table(_make_adapter())
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.post(
+                "/v1/manage/skills/install",
+                headers=_auth(),
+                json={"names": ["definitely-not-a-real-skill-xyz"]},
+            )
+            assert resp.status == 200
+            data = await resp.json()
+        assert data["unknown"] == ["definitely-not-a-real-skill-xyz"]
+        assert data["installed"] == [] and data["already"] == []
+
+    @pytest.mark.asyncio
+    async def test_install_classifies_installed_already_unknown(self, manage_env):
+        """Classification of restore_official_optional_skill results per name."""
+        app = _app_from_route_table(_make_adapter())
+
+        def _fake_restore(name, *, restore=False):
+            if name == "fresh":
+                return {"ok": True, "restored": ["fresh"]}
+            if name == "have":
+                return {"ok": True, "restored": []}
+            return {"ok": False, "message": f"not found: {name}", "restored": []}
+
+        import tools.skills_sync as ss
+
+        with patch.object(ss, "restore_official_optional_skill", _fake_restore):
+            async with TestClient(TestServer(app)) as cli:
+                resp = await cli.post(
+                    "/v1/manage/skills/install",
+                    headers=_auth(),
+                    json={"names": ["fresh", "have", "nope"]},
+                )
+                assert resp.status == 200
+                data = await resp.json()
+        assert data["installed"] == ["fresh"]
+        assert data["already"] == ["have"]
+        assert data["unknown"] == ["nope"]
+        assert data["restart_required"] is False
+
+
 class TestCapabilities:
     @pytest.mark.asyncio
     async def test_advertises_manage_api(self, manage_env):
@@ -286,6 +369,8 @@ class TestCapabilities:
         assert data["features"]["manage_api"] is True
         assert "manage_pairing" in data["endpoints"]
         assert "manage_skills_set" in data["endpoints"]
+        assert "manage_skills_optional" in data["endpoints"]
+        assert "manage_skills_install" in data["endpoints"]
         assert "manage_mcp_set" in data["endpoints"]
         assert data["auth"]["header_alt"] == "X-Kopi-Api-Key"
 
