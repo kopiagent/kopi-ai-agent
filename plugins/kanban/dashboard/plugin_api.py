@@ -647,7 +647,15 @@ def create_task(payload: CreateTaskBody, board: Optional[str] = Query(None)):
         if task and task.status == "ready" and task.assignee:
             try:
                 from kopi_cli.kanban import _check_dispatcher_presence
-                running, message = _check_dispatcher_presence()
+                from kopi_constants import get_kopi_home
+
+                # Scope the probe to the request's active home. The dashboard
+                # backend can run under a different KOPI_HOME than the
+                # profile this board belongs to, which otherwise warned "no
+                # gateway is running" against a live profile gateway (#71211).
+                running, message = _check_dispatcher_presence(
+                    kopi_home=get_kopi_home()
+                )
                 if not running and message:
                     body["warning"] = message
             except Exception:
