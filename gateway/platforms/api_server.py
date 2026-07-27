@@ -1779,6 +1779,8 @@ class APIServerAdapter(BasePlatformAdapter):
             ("POST", "/v1/manage/pairing/revoke", self._handle_manage_pairing_revoke),
             ("GET", "/v1/manage/skills", self._handle_manage_skills_get),
             ("POST", "/v1/manage/skills", self._handle_manage_skills_post),
+            ("GET", "/v1/manage/mcp", self._handle_manage_mcp_get),
+            ("POST", "/v1/manage/mcp", self._handle_manage_mcp_post),
             ("GET", "/api/sessions", self._handle_list_sessions),
             ("POST", "/api/sessions", self._handle_create_session),
             ("GET", "/api/sessions/{session_id}", self._handle_get_session),
@@ -2871,6 +2873,8 @@ class APIServerAdapter(BasePlatformAdapter):
                 "manage_pairing_revoke": {"method": "POST", "path": "/v1/manage/pairing/revoke"},
                 "manage_skills_get": {"method": "GET", "path": "/v1/manage/skills"},
                 "manage_skills_set": {"method": "POST", "path": "/v1/manage/skills"},
+                "manage_mcp_get": {"method": "GET", "path": "/v1/manage/mcp"},
+                "manage_mcp_set": {"method": "POST", "path": "/v1/manage/mcp"},
                 "sessions": {"method": "GET", "path": "/api/sessions"},
                 "session_create": {"method": "POST", "path": "/api/sessions"},
                 "session": {"method": "GET", "path": "/api/sessions/{session_id}"},
@@ -3215,6 +3219,132 @@ class APIServerAdapter(BasePlatformAdapter):
         # includes the disabled set (TTL 30s). Kept as a forward-compat field.
         return web.json_response(
             {"object": "kopi.skills.config", "result": "ok", "restart_required": False}
+        )
+
+    async def _handle_manage_mcp_get(self, request: "web.Request") -> "web.Response":
+        """GET /v1/manage/mcp — the full mcp_servers map from config.yaml.
+
+        Values are the persisted config entries; secrets are never inlined here
+        (auth tokens live in the profile .env and configs only carry
+        ``${MCP_X_API_KEY}`` interpolation templates), so this is safe to return.
+        """
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        profile = self._resolve_request_profile(request)
+        if profile is _PROFILE_REJECTED:
+            return web.json_response(
+                _openai_error("Unknown profile", err_type="invalid_request_error"), status=404
+            )
+
+        def _work():
+            from kopi_cli.config import load_config
+            from kopi_cli.mcp_config import _get_mcp_servers
+
+            return _get_mcp_servers(load_config())
+
+        try:
+            with self._profile_scope(profile):
+                servers = await asyncio.to_thread(_work)
+        except Exception:
+            logger.exception("GET /v1/manage/mcp failed")
+            return web.json_response(
+                _openai_error("Failed to read MCP config", err_type="server_error"), status=500
+            )
+        return web.json_response({"object": "kopi.mcp.config", "servers": servers})
+
+    async def _handle_manage_mcp_post(self, request: "web.Request") -> "web.Response":
+        """POST /v1/manage/mcp — replace the whole mcp_servers map (PUT semantics).
+
+        Body: ``{"servers": {name: {...}}}``. Every entry is validated
+        (validate_mcp_server_entry — blocks IOC / shell-egress / persistence
+        shapes); an empty map removes all servers. On success the running MCP
+        connections are reloaded in-process (shutdown + non-interactive
+        rediscover) so the change takes effect without a pod restart.
+        """
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        profile = self._resolve_request_profile(request)
+        if profile is _PROFILE_REJECTED:
+            return web.json_response(
+                _openai_error("Unknown profile", err_type="invalid_request_error"), status=404
+            )
+        body, err = await self._read_json_body(request)
+        if err:
+            return err
+
+        servers = body.get("servers")
+        if not isinstance(servers, dict):
+            return web.json_response(
+                _openai_error(
+                    "servers must be an object of {name: config}",
+                    err_type="invalid_request_error",
+                    param="servers",
+                ),
+                status=400,
+            )
+
+        def _write():
+            from kopi_cli.mcp_config import _replace_mcp_servers
+
+            return _replace_mcp_servers(servers)
+
+        try:
+            with self._profile_scope(profile):
+                ok, issues = await asyncio.to_thread(_write)
+        except Exception:
+            logger.exception("POST /v1/manage/mcp write failed")
+            return web.json_response(
+                _openai_error("Failed to write MCP config", err_type="server_error"), status=500
+            )
+        if not ok:
+            # Rejected by validate_mcp_server_entry (suspicious/malformed entry):
+            # a business validation result, surfaced as 400 with the reasons.
+            return web.json_response(
+                {
+                    "object": "kopi.mcp.config",
+                    "result": "rejected",
+                    "issues": issues,
+                },
+                status=400,
+            )
+
+        # Reload in-process so the change is live without a restart. Mirrors the
+        # CLI /reload-mcp path but non-interactive (OAuth without a cached token
+        # is skipped rather than prompting). Best-effort: a reload hiccup must
+        # not make a successful config write look failed.
+        reloaded = False
+        added: list = []
+        removed: list = []
+
+        def _reload():
+            from tools.mcp_tool import shutdown_mcp_servers, _servers, _lock
+            from kopi_cli.mcp_startup import _discover_mcp_tools_without_interactive_oauth
+
+            with _lock:
+                before = set(_servers.keys())
+            shutdown_mcp_servers()
+            _discover_mcp_tools_without_interactive_oauth()
+            with _lock:
+                after = set(_servers.keys())
+            return sorted(after - before), sorted(before - after)
+
+        try:
+            with self._profile_scope(profile):
+                added, removed = await asyncio.to_thread(_reload)
+            reloaded = True
+        except Exception:
+            logger.exception("POST /v1/manage/mcp reload failed (config was written)")
+
+        return web.json_response(
+            {
+                "object": "kopi.mcp.config",
+                "result": "ok",
+                "reloaded": reloaded,
+                "added": added,
+                "removed": removed,
+            }
         )
 
     async def _handle_toolsets(self, request: "web.Request") -> "web.Response":
