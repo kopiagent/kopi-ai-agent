@@ -10180,6 +10180,7 @@ ipcMain.handle('kopi:quick-entry:settings:get', async () => {
 
 ipcMain.handle('kopi:quick-entry:settings:set', async (_event, patch) => {
   const current = readQuickEntrySettings()
+
   const next = sanitizeQuickEntrySettings({
     enabled: patch?.enabled === undefined ? current.enabled : patch.enabled === true,
     shortcut: typeof patch?.shortcut === 'string' && patch.shortcut.trim() ? patch.shortcut : current.shortcut
