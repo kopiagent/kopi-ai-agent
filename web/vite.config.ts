@@ -83,6 +83,39 @@ export default defineConfig({
       "gsap",
     ],
   },
+  // 资源 URL 的 base 必须在**运行时**决定,不能烘进构建产物。
+  //
+  // dashboard 会被网站以路径前缀代理暴露(`/i/<customerId>/*` → 实例根 `/*`)。
+  // 服务端已经把 index.html 里的绝对资源路径重写成带前缀的形式
+  // (`kopi_cli/web_server.py` 的 `_serve_index`,读 `X-Forwarded-Prefix`),
+  // 但**字符串替换够不着 JS 内部运行时拼出来的 URL** —— Vite 的 preload 助手
+  // 与动态 import 用的是构建时烘死的 `base`(默认 `/`)。
+  //
+  // 症状:落地页能起来(index.html 被重写过,入口 chunk 正常执行),但任何
+  // 懒加载路由都白屏,控制台是一串 `GET /assets/<chunk>.js 404` —— 注意路径
+  // 里没有 `/i/<id>/` 前缀。v12 换 rolldown + 懒加载路由后每个页面都要单独拉
+  // chunk,这条路径才第一次被走到;之前是单文件 bundle,没有运行时加载,所以
+  // 同样的 base 问题一直没暴露。
+  //
+  // 这里让 JS 侧改用运行时全局 `window.__KOPI_BASE_PATH__`(引擎在入口模块
+  // **之前**的 bootstrap `<script>` 里注入,根路径部署时为空串,行为与原先
+  // 完全一致)。index.html / CSS 维持绝对路径,继续走服务端重写那条已验证的路。
+  //
+  // 不用 `base: "./"` 的原因:相对路径按**当前 URL 深度**解析,`/i/<id>/chat`
+  // 恰好能对,但嵌套一层的路由就会解析到 `/i/<id>/xxx/assets/...`;而且改成
+  // 相对后服务端那条 `href="/assets/` 的重写规则也匹配不上了。
+  experimental: {
+    renderBuiltUrl(filename, { hostType }) {
+      if (hostType === "js") {
+        return {
+          runtime: `((globalThis.__KOPI_BASE_PATH__ ?? "") + "/" + ${JSON.stringify(
+            filename
+          )})`,
+        };
+      }
+      return { relative: false };
+    },
+  },
   build: {
     outDir: "../kopi_cli/web_dist",
     emptyOutDir: true,
