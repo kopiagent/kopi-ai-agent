@@ -126,6 +126,11 @@ jobs:
     uses: ./.github/workflows/uv-lockfile-check.yml
     secrets: inherit
 
+  infographic-check:
+    name: Check no committed infographics
+    needs: detect
+    uses: ./.github/workflows/infographic-check.yml
+
   lockfile-diff:
     name: package-lock.json diff
     needs: detect

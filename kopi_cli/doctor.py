@@ -10,7 +10,13 @@ import subprocess
 import shutil
 from pathlib import Path
 
-from kopi_cli.config import get_project_root, get_kopi_home, get_env_path
+from kopi_cli.config import (
+    detect_install_method,
+    get_env_path,
+    get_kopi_home,
+    get_project_root,
+    recommended_update_command_for_method,
+)
 from kopi_cli.env_loader import load_kopi_dotenv
 from kopi_constants import display_kopi_home
 from kopi_constants import agent_browser_runnable
@@ -70,6 +76,22 @@ def _system_package_install_cmd(pkg: str) -> str:
     if sys.platform == "darwin":
         return f"brew install {pkg}"
     return f"sudo apt install {pkg}"
+
+
+def _sqlite_upgrade_hint(install_method: str | None = None) -> str:
+    """Return an actionable SQLite upgrade hint for this install layout."""
+    method = install_method or detect_install_method(PROJECT_ROOT)
+    if method == "docker":
+        command = recommended_update_command_for_method(method)
+        action = f"run `{command}`, then recreate all Kopi containers"
+    elif method in {"nix", "nixos"}:
+        action = recommended_update_command_for_method(method)
+    else:
+        action = "run `kopi update`"
+    return (
+        f"({action}; fixed versions: 3.51.3+ / 3.50.7 / 3.44.6 — "
+        "see https://sqlite.org/wal.html#walresetbug)"
+    )
 
 
 def _safe_which(cmd: str) -> str | None:
@@ -827,8 +849,7 @@ def run_doctor(args):
             # best-effort and unsupported installs may need manual action.
             check_warn(
                 f"SQLite {_sqlite_ver} (WAL-reset bug)",
-                "(run `kopi update`; fixed versions: 3.51.3+ / 3.50.7 / "
-                "3.44.6 — see https://sqlite.org/wal.html#walresetbug)",
+                _sqlite_upgrade_hint(),
             )
         else:
             check_ok(f"SQLite {_sqlite_ver}")
