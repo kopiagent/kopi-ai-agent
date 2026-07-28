@@ -1643,7 +1643,8 @@ setup_path() {
     log_info "Setting up kopi command..."
 
     if [ "$USE_VENV" = true ]; then
-        KOPI_BIN="$INSTALL_DIR/venv/bin/kopi"
+        KOPI_BIN="$INSTALL_DIR/venv/bin/python"
+        KOPI_ENTRYPOINT="$INSTALL_DIR/kopi"
     else
         KOPI_BIN="$(which kopi 2>/dev/null || echo "")"
         if [ -z "$KOPI_BIN" ]; then
@@ -1652,10 +1653,10 @@ setup_path() {
         fi
     fi
 
-    # Verify the entry point script was actually generated
-    if [ ! -x "$KOPI_BIN" ]; then
-        log_warn "kopi entry point not found at $KOPI_BIN"
-        log_info "This usually means the pip install didn't complete successfully."
+    # Verify the interpreter and the checked-in entrypoint needed by the launcher.
+    if [ ! -x "$KOPI_BIN" ] || { [ "$USE_VENV" = true ] && [ ! -f "$KOPI_ENTRYPOINT" ]; }; then
+        log_warn "Kopi launcher prerequisites not found"
+        log_info "This usually means the Python package install didn't complete successfully."
         if [ "$DISTRO" = "termux" ]; then
             log_info "Try: cd $INSTALL_DIR && python -m pip install -e '.[termux-all]' -c constraints-termux.txt"
         else
@@ -1677,12 +1678,25 @@ setup_path() {
     # the rm, `cat >` follows the symlink and overwrites the venv pip entry
     # point with this shim — making `exec "$KOPI_BIN"` self-recurse. (#21454)
     rm -f "$command_link_dir/kopi"
-    cat > "$command_link_dir/kopi" <<EOF
+    if [ "$USE_VENV" = true ]; then
+        # uv-generated console scripts resolve themselves through `realpath`,
+        # which stock macOS does not provide. Run the checked-in entrypoint
+        # with the venv interpreter instead, so the public launcher remains
+        # independent of non-standard shell utilities.
+        cat > "$command_link_dir/kopi" <<EOF
+#!/usr/bin/env bash
+unset PYTHONPATH
+unset PYTHONHOME
+exec "$KOPI_BIN" "$KOPI_ENTRYPOINT" "\$@"
+EOF
+    else
+        cat > "$command_link_dir/kopi" <<EOF
 #!/usr/bin/env bash
 unset PYTHONPATH
 unset PYTHONHOME
 exec "$KOPI_BIN" "\$@"
 EOF
+    fi
     chmod +x "$command_link_dir/kopi"
     log_success "Installed kopi launcher → $command_link_display_dir/kopi"
 
