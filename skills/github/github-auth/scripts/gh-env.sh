@@ -28,8 +28,8 @@ elif _kopi_env="${KOPI_HOME:-$HOME/.kopi}/.env"; [ -f "$_kopi_env" ] && grep -q 
     if [ -n "$GITHUB_TOKEN" ]; then
         GH_AUTH_METHOD="curl"
     fi
-elif [ -f "$HOME/.git-credentials" ] && grep -q "github.com" "$HOME/.git-credentials" 2>/dev/null; then
-    GITHUB_TOKEN=$(grep "github.com" "$HOME/.git-credentials" | head -1 | sed 's|https://[^:]*:\([^@]*\)@.*|\1|')
+elif [ -f "$HOME/.git-credentials" ]; then
+    GITHUB_TOKEN=$(uv run python3 "${KOPI_HOME:-$HOME/.kopi}/skills/github/github-auth/scripts/git-credential-token.py")
     if [ -n "$GITHUB_TOKEN" ]; then
         GH_AUTH_METHOD="curl"
     fi

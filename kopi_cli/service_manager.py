@@ -783,18 +783,20 @@ class S6ServiceManager:
             f"# shellcheck shell=sh\n"
             f': "${{KOPI_HOME:=/opt/data}}"\n'
             f'log_dir="$KOPI_HOME/logs/gateways/{prof}"\n'
-            f'mkdir -p "$log_dir"\n'
-            # The gateways/ parent must be chowned too (non-recursively):
-            # `mkdir -p` creates it root-owned on a root-context boot, and a
-            # leaf-only chown leaves it that way — every profile registered
-            # later then runs its log service as kopi and crash-loops on
-            # `mkdir: Permission denied`. The parent chown runs on every
-            # root-context boot, so it also heals volumes already poisoned
-            # by older images. Non-recursive on purpose: sibling profile
-            # dirs are each managed by their own log/run. See #45258.
-            f'chown kopi:kopi "$KOPI_HOME/logs/gateways" 2>/dev/null || true\n'
-            f'chown -R kopi:kopi "$log_dir" 2>/dev/null || true\n'
-            f'rm -f "$log_dir/lock"\n'
+            # Create the leaf and clear a stale s6-log lock as kopi when
+            # this script starts as root. Never chown or unlink kopi-writable
+            # volume paths from this restartable root-context script:
+            # log/supervise/control is kopi-owned, so an unprivileged user
+            # can race a pathname op through a symlink swap (CWE-59 /
+            # CWE-367). Parent logs/gateways is seeded kopi-owned at stage2
+            # boot (#45258; tests/docker/test_log_dir_seed.py).
+            f'if [ "$(id -u)" = 0 ]; then\n'
+            f'  s6-setuidgid kopi mkdir -p "$log_dir"\n'
+            f'  s6-setuidgid kopi rm -f "$log_dir/lock"\n'
+            f'else\n'
+            f'  mkdir -p "$log_dir"\n'
+            f'  rm -f "$log_dir/lock"\n'
+            f'fi\n'
             # Skip the drop when already non-root (CAP_SETGID).
             f'[ "$(id -u)" = 0 ] || exec s6-log 1 n10 s1000000 T "$log_dir"\n'
             f'exec s6-setuidgid kopi s6-log 1 n10 s1000000 T "$log_dir"\n'
