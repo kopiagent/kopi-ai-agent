@@ -230,6 +230,10 @@ export function buildAppEnv(sandbox: Sandbox, extra: Record<string, string> = {}
     KOPI_DESKTOP_IGNORE_EXISTING: '1',
     KOPI_DESKTOP_KOPI_ROOT: REPO_ROOT,
     KOPI_DESKTOP_APP_NAME: `KopiE2E-${Date.now()}`,
+    // `app.close()` in teardown must exit even when a spec leaves a turn
+    // mid-flight — otherwise the quit confirmation waits on a click that no
+    // one is there to make, and the worker dies on a teardown timeout.
+    KOPI_DESKTOP_SKIP_QUIT_CONFIRM: '1',
     // Clear dev-server override — we want the built dist/, not a vite server.
     // The dev-server check in main.ts looks for this env var; if it's set,
     // it loads from the vite URL instead of the local file.

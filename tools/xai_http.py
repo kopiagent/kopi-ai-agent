@@ -97,6 +97,16 @@ def kopi_xai_user_agent() -> str:
     return f"Kopi-Agent/{__version__}"
 
 
+def kopi_xai_default_headers() -> Dict[str, str]:
+    """Default headers for OpenAI-SDK and raw HTTP clients talking to xAI.
+
+    Replaces the OpenAI Python SDK's identifying ``User-Agent: OpenAI/Python …``
+    so chat/completions and Responses traffic is attributed as Kopi Agent,
+    matching the direct HTTP integrations (search, TTS, STT, image, video).
+    """
+    return {"User-Agent": kopi_xai_user_agent()}
+
+
 def _load_config_section(section_name: str) -> Dict[str, Any]:
     """Return a top-level Kopi config section as a dict, or empty."""
     try:

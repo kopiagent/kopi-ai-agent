@@ -124,6 +124,7 @@ declare global {
       normalizePreviewTarget: (target: string, baseDir?: string) => Promise<KopiPreviewTarget | null>
       watchPreviewFile: (url: string) => Promise<KopiPreviewWatch>
       stopPreviewFileWatch: (id: string) => Promise<boolean>
+      setActiveWork?: (payload: KopiActiveWork) => void
       setTitleBarTheme?: (payload: KopiTitleBarTheme) => void
       setNativeTheme?: (mode: 'dark' | 'light' | 'system') => void
       setTranslucency?: (payload: { intensity: number }) => void
@@ -456,6 +457,12 @@ export interface KopiConnection {
 export interface KopiTitleBarTheme {
   background: string
   foreground: string
+}
+
+/** Turns in flight, so the main process can confirm before a quit kills them. */
+export interface KopiActiveWork {
+  count: number
+  titles: string[]
 }
 
 export interface KopiWindowState {

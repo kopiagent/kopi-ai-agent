@@ -1,5 +1,6 @@
 """xAI (Grok) provider profile."""
 
+from kopi_cli import __version__ as _KOPI_VERSION
 from providers import register_provider
 from providers.base import ProviderProfile
 
@@ -10,6 +11,7 @@ xai = ProviderProfile(
     env_vars=("XAI_API_KEY",),
     base_url="https://api.x.ai/v1",
     auth_type="api_key",
+    default_headers={"User-Agent": f"Kopi-Agent/{_KOPI_VERSION}"},
 )
 
 register_provider(xai)
