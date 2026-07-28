@@ -114,6 +114,7 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
   normalizePreviewTarget: (target, baseDir) => ipcRenderer.invoke('kopi:normalizePreviewTarget', target, baseDir),
   watchPreviewFile: url => ipcRenderer.invoke('kopi:watchPreviewFile', url),
   stopPreviewFileWatch: id => ipcRenderer.invoke('kopi:stopPreviewFileWatch', id),
+  setActiveWork: payload => ipcRenderer.send('kopi:active-work', payload),
   setTitleBarTheme: payload => ipcRenderer.send('kopi:titlebar-theme', payload),
   setNativeTheme: mode => ipcRenderer.send('kopi:native-theme', mode),
   setTranslucency: payload => ipcRenderer.send('kopi:translucency', payload),
