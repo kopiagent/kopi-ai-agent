@@ -44,6 +44,9 @@ PYPROJECT_FILE = REPO_ROOT / "pyproject.toml"
 # This dict is kept only so existing history keeps resolving; the effective
 # AUTHOR_MAP below merges it with the directory (directory wins).
 LEGACY_AUTHOR_MAP = {
+    # KOPI fork maintainers (this fork's own commits, not upstream salvage).
+    "kunming@regisure.ai": "zhaotianlong79-art",
+    "zhaotianlong79@gmail.com": "zhaotianlong79-art",
     "declanbatesmith@outlook.com": "cat-thats-fat",  # PR #60489 (desktop: first-run remote connection option)
     "drbs2004@me.com": "cat-thats-fat",  # PR #60489 (desktop: first-run remote connection option; historical merge email)
     "122438640+ragingbulld@users.noreply.github.com": "ragingbulld",  # PR #65606 salvage (non-finite API wait deadlines; #65746)
