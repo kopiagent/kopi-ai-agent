@@ -44,10 +44,12 @@ import {
   profileRemoteOverride,
   profileSshOverride,
   resolveAuthMode,
+  resolveProfileBackendRoute,
   resolveTestWsUrl,
   savedProfileSsh,
   tokenPreview
 } from './connection-config'
+import { describeCrashReason, installCrashForensics } from './crash-forensics'
 import { adoptServedDashboardToken } from './dashboard-token'
 import { loadOrCreateInstallationId, sshOwnershipId } from './desktop-installation'
 import {
@@ -122,9 +124,15 @@ import { createKeepAwake } from './power-save'
 import { FirstRunSetupResetError, runPrimaryBackendStartup } from './primary-backend-startup'
 import { rehomePrimaryConnection } from './primary-connection-rehome'
 import { decideProfileDeleteAction, profileNameFromDeleteRequest, resolveRouteProfile } from './profile-delete-routing'
+import { fetchPrimaryProfileSessions } from './profile-session-routing'
 import { createQuickEntryShortcut, quickEntryWindowBounds, sanitizeQuickEntrySettings } from './quick-entry'
 import * as remoteLifecycle from './remote-lifecycle'
-import { RemoteLivenessTracker, RemoteRevalidationCoordinator, revalidateRemoteConnection } from './remote-liveness'
+import {
+  RemoteLivenessTracker,
+  RemoteRevalidationCoordinator,
+  revalidatePooledRemoteBackends,
+  revalidateRemoteConnection
+} from './remote-liveness'
 import {
   buildSessionWindowUrl,
   chatWindowWebPreferences,
@@ -1214,6 +1222,14 @@ function rememberLog(chunk) {
   }
 
   scheduleDesktopLogFlush()
+}
+
+installCrashForensics({ flush: flushDesktopLogBufferSync, log: rememberLog })
+
+// A rejected loadURL leaves a blank window and, unhandled, no trace anywhere
+// the user can send us. `label` names the surface so the log says which one.
+function loadWindowUrl(win, url, label) {
+  win.loadURL(url).catch(error => rememberLog(`${label} failed to load: ${describeCrashReason(error)}`))
 }
 
 function openExternalUrl(rawUrl) {
@@ -7728,15 +7744,28 @@ function primaryProfileKey() {
   return readActiveDesktopProfile() || 'default'
 }
 
-// Resolve a backend connection for the given profile. Routes the primary
-// profile to startKopi() (the window backend: boot UI, bootstrap, remote
-// mode), and any OTHER profile to a lazily-spawned pool backend. An empty /
-// unknown profile resolves to the primary, so all legacy callers are unchanged.
+// Options describing the current connection setup for `resolveProfileBackendRoute`.
+function profileRouteOptions(profile) {
+  return {
+    globalRemote: globalRemoteActive(),
+    primaryProfile: primaryProfileKey(),
+    profileRemoteOverride: Boolean(profileHasRemoteOverride(profile))
+  }
+}
+
+// Resolve a backend connection for the given profile, per the routing table in
+// resolveProfileBackendRoute(). An empty / unknown profile resolves to the
+// primary, so legacy callers are unchanged.
 async function ensureBackend(profile) {
   const key = profile && String(profile).trim() ? String(profile).trim() : primaryProfileKey()
+  const route = resolveProfileBackendRoute(key, profileRouteOptions(key))
 
-  if (key === primaryProfileKey()) {
-    return startKopi()
+  if (route.backend === 'primary') {
+    const connection = await startKopi()
+
+    // A shared backend still owes the caller its profile scope, so renderer-side
+    // WebSocket, filesystem, and cache routing target the selected profile.
+    return route.descriptorProfile ? { ...connection, profile: route.descriptorProfile } : connection
   }
 
   const existing = backendPool.get(key)
@@ -7749,7 +7778,15 @@ async function ensureBackend(profile) {
 
   evictLruPoolBackends(POOL_MAX_BACKENDS - 1)
 
-  const entry = { process: null, port: null, token: null, connectionPromise: null, lastActiveAt: Date.now() }
+  const entry = {
+    process: null,
+    port: null,
+    token: null,
+    connectionPromise: null,
+    lastActiveAt: Date.now(),
+    remoteBaseUrl: null
+  }
+
   entry.connectionPromise = spawnPoolBackend(key, entry).catch(error => {
     backendPool.delete(key)
     throw error
@@ -7845,6 +7882,10 @@ async function spawnPoolBackend(profile, entry) {
 
   if (remote) {
     await waitForKopi(remote.baseUrl, remote.token, undefined, remote.authMode)
+
+    // Recorded on the entry so revalidation can probe this descriptor without
+    // awaiting connectionPromise, which may still be pending for a sibling.
+    entry.remoteBaseUrl = remote.baseUrl
 
     return {
       ...remote,
@@ -8433,12 +8474,14 @@ function spawnSecondaryWindow({ sessionId, watch }: { sessionId?: string; watch?
 
   wireCommonWindowHandlers(win, zoomWiringForWindowKind('chat'))
 
-  win.loadURL(
+  loadWindowUrl(
+    win,
     buildSessionWindowUrl(sessionId, {
       devServer: DEV_SERVER,
       rendererIndexPath: DEV_SERVER ? undefined : resolveRendererIndex(),
       watch
-    })
+    }),
+    'Session window'
   )
 
   return win
@@ -8518,11 +8561,7 @@ function createInstanceWindow() {
     instanceWindows.delete(win)
   })
 
-  if (DEV_SERVER) {
-    win.loadURL(DEV_SERVER)
-  } else {
-    win.loadURL(pathToFileURL(resolveRendererIndex()).toString())
-  }
+  loadWindowUrl(win, DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(), 'Instance window')
 
   return win
 }
@@ -8634,7 +8673,7 @@ function spawnPetOverlayWindow(bounds) {
     }
   })
 
-  win.loadURL(petOverlayUrl())
+  loadWindowUrl(win, petOverlayUrl(), 'Pet overlay')
 
   return win
 }
@@ -8786,7 +8825,7 @@ function spawnQuickEntryWindow() {
     }
   })
 
-  win.loadURL(quickEntryUrl())
+  loadWindowUrl(win, quickEntryUrl(), 'Quick entry')
 
   return win
 }
@@ -9080,11 +9119,7 @@ function createWindow() {
     rememberLog(`[renderer console] ${text} (${src}:${lineNo})`)
   })
 
-  if (DEV_SERVER) {
-    mainWindow.loadURL(DEV_SERVER)
-  } else {
-    mainWindow.loadURL(pathToFileURL(resolveRendererIndex()).toString())
-  }
+  loadWindowUrl(mainWindow, DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(), 'Renderer')
 
   // Start the Python backend NOW, in parallel with the renderer load — not on
   // did-finish-load. The backend cold boot (spawn → port announce → /api/status)
@@ -9116,6 +9151,8 @@ ipcMain.handle('kopi:connection:revalidate', async () => {
   const connectionPromise = backendConnectionState.getPromise()
 
   if (!connectionPromise) {
+    await revalidatePool()
+
     return { ok: true, rebuilt: false }
   }
 
@@ -9123,14 +9160,17 @@ ipcMain.handle('kopi:connection:revalidate', async () => {
   // share this primary connection. Coalesce simultaneous requests so one outage
   // produces one failure observation rather than exhausting the whole streak.
   return remoteRevalidation.run(connectionPromise, async () => {
-    const result = await revalidateRemoteConnection({
-      connectionPromise,
-      currentConnectionPromise: () => backendConnectionState.getPromise(),
-      log: rememberLog,
-      probe: fetchPublicJson,
-      resetConnection: resetKopiConnection,
-      tracker: remoteLiveness
-    })
+    const [result] = await Promise.all([
+      revalidateRemoteConnection({
+        connectionPromise,
+        currentConnectionPromise: () => backendConnectionState.getPromise(),
+        log: rememberLog,
+        probe: fetchPublicJson,
+        resetConnection: resetKopiConnection,
+        tracker: remoteLiveness
+      }),
+      revalidatePool()
+    ])
 
     // A rebuilt SSH connection must also tear down its tunnel/master before the
     // renderer re-dials (which only happens after this handler resolves), so the
@@ -9148,6 +9188,20 @@ ipcMain.handle('kopi:connection:revalidate', async () => {
     return result
   })
 })
+
+// Pooled remote descriptors get the same treatment as the primary: they have no
+// child process to signal their host's death, and the renderer's keepalive touch
+// spares them from the idle reaper, so nothing else can retire a dead one.
+function revalidatePool() {
+  return revalidatePooledRemoteBackends({
+    entries: backendPool.entries(),
+    log: rememberLog,
+    probe: fetchPublicJson,
+    stopBackend: stopPoolBackend,
+    tracker: remoteLiveness
+  })
+}
+
 ipcMain.handle('kopi:backend:touch', async (_event, profile) => {
   touchPoolBackend(profile)
 
@@ -9774,12 +9828,7 @@ async function fetchProfilesSessionSlice(searchParams, remoteProfiles) {
       return remoteSessionList(requested, searchParams)
     }
 
-    const primary = await ensureBackend(null)
-
-    return fetchJson(`${primary.baseUrl}/api/profiles/sessions?${searchParams}`, primary.token, {
-      method: 'GET',
-      timeoutMs: DEFAULT_FETCH_TIMEOUT_MS
-    }).catch(() => ({ sessions: [], total: 0, profile_totals: {} }))
+    return fetchPrimaryProfileSessions(searchParams, fetchJsonForProfile)
   }
 
   return mergeRemoteProfileSessions(searchParams, remoteProfiles)
@@ -9794,12 +9843,7 @@ async function mergeRemoteProfileSessions(searchParams, remoteProfiles) {
   const offset = Math.max(0, Number(searchParams.get('offset')) || 0)
   const order = searchParams.get('order') === 'created' ? 'started_at' : 'last_active'
 
-  const primary = await ensureBackend(null)
-
-  const base = (await fetchJson(`${primary.baseUrl}/api/profiles/sessions?${searchParams}`, primary.token, {
-    method: 'GET',
-    timeoutMs: DEFAULT_FETCH_TIMEOUT_MS
-  }).catch(() => ({ sessions: [], total: 0, profile_totals: {} }))) as any
+  const base = (await fetchPrimaryProfileSessions(searchParams, fetchJsonForProfile)) as any
 
   // Over-fetch each remote from offset 0 (limit+offset rows) so the merged window
   // is correct for this page — mirrors the primary's per-profile over-fetch.
@@ -9858,10 +9902,7 @@ ipcMain.handle('kopi:api', async (_event, request) => {
   const connection = await ensureBackend(routeProfile)
   const timeoutMs = resolveTimeoutMs(request?.timeoutMs, DEFAULT_FETCH_TIMEOUT_MS)
 
-  const requestPath = pathWithGlobalRemoteProfile(request.path, profile, {
-    globalRemote: globalRemoteActive(),
-    profileRemoteOverride: profileHasRemoteOverride(profile)
-  })
+  const requestPath = pathWithGlobalRemoteProfile(request.path, profile, profileRouteOptions(profile))
 
   const url = `${connection.baseUrl}${requestPath}`
 
