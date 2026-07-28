@@ -287,6 +287,21 @@ if [ -d "$KOPI_HOME/cron" ]; then
     chown_kopi_tree "$KOPI_HOME/cron"
 fi
 
+# Always ensure logs/gateways is kopi-owned (#45258). Formerly healed by
+# restartable gateway log/run chown — removed due to symlink TOCTOU
+# (CWE-59/367). The targeted data-volume chown above only runs when the
+# top-level $KOPI_HOME is mis-owned, so a warm volume with kopi-owned
+# KOPI_HOME but root-owned logs/gateways would otherwise leave
+# s6-setuidgid kopi mkdir failing with Permission denied. Non-recursive:
+# profile leaf dirs are each created/owned by their own log/run as kopi.
+if [ -d "$KOPI_HOME/logs/gateways" ]; then
+    if refuse_symlinked_path "chown" "$KOPI_HOME/logs/gateways"; then
+        :
+    else
+        chown kopi:kopi "$KOPI_HOME/logs/gateways" 2>/dev/null || true
+    fi
+fi
+
 # Always reset ownership of pairing data on every boot, same docker-exec/
 # root-write reason as profiles/ and cron/. `docker exec <container>
 # kopi pairing approve …` defaults to uid=0 and writes 0600 root-owned
