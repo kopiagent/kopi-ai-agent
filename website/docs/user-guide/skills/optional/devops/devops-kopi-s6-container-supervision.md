@@ -1,14 +1,14 @@
 ---
-title: "Kopi S6 Container Supervision"
+title: "Kopi S6 Container Supervision — Modify or debug s6 services in the Kopi Docker image"
 sidebar_label: "Kopi S6 Container Supervision"
-description: "Modify, debug, or extend the s6-overlay supervision tree inside the Kopi Agent Docker image — adding new services, debugging profile gateways, understanding ..."
+description: "Modify or debug s6 services in the Kopi Docker image"
 ---
 
 {/* This page is auto-generated from the skill's SKILL.md by website/scripts/generate-skill-docs.py. Edit the source SKILL.md, not this page. */}
 
 # Kopi S6 Container Supervision
 
-Modify, debug, or extend the s6-overlay supervision tree inside the Kopi Agent Docker image — adding new services, debugging profile gateways, understanding the Architecture B main-program pattern.
+Modify or debug s6 services in the Kopi Docker image.
 
 ## Skill metadata
 
@@ -21,7 +21,7 @@ Modify, debug, or extend the s6-overlay supervision tree inside the Kopi Agent D
 | License | MIT |
 | Platforms | linux |
 | Tags | `docker`, `s6`, `supervision`, `gateway`, `profiles` |
-| Related skills | [`kopi-agent`](/docs/user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-kopi-agent), `kopi-agent-dev` |
+| Related skills | [`kopi-ai-agent`](/docs/user-guide/skills/bundled/autonomous-ai-agents/autonomous-ai-agents-kopi-ai-agent) |
 
 ## Reference: full SKILL.md
 
@@ -154,8 +154,8 @@ Edit `S6ServiceManager._render_run_script` in `kopi_cli/service_manager.py`. The
 ### Run the docker test harness
 
 ```sh
-docker build -t kopi-agent-harness:latest .
-KOPI_TEST_IMAGE=kopi-agent-harness:latest scripts/run_tests.sh tests/docker/ -v
+docker build -t kopi-ai-agent-harness:latest .
+KOPI_TEST_IMAGE=kopi-ai-agent-harness:latest scripts/run_tests.sh tests/docker/ -v
 # Expect 19 passed, 0 xfailed against the s6 image
 ```
 
@@ -193,5 +193,5 @@ Check whether something is invoking `s6-svscanctl -t` or `/run/s6/basedir/bin/ha
 
 ## Related skills
 
-- `kopi-agent-dev`: General kopi-agent codebase navigation
+- `kopi-ai-agent-dev`: General kopi-ai-agent codebase navigation
 - `kopi-tool-quirks`: Specific Kopi-tool workarounds (sed/grep/etc.) — load when debugging the s6 stack's interaction with kopi built-in tools.
