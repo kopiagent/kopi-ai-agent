@@ -8024,7 +8024,6 @@ class KopiCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
         return True
 
 
-
     def save_conversation(self):
         """Save the current conversation to a JSON snapshot under ~/.kopi/sessions/saved/.
 
@@ -9688,6 +9687,8 @@ class KopiCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
             self._status_bar_visible = not self._status_bar_visible
             state = "visible" if self._status_bar_visible else "hidden"
             self._console_print(f"  Status bar {state}")
+        elif canonical == "diff":
+            self._handle_diff_command(cmd_original)
         elif canonical == "battery":
             self._handle_battery_command(cmd_original)
         elif canonical == "timestamps":
