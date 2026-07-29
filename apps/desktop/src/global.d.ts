@@ -114,6 +114,8 @@ declare global {
       notify: (payload: KopiNotification) => Promise<boolean>
       requestMicrophoneAccess: () => Promise<boolean>
       readFileDataUrl: (filePath: string) => Promise<string>
+      /** Remote non-image attach: higher dedicated cap than preview/Settings default. */
+      readFileDataUrlForAttach?: (filePath: string) => Promise<string>
       /** Settings → Chat: max size for local files loaded as data URLs (attach/preview). */
       dataUrlReadMax?: {
         get: () => Promise<{ defaultMaxMb: number; maxBytes: number; maxMb: number }>
@@ -128,6 +130,10 @@ declare global {
       getPathForFile: (file: File) => string
       normalizePreviewTarget: (target: string, baseDir?: string) => Promise<KopiPreviewTarget | null>
       watchPreviewFile: (url: string) => Promise<KopiPreviewWatch>
+      /** Watch a directory for entry churn (disk-plugin door); same watcher
+       *  registry + onPreviewFileChanged channel as watchPreviewFile. Optional:
+       *  older Electron shells predate it and fall back to the readdir poll. */
+      watchDirectory?: (dir: string) => Promise<KopiPreviewWatch>
       stopPreviewFileWatch: (id: string) => Promise<boolean>
       setActiveWork?: (payload: KopiActiveWork) => void
       setTitleBarTheme?: (payload: KopiTitleBarTheme) => void

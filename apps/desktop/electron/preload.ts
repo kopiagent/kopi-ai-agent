@@ -98,6 +98,7 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
   notify: payload => ipcRenderer.invoke('kopi:notify', payload),
   requestMicrophoneAccess: () => ipcRenderer.invoke('kopi:requestMicrophoneAccess'),
   readFileDataUrl: filePath => ipcRenderer.invoke('kopi:readFileDataUrl', filePath),
+  readFileDataUrlForAttach: filePath => ipcRenderer.invoke('kopi:readFileDataUrlForAttach', filePath),
   dataUrlReadMax: {
     get: () => ipcRenderer.invoke('kopi:data-url-read-max:get'),
     set: maxMb => ipcRenderer.invoke('kopi:data-url-read-max:set', maxMb)
@@ -117,6 +118,7 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
   },
   normalizePreviewTarget: (target, baseDir) => ipcRenderer.invoke('kopi:normalizePreviewTarget', target, baseDir),
   watchPreviewFile: url => ipcRenderer.invoke('kopi:watchPreviewFile', url),
+  watchDirectory: dir => ipcRenderer.invoke('kopi:watchDirectory', dir),
   stopPreviewFileWatch: id => ipcRenderer.invoke('kopi:stopPreviewFileWatch', id),
   setActiveWork: payload => ipcRenderer.send('kopi:active-work', payload),
   setTitleBarTheme: payload => ipcRenderer.send('kopi:titlebar-theme', payload),

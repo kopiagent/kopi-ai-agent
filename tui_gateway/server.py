@@ -2957,14 +2957,135 @@ def _broadcast_skin_if_changed() -> None:
         pass
 
 
+def _watcher_home() -> Path:
+    """Active profile home for the change watcher's signature probes."""
+    override = get_kopi_home_override()
+    return Path(override if isinstance(override, str) and override else _kopi_home)
+
+
+def _pet_sig() -> tuple:
+    """(slug, spritesheet revision, scale) of the active pet — ("off",) when none.
+
+    Cheap by construction: config comes from the mtime-cached ``_load_cfg`` and
+    the sheet revision is one stat. Moves when ``/pet`` (de)activates a pet, the
+    hatch flow rebuilds a sheet, or the scale changes."""
+    display = _load_cfg().get("display") or {}
+    pet_cfg = display.get("pet") if isinstance(display.get("pet"), dict) else {}
+    if not pet_cfg or not pet_cfg.get("enabled"):
+        return ("off",)
+    try:
+        enabled, pet, scale = _pet_active_selection()
+        if not enabled or pet is None or not pet.exists:
+            return ("off",)
+        return (pet.slug, _pet_sheet_revision(pet.spritesheet), scale)
+    except Exception:  # noqa: BLE001 - cosmetic, never break the watcher
+        return ("off",)
+
+
+def _pet_changed_payload() -> dict:
+    """``pet.info.meta``-shaped payload for ``pet.changed`` — enough for the
+    renderer to decide whether the heavy sprite payload needs a refetch."""
+    try:
+        enabled, pet, scale = _pet_active_selection()
+        if not enabled or pet is None or not pet.exists:
+            return {"enabled": False}
+        return {
+            "enabled": True,
+            "slug": pet.slug,
+            "displayName": pet.display_name,
+            "scale": scale,
+            "spritesheetRevision": _pet_sheet_revision(pet.spritesheet),
+        }
+    except Exception:  # noqa: BLE001 - cosmetic, never break the watcher
+        return {"enabled": False}
+
+
+def _cron_sig():
+    """mtime of the profile's cron/jobs.json — moves on create/edit/pause/
+    remove AND on scheduler tick bookkeeping (last_run/next_run)."""
+    try:
+        return (_watcher_home() / "cron" / "jobs.json").stat().st_mtime_ns
+    except OSError:
+        return None
+
+
+def _sessions_sig():
+    """Newest mtime across state.db and its WAL — the cross-process change
+    signal. Messaging-gateway turns and cron runs are written by OTHER
+    processes that never touch this gateway's transports; the shared SQLite
+    file is the one thing they all move (#58671)."""
+    home = _watcher_home()
+    sig = None
+    for name in ("state.db", "state.db-wal"):
+        try:
+            mtime = (home / name).stat().st_mtime_ns
+        except OSError:
+            continue
+        sig = mtime if sig is None else max(sig, mtime)
+    return sig
+
+
+# Watched change signals: event → (check interval, signature fn, payload fn).
+# Signatures are stat/dict-lookup cheap, same bar as the skin watcher; the
+# check interval keeps the pricier probes (pet resolves the active sheet off
+# disk) off the 0.5s tick.
+_CHANGE_WATCHES: dict[str, tuple[float, Any, Any]] = {
+    "pet.changed": (2.0, _pet_sig, _pet_changed_payload),
+    "cron.changed": (1.0, _cron_sig, lambda: {}),
+    "sessions.changed": (0.5, _sessions_sig, lambda: {}),
+}
+
+# state.db moves on every message append during a streaming turn; the floor
+# coalesces that burst to one broadcast per window (trailing edge included —
+# a floored change keeps its old signature and re-fires next tick).
+_CHANGE_BROADCAST_FLOOR_S = {"sessions.changed": 2.0}
+
+_change_sigs: dict[str, Any] = {}
+_change_checked_at: dict[str, float] = {}
+_change_broadcast_at: dict[str, float] = {}
+
+
+def _broadcast_watched_changes(now: float | None = None) -> None:
+    """One pass over ``_CHANGE_WATCHES``: recompute due signatures, broadcast
+    the events whose signature moved. First sighting seeds silently so a
+    gateway boot never fires a spurious refresh storm."""
+    now = time.monotonic() if now is None else now
+    for event, (interval, sig_fn, payload_fn) in _CHANGE_WATCHES.items():
+        if now - _change_checked_at.get(event, -interval) < interval:
+            continue
+        _change_checked_at[event] = now
+        try:
+            sig = sig_fn()
+        except Exception:  # noqa: BLE001 - a broken probe must not kill the loop
+            continue
+        if event not in _change_sigs:
+            _change_sigs[event] = sig
+            continue
+        if sig == _change_sigs[event]:
+            continue
+        floor = _CHANGE_BROADCAST_FLOOR_S.get(event, 0.0)
+        if floor and now - _change_broadcast_at.get(event, -floor) < floor:
+            # Floored: leave the old signature in place so the change re-fires
+            # once the window opens (the trailing edge of the burst).
+            continue
+        _change_sigs[event] = sig
+        _change_broadcast_at[event] = now
+        try:
+            _broadcast_global_event(event, payload_fn())
+        except Exception:  # noqa: BLE001
+            pass
+
+
 _skin_watcher_started = False
 
 
 def _ensure_skin_watcher() -> None:
-    """Poll the config for skin changes and broadcast ``skin.changed`` — so a skin
-    Kopi activates (``kopi config set display.skin``) or recolors goes live on
-    every surface within ~half a second, on its own, with no tool-hook or slash
-    command in the loop. Idempotent; started at gateway.ready."""
+    """Watch cheap on-disk signatures and broadcast change events — so a skin
+    Kopi activates, a pet ``/pet`` adopts, a cron the scheduler fires, or a
+    messaging turn another process writes goes live on every surface within a
+    couple seconds, on its own, with no client-side poll in the loop.
+    Idempotent; started at gateway.ready. (Named for its original skin-only
+    duty; it is the process's one change watcher.)"""
     global _skin_watcher_started
     if _skin_watcher_started:
         return
@@ -2975,8 +3096,9 @@ def _ensure_skin_watcher() -> None:
         while True:
             time.sleep(0.5)
             _broadcast_skin_if_changed()
+            _broadcast_watched_changes()
 
-    threading.Thread(target=_loop, name="kopi-skin-watcher", daemon=True).start()
+    threading.Thread(target=_loop, name="kopi-change-watcher", daemon=True).start()
 
 
 def _resolve_model() -> str:
@@ -4406,7 +4528,8 @@ def _current_profile_name() -> str:
 # v2: adds the file.attach RPC (remote-gateway non-image file upload).
 # v3: adds approvals.mode config RPCs and session.info reconciliation.
 # v4: session.create fast=false is an explicit per-session normal-tier override.
-DESKTOP_BACKEND_CONTRACT = 4
+# v5: uvicorn ws_max_size raised for one-shot base64 file.attach frames (>16 MiB).
+DESKTOP_BACKEND_CONTRACT = 5
 
 
 def _session_usage_snapshot(session: dict | None) -> dict:
@@ -15289,6 +15412,47 @@ _PENDING_INPUT_COMMANDS: frozenset[str] = frozenset(
 _WORKER_BLOCKED_COMMANDS: frozenset[str] = frozenset({"snapshot", "snap"})
 
 
+def _skill_usage_lookup():
+    """Build ``(usage, origin)`` callables for the skill-command catalog.
+
+    ``usage(name)`` is the skill's observed activity count (use + view +
+    patch); ``origin(name)`` is ``"hub"``, ``"bundled"``, or ``"local"`` — the
+    same classification ``/api/skills`` reports as ``provenance`` (where
+    "local" is spelled "agent"). Both read sidecar files that are cheap and
+    already parsed once per catalog build. Any failure degrades to zero usage
+    and ``"local"`` so a missing/corrupt sidecar can never break the catalog.
+    """
+    try:
+        from tools.skill_usage import (
+            _read_bundled_manifest_names,
+            _read_hub_installed_names,
+            activity_count,
+            load_usage,
+        )
+
+        records = load_usage()
+        bundled = _read_bundled_manifest_names()
+        hub = _read_hub_installed_names()
+    except Exception as e:
+        logger.debug("skill usage lookup unavailable: %s", e)
+        return (lambda _name: 0), (lambda _name: "local")
+
+    def usage(name: str) -> int:
+        try:
+            return activity_count(records.get(name) or {})
+        except Exception:
+            return 0
+
+    def origin(name: str) -> str:
+        if name in hub:
+            return "hub"
+        if name in bundled:
+            return "bundled"
+        return "local"
+
+    return usage, origin
+
+
 @method("commands.catalog")
 def _(rid, params: dict) -> dict:
     """Registry-backed slash metadata for the TUI — categorized, no aliases."""
@@ -15366,12 +15530,21 @@ def _(rid, params: dict) -> dict:
                 warning = f"quick_commands discovery unavailable: {e}"
 
         skill_count = 0
+        skills: dict[str, dict] = {}
         try:
             from agent.skill_commands import scan_skill_commands
+
+            # Usage + origin per skill command. Surfaces here rather than in a
+            # second RPC because every consumer that renders the catalog also
+            # wants to rank it, and both reads are cheap sidecar files already
+            # loaded once per catalog build.
+            usage, origin_of = _skill_usage_lookup()
 
             for k, info in sorted(scan_skill_commands().items()):
                 d = str(info.get("description", "Skill"))
                 all_pairs.append([k, d[:120] + ("…" if len(d) > 120 else "")])
+                name = str(info.get("name") or k.lstrip("/"))
+                skills[k] = {"usage": usage(name), "origin": origin_of(name)}
                 skill_count += 1
         except Exception as e:
             warning = f"skill discovery unavailable: {e}"
@@ -15387,6 +15560,7 @@ def _(rid, params: dict) -> dict:
                 "sub": sub,
                 "canon": canon,
                 "categories": categories,
+                "skills": skills,
                 "skill_count": skill_count,
                 "warning": warning,
             },

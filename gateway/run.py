@@ -18093,7 +18093,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             return prefix, []
 
         try:
-            from tools.transcription_tools import transcribe_audio
+            from tools.transcription_tools import (
+                transcribe_audio,
+                transcribe_audio_local_fallback,
+            )
         except ModuleNotFoundError as e:
             logger.error("Transcription module unavailable: %s", e)
             unavailable_note = "[voice message could not be transcribed]"
@@ -18110,6 +18113,17 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             try:
                 logger.debug("Transcribing user voice: %s", path)
                 result = await asyncio.to_thread(transcribe_audio, path)
+                if not result.get("success"):
+                    fallback = await asyncio.to_thread(
+                        transcribe_audio_local_fallback,
+                        path,
+                    )
+                    if fallback.get("success"):
+                        logger.info(
+                            "Configured STT failed for %s; recovered with local STT",
+                            path,
+                        )
+                        result = fallback
                 if result["success"]:
                     transcript = result["transcript"]
                     # Speech-to-text can return success=True with an empty or
@@ -18144,10 +18158,22 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                     # logged for operator diagnosis but kept out of the
                     # LLM-visible prompt.
                     logger.info("Voice transcription failed for %s: %s", path, error)
-                    enriched_parts.append("[voice message could not be transcribed]")
+                    from tools.credential_files import to_agent_visible_cache_path
+
+                    agent_path = to_agent_visible_cache_path(os.path.abspath(path))
+                    enriched_parts.append(
+                        "[voice message could not be transcribed automatically; "
+                        f"the audio is available at: {agent_path}]"
+                    )
             except Exception as e:
                 logger.error("Transcription error: %s", e)
-                enriched_parts.append("[voice message could not be transcribed]")
+                from tools.credential_files import to_agent_visible_cache_path
+
+                agent_path = to_agent_visible_cache_path(os.path.abspath(path))
+                enriched_parts.append(
+                    "[voice message could not be transcribed automatically; "
+                    f"the audio is available at: {agent_path}]"
+                )
 
         if enriched_parts:
             prefix = "\n\n".join(enriched_parts)
@@ -22980,6 +23006,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 "last_reasoning": result.get("last_reasoning"),
                 "messages": result_holder[0].get("messages", []) if result_holder[0] else [],
                 "api_calls": result_holder[0].get("api_calls", 0) if result_holder[0] else 0,
+                "failed": result_holder[0].get("failed", False) if result_holder[0] else False,
+                "failure_reason": (
+                    result_holder[0].get("failure_reason") if result_holder[0] else None
+                ),
                 "completed": result_holder[0].get("completed") if result_holder[0] else None,
                 "interrupted": result_holder[0].get("interrupted", False) if result_holder[0] else False,
                 "partial": result_holder[0].get("partial", False) if result_holder[0] else False,
@@ -24067,11 +24097,17 @@ def _start_gateway_housekeeping(stop_event: threading.Event, adapters=None, loop
     this housekeeping still wants its hourly cadence — so it owns its own loop.
 
     Refreshes the channel directory every 5 minutes and prunes the
-    image/audio/document cache + expired ``kopi debug share`` pastes once per
-    hour, and polls the curator hourly (its inner gate enforces the real
-    weekly cadence).
+    image/audio/video/document/screenshot caches + expired ``kopi debug
+    share`` pastes once per hour, and polls the curator hourly (its inner
+    gate enforces the real weekly cadence).
     """
-    from gateway.platforms.base import cleanup_image_cache, cleanup_document_cache
+    from gateway.platforms.base import (
+        cleanup_audio_cache,
+        cleanup_document_cache,
+        cleanup_image_cache,
+        cleanup_screenshot_cache,
+        cleanup_video_cache,
+    )
     from kopi_cli.debug import _sweep_expired_pastes
 
     IMAGE_CACHE_EVERY = 60   # ticks — once per hour at default 60s interval
@@ -24079,6 +24115,16 @@ def _start_gateway_housekeeping(stop_event: threading.Event, adapters=None, loop
     PASTE_SWEEP_EVERY = 60   # ticks — once per hour
     CURATOR_EVERY = 60       # ticks — poll hourly (inner gate handles the real cadence)
     AUTO_ARCHIVE_EVERY = 60  # ticks — poll hourly (state_meta gate owns the real cadence)
+
+    # Every platform media cache prunes on the same hourly cadence — one loop
+    # over (name, cleanup_fn), not a copy-pasted try/except per cache.
+    MEDIA_CACHE_CLEANUPS = (
+        ("Image", cleanup_image_cache),
+        ("Document", cleanup_document_cache),
+        ("Audio", cleanup_audio_cache),
+        ("Video", cleanup_video_cache),
+        ("Screenshot", cleanup_screenshot_cache),
+    )
 
     logger.info("Gateway housekeeping started (interval=%ds)", interval)
     tick_count = 0
@@ -24104,18 +24150,13 @@ def _start_gateway_housekeeping(stop_event: threading.Event, adapters=None, loop
                 logger.debug("Channel directory refresh error: %s", e)
 
         if tick_count % IMAGE_CACHE_EVERY == 0:
-            try:
-                removed = cleanup_image_cache(max_age_hours=24)
-                if removed:
-                    logger.info("Image cache cleanup: removed %d stale file(s)", removed)
-            except Exception as e:
-                logger.debug("Image cache cleanup error: %s", e)
-            try:
-                removed = cleanup_document_cache(max_age_hours=24)
-                if removed:
-                    logger.info("Document cache cleanup: removed %d stale file(s)", removed)
-            except Exception as e:
-                logger.debug("Document cache cleanup error: %s", e)
+            for cache_name, cleanup_fn in MEDIA_CACHE_CLEANUPS:
+                try:
+                    removed = cleanup_fn(max_age_hours=24)
+                    if removed:
+                        logger.info("%s cache cleanup: removed %d stale file(s)", cache_name, removed)
+                except Exception as e:
+                    logger.debug("%s cache cleanup error: %s", cache_name, e)
 
         if tick_count % PASTE_SWEEP_EVERY == 0:
             try:
