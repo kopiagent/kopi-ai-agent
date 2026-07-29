@@ -221,6 +221,7 @@
         "CFBundleExecutable": "Kopi",
         "CFBundleName": "Kopi",
         "NSAudioCaptureUsageDescription": "Kopi uses audio capture for voice conversations.",
+        "NSCameraUsageDescription": "Kopi uses the camera when a plugin or feature you enable requests it.",
         "NSMicrophoneUsageDescription": "Kopi uses the microphone for voice input and voice conversations."
       },
       "gatekeeperAssess": false,
