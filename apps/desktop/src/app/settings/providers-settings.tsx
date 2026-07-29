@@ -439,7 +439,9 @@ export function ProvidersSettings({
   // providers there's nothing for the "Accounts" view to show, so fall to keys.
   const showApiKeys = view === 'keys' || (!hasOauth && view !== 'custom-endpoints')
 
-  const keyGroups = buildProviderKeyGroups(vars)
+  // KOPI fork: the API-keys tab lists only the kopi-proxy provider; all other
+  // vendor key rows are hidden. Drop this filter to restore the full catalog.
+  const keyGroups = buildProviderKeyGroups(vars).filter(g => g.name.toLowerCase().includes('kopi'))
 
   if (showApiKeys) {
     const q = normalize(keyQuery)

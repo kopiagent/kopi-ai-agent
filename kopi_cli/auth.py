@@ -176,7 +176,7 @@ class ProviderConfig:
 PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
     "nous": ProviderConfig(
         id="nous",
-        name="Nous Portal",
+        name="KOPI Proxy",
         auth_type="oauth_device_code",
         portal_base_url=DEFAULT_NOUS_PORTAL_URL,
         inference_base_url=DEFAULT_NOUS_INFERENCE_URL,

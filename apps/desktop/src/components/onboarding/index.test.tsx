@@ -62,7 +62,7 @@ describe('onboarding Picker', () => {
   it('shows only the KOPI Agent key form, never the OAuth providers', () => {
     setProviders([
       provider('anthropic', 'Anthropic Claude'),
-      provider('nous', 'Nous Portal'),
+      provider('nous', 'KOPI Proxy'),
       provider('openai-codex', 'OpenAI Codex / ChatGPT')
     ])
     render(<Picker ctx={ctx} />)
@@ -70,7 +70,7 @@ describe('onboarding Picker', () => {
     // The single KOPI option is offered.
     expect(screen.getByText('KOPI Agent')).toBeTruthy()
     // None of the other providers / OAuth affordances leak through.
-    expect(screen.queryByText('Nous Portal')).toBeNull()
+    expect(screen.queryByText('KOPI Proxy')).toBeNull()
     expect(screen.queryByText('Fireworks AI')).toBeNull()
     expect(screen.queryByText('OpenAI OAuth (ChatGPT)')).toBeNull()
     expect(screen.queryByText('Recommended')).toBeNull()
@@ -84,7 +84,7 @@ describe('onboarding Picker', () => {
   })
 
   it('offers "choose later" on first run and persists the skip', () => {
-    setProviders([provider('nous', 'Nous Portal')])
+    setProviders([provider('nous', 'KOPI Proxy')])
     render(<Picker ctx={ctx} />)
 
     const skip = screen.getByRole('button', { name: "I'll choose a provider later" })
@@ -96,7 +96,7 @@ describe('onboarding Picker', () => {
   })
 
   it('hides "choose later" in manual (add-provider) mode', () => {
-    setProviders([provider('nous', 'Nous Portal')])
+    setProviders([provider('nous', 'KOPI Proxy')])
     $desktopOnboarding.set({ ...$desktopOnboarding.get(), manual: true })
     render(<Picker ctx={ctx} />)
 

@@ -163,7 +163,7 @@ describe('deriveBillingView', () => {
     expect(view.status).toBe('logged_out')
     expect(view.summary.map(item => item.value)).toEqual(['—', '—', '—'])
     expect(view.notice).toMatchObject({
-      title: 'Connect your Nous account'
+      title: 'Connect your KOPI account'
     })
     expect(view.paymentRow).toBeUndefined()
     expect(view.topupRow).toBeUndefined()
@@ -740,7 +740,7 @@ describe('buildManageSubscriptionUrl', () => {
     // Regression: the fallback must be the last-resort ORIGIN, not a bare return that
     // silently drops org_id/plan.
     expect(buildManageSubscriptionUrl({ org_id: 'org_z', portal_url: null }, null, 'tier_q')).toBe(
-      'https://portal.nousresearch.com/manage-subscription?org_id=org_z&plan=tier_q'
+      'https://kopiaiagent.com/manage-subscription?org_id=org_z&plan=tier_q'
     )
   })
 })

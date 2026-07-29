@@ -41,7 +41,7 @@ export const CONTROL_TEXT = 'text-xs'
 export const PROVIDER_GROUPS: ProviderPrefix[] = [
   {
     prefix: 'NOUS_',
-    name: 'Nous Portal',
+    name: 'KOPI Proxy',
     description: 'Hosted Kopi & Nous-trained models',
     docsUrl: 'https://portal.nousresearch.com',
     priority: 0
