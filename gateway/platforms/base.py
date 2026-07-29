@@ -2316,11 +2316,16 @@ def _invalidate_pending_stt_cache(event: MessageEvent) -> None:
     ``_transcribe_pending_audio_event_once``); if the cached event gains new
     media after the cache was populated, the stale transcript must be
     discarded so the next transcription call picks up the merged attachments.
+
+    Only the *derived* transcription cache is dropped.  The echo ledger
+    (``_gateway_pending_stt_echoed``) records which transcripts were already
+    delivered to the user and must survive the merge: the re-run transcription
+    returns the earlier notes again, so clearing the ledger would echo them a
+    second time.
     """
     for attr in (
         "_gateway_pending_stt_text",
         "_gateway_pending_stt_transcripts",
-        "_gateway_pending_stt_echo_sent",
     ):
         if hasattr(event, attr):
             delattr(event, attr)
@@ -4197,6 +4202,15 @@ class BasePlatformAdapter(ABC):
         for match in media_pattern.finditer(scan_content):
             path = _normalize_media_tag_path(match.group("path"))
             if path:
+                # ``[[audio_as_voice]]`` is message-global, but it must only
+                # affect audio files. Tagging a non-audio file (image, video,
+                # document) as is_voice taints it: an image flagged is_voice is
+                # excluded from the embedded-photo batch and falls through to
+                # send_document, arriving as a file attachment instead of an
+                # inline photo. Gating on the extension lets one message carry
+                # an embedded image AND a voice bubble together.
+                ext = os.path.splitext(path)[1].lower()
+                is_voice = has_voice_tag and ext in _AUDIO_EXTS
                 try:
                     expanded = os.path.expanduser(path)
                 except (OSError, RuntimeError, ValueError):
@@ -4205,7 +4219,7 @@ class BasePlatformAdapter(ABC):
                     continue
                 if expanded not in seen_paths:
                     seen_paths.add(expanded)
-                    media.append((expanded, has_voice_tag))
+                    media.append((expanded, is_voice))
 
         for match in MEDIA_EXTENSIONLESS_TAG_RE.finditer(scan_content):
             path = _normalize_media_tag_path(match.group("path"))
@@ -4216,7 +4230,8 @@ class BasePlatformAdapter(ABC):
                 continue
             safe = resolved[0]
             if safe not in seen_paths:
-                media.append((safe, has_voice_tag))
+                _safe_ext = os.path.splitext(safe)[1].lower()
+                media.append((safe, has_voice_tag and _safe_ext in _AUDIO_EXTS))
                 seen_paths.add(safe)
 
         # Remove the delivered MEDIA tags from the user-visible text. Mask a
