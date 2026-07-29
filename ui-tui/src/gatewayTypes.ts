@@ -70,8 +70,8 @@ export type {
 export type CommandDispatchResponse =
   | { output?: string; type: 'exec' | 'plugin' }
   | { target: string; type: 'alias' }
-  | { message?: string; name: string; type: 'skill' }
-  | { message: string; notice?: string; type: 'send' }
+  | { display?: string; message?: string; name: string; type: 'skill' }
+  | { display?: string; message: string; notice?: string; type: 'send' }
   | { message: string; notice?: string; type: 'prefill' }
 
 // ── Config ───────────────────────────────────────────────────────────
@@ -589,6 +589,7 @@ export type GatewayEvent =
     }
   | { payload?: { state?: 'idle' | 'listening' | 'transcribing' }; session_id?: string; type: 'voice.status' }
   | { payload?: { no_speech_limit?: boolean; text?: string }; session_id?: string; type: 'voice.transcript' }
+  | { payload?: { phrase?: string }; session_id?: string; type: 'wake.detected' }
   | { payload?: { reason?: string }; session_id?: string; type: 'dashboard.new_session_requested' }
   | { payload: { line: string }; session_id?: string; type: 'gateway.stderr' }
   | {
