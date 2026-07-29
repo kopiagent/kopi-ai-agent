@@ -98,6 +98,10 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
   notify: payload => ipcRenderer.invoke('kopi:notify', payload),
   requestMicrophoneAccess: () => ipcRenderer.invoke('kopi:requestMicrophoneAccess'),
   readFileDataUrl: filePath => ipcRenderer.invoke('kopi:readFileDataUrl', filePath),
+  dataUrlReadMax: {
+    get: () => ipcRenderer.invoke('kopi:data-url-read-max:get'),
+    set: maxMb => ipcRenderer.invoke('kopi:data-url-read-max:set', maxMb)
+  },
   readFileText: filePath => ipcRenderer.invoke('kopi:readFileText', filePath),
   selectPaths: options => ipcRenderer.invoke('kopi:selectPaths', options),
   writeClipboard: text => ipcRenderer.invoke('kopi:writeClipboard', text),

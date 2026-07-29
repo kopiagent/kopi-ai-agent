@@ -42,6 +42,7 @@ const INSERT_EVENT = 'kopi:composer-insert'
 const INSERT_REFS_EVENT = 'kopi:composer-insert-refs'
 const SUBMIT_EVENT = 'kopi:composer-submit'
 const VOICE_TOGGLE_EVENT = 'kopi:composer-voice-toggle'
+const VOICE_START_EVENT = 'kopi:composer-voice-start'
 
 interface SubmitDetail {
   target: ComposerTarget
@@ -149,6 +150,14 @@ export const requestVoiceToggle = (target: ComposerTarget | 'active' = 'active')
 
 export const onComposerVoiceToggleRequest = (handler: (target: ComposerTarget) => void) =>
   subscribe<{ target: ComposerTarget }>(VOICE_TOGGLE_EVENT, ({ target }) => handler(target))
+
+/** Explicitly START (never stop) the active composer's voice conversation —
+ *  used by the "Hey Kopi" wake word so a fresh session begins back-and-forth
+ *  voice without the toggle risking an immediate stop. */
+export const requestVoiceStart = () => dispatch<{ at: number }>(VOICE_START_EVENT, { at: Date.now() })
+
+export const onComposerVoiceStartRequest = (handler: () => void) =>
+  subscribe<{ at: number }>(VOICE_START_EVENT, () => handler())
 
 /**
  * Focus a composer input across React commit + browser focus restore.

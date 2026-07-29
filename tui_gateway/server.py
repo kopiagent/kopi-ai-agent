@@ -33,6 +33,7 @@ from kopi_cli.env_loader import load_kopi_dotenv
 from utils import is_truthy_value
 from tools.environments.local import kopi_subprocess_env
 from agent.replay_cleanup import sanitize_replay_history
+from agent.skill_commands import describe_skill_invocation
 from agent.conversation_loop import INTERRUPT_WAITING_FOR_MODEL_PREFIX
 from tui_gateway import git_probe
 from tui_gateway.turn_marker import (
@@ -924,6 +925,11 @@ def _close_sessions_for_transport(
 
 
 def _shutdown_sessions() -> None:
+    try:
+        from tools.wake_word import stop_listening as _stop_wake
+        _stop_wake()
+    except Exception:
+        pass
     with _sessions_lock:
         sids = list(_sessions)
     for sid in sids:
@@ -6237,6 +6243,73 @@ def _is_display_hidden_marker(role: str | None, text: str) -> bool:
     return role == "user" and text.lstrip().startswith("[System:")
 
 
+def _skill_scaffold_projection(content_text: str) -> str:
+    """Return the invocation a slash-skill-expanded turn came from, else "".
+
+    A ``/skill`` invocation expands into a model-facing message that embeds the
+    whole skill body. That payload belongs to the agent — every UI renders the
+    invocation (``/work fix the leak``) instead, so no surface can leak the
+    body into a chat bubble.
+    """
+    return describe_skill_invocation(content_text, separator=" ") or ""
+
+
+def _expand_skill_invocation_for_replay(text: str, task_id: str) -> str:
+    """Re-expand a projected `/skill` invocation before re-running that turn.
+
+    The inverse of :func:`_skill_scaffold_projection`. Because a skill turn is
+    displayed as its invocation, a rewind/regenerate hands us back
+    ``/work fix the leak`` rather than the body the agent originally saw —
+    re-running that verbatim would drop the skill. Re-expanding here keeps the
+    body server-side (no client ever holds it) and makes the replayed turn
+    identical to the original.
+
+    Returns *text* unchanged when it isn't a resolvable skill invocation.
+    """
+    head, _, arg = (text or "").strip().partition(" ")
+    if not head.startswith("/"):
+        return text
+
+    try:
+        from agent.skill_commands import (
+            build_skill_invocation_message,
+            resolve_skill_command_key,
+        )
+
+        cmd_key = resolve_skill_command_key(head.lstrip("/"))
+        if cmd_key is None:
+            return text
+
+        return build_skill_invocation_message(cmd_key, arg.strip(), task_id=task_id) or text
+    except Exception:
+        # A skill that no longer resolves (renamed, disabled, external dir
+        # gone) must not break the rewind — replay the text as typed.
+        logger.debug("skill re-expansion failed for replay", exc_info=True)
+        return text
+
+
+# Opening of the crash-recovery note synthesized by _auto_continue_note.
+# Matched (not just built) so a row persisted before the display type was
+# stamped at turn start still reads as a timeline event, and to recognize the
+# messaging gateway's twin note.
+_AUTO_CONTINUE_NOTE_PREFIX = "[System note: Your previous turn was interrupted mid-run"
+
+
+def _legacy_display_kind(role: str, text: str) -> str | None:
+    """Infer the display type of a synthetic row persisted without one.
+
+    Turn-start typing (see ``persist_user_display_kind``) covers everything
+    written from here on. Sessions already on disk carry untyped rows — and a
+    turn killed mid-run never reached the post-turn stamp at all, which is
+    exactly the auto-continue case — so the raw recovery note would paint as a
+    user bubble forever. Sniffing the one fixed synthetic prefix is the
+    migration for those rows; it is not how new rows get typed.
+    """
+    if role == "user" and text.lstrip().startswith(_AUTO_CONTINUE_NOTE_PREFIX):
+        return "auto_continue"
+    return None
+
+
 def _history_to_messages(history: list[dict]) -> list[dict]:
     messages = []
     tool_call_args = {}
@@ -6297,6 +6370,14 @@ def _history_to_messages(history: list[dict]) -> list[dict]:
         if not content_text.strip() and not has_reasoning:
             continue
         msg = {"role": role, "text": content_text}
+        if role == "user":
+            invocation = _skill_scaffold_projection(content_text)
+            if invocation:
+                # Show the invocation, never the expanded skill body. The raw
+                # payload stays server-side: a rewind/regenerate re-sends the
+                # turn by ordinal, so no client needs it.
+                msg["text"] = invocation
+                msg["display_kind"] = "skill_invocation"
         if role == "assistant":
             for key in reasoning_keys:
                 if key in m and m.get(key) is not None:
@@ -6304,8 +6385,9 @@ def _history_to_messages(history: list[dict]) -> list[dict]:
         # Forward display-only timeline metadata so the TUI can render
         # model switches and delegation completions as events instead of
         # opaque user messages, and hide compaction handoffs entirely.
-        if m.get("display_kind"):
-            msg["display_kind"] = m["display_kind"]
+        display_kind = m.get("display_kind") or _legacy_display_kind(role, content_text)
+        if display_kind:
+            msg["display_kind"] = display_kind
         if m.get("display_metadata"):
             msg["display_metadata"] = m["display_metadata"]
         messages.append(msg)
@@ -6515,10 +6597,10 @@ def _auto_continue_note(prompt: str) -> str:
     # crash persists nothing of the interrupted turn to the session DB — this
     # note is the only copy the model will see.
     return (
-        "[System note: Your previous turn was interrupted mid-run — the app or "
-        "its backend process stopped before the turn could finish. Some of the "
-        "work may already be complete; check the current state before redoing "
-        "anything, then finish the task. The interrupted request was:]\n\n"
+        f"{_AUTO_CONTINUE_NOTE_PREFIX} — the app or its backend process "
+        "stopped before the turn could finish. Some of the work may already "
+        "be complete; check the current state before redoing anything, then "
+        "finish the task. The interrupted request was:]\n\n"
         f"{prompt}"
     )
 
@@ -6661,7 +6743,7 @@ def _interrupt_busy_session(sid: str, session: dict, agent: Any) -> None:
 
 
 def _handle_busy_submit(
-    rid, sid: str, session: dict, text: Any, transport: Any
+    rid, sid: str, session: dict, text: Any, transport: Any, queued: bool = False
 ) -> dict | None:
     """Apply the ``display.busy_input_mode`` policy to a prompt that lands while
     a turn is in flight, instead of rejecting it with ``session busy``.
@@ -6674,8 +6756,15 @@ def _handle_busy_submit(
     Modes: ``interrupt`` (default) → redirect the live turn, falling back to
     hard interrupt + queue for older agents; ``queue`` → queue without
     interrupting; ``steer`` → inject after the current atomic action.
+
+    ``queued=True`` (client's queue drain, ``prompt.submit`` param) overrides
+    the mode entirely: the message was explicitly queued as "run after", so it
+    must NEVER become a live-turn correction or interrupt. Without this, a
+    drain that loses the settle race (client observed idle, server still
+    unwinding the turn) redirected the live turn with next-turn text — queue
+    semantics betrayed by a millisecond race the user can't see.
     """
-    mode = _load_busy_input_mode()
+    mode = "queue" if queued else _load_busy_input_mode()
     agent = session.get("agent")
     with session["history_lock"]:
         if not session.get("running"):
@@ -10038,13 +10127,20 @@ def _(rid, params: dict) -> dict:
     removed = 0
     with session["history_lock"]:
         history = session.get("history", [])
-        while history and history[-1].get("role") in {"assistant", "tool"}:
-            history.pop()
-            removed += 1
-        if history and history[-1].get("role") == "user":
-            history.pop()
-            removed += 1
-        if removed:
+        # Truncate from the last *real* user turn (no display_kind). Popping
+        # only trailing assistant/tool then one user left timeline markers
+        # (async_delegation_complete, model_switch, …) as the undo target —
+        # so session.undo removed bookkeeping instead of the last exchange.
+        # Match list_recent_user_messages / CLI turn counting.
+        last_user_idx = None
+        for i in range(len(history) - 1, -1, -1):
+            msg = history[i]
+            if msg.get("role") == "user" and not msg.get("display_kind"):
+                last_user_idx = i
+                break
+        if last_user_idx is not None:
+            removed = len(history) - last_user_idx
+            del history[last_user_idx:]
             session["history_version"] = int(session.get("history_version", 0)) + 1
     return _ok(rid, {"removed": removed})
 
@@ -10835,6 +10931,14 @@ def _(rid, params: dict) -> dict:
     session, err = _sess_nowait(params, rid)
     if err:
         return err
+    if truncate_user_ordinal is not None and isinstance(text, str):
+        # A rewind/regenerate replays a turn from what the transcript shows. A
+        # skill turn shows its invocation, so re-expand it here — otherwise
+        # re-running `/work fix it` sends the agent nine literal characters
+        # instead of the skill it originally loaded.
+        text = _expand_skill_invocation_for_replay(
+            text, str(session.get("session_key") or "")
+        )
     isolation_cfg = _load_dashboard_process_isolation_config()
     turn_isolation = _session_uses_compute_host(session, isolation_cfg)
     # Re-bind to the current client transport for this request. This keeps
@@ -10853,7 +10957,10 @@ def _(rid, params: dict) -> dict:
                 busy_transport = t or session.get("transport")
             else:
                 break
-        busy_response = _handle_busy_submit(rid, sid, session, text, busy_transport)
+        busy_response = _handle_busy_submit(
+            rid, sid, session, text, busy_transport,
+            queued=bool(params.get("queued")),
+        )
         if busy_response is not None:
             return busy_response
         # The old turn finished between the two lock acquisitions. Retry the
@@ -10874,7 +10981,10 @@ def _(rid, params: dict) -> dict:
             except (TypeError, ValueError):
                 return _err(rid, 4004, "truncate_before_user_ordinal must be an integer")
             history = session.get("history", [])
-            user_indices = [i for i, m in enumerate(history) if m.get("role") == "user"]
+            user_indices = [
+                i for i, m in enumerate(history)
+                if m.get("role") == "user" and not m.get("display_kind")
+            ]
             # Reject out-of-range ordinals on BOTH ends. A negative value would
             # otherwise sail past the upper-bound check and hit Python's negative
             # indexing below (user_indices[-1] -> the LAST user turn), silently
@@ -11892,11 +12002,21 @@ def _run_prompt_submit(
                     _build_persist_user_message(prompt, images, run_message) if images else prompt
                 ),
             }
+            # Type a synthesized turn at turn START so the crash persist writes
+            # its row as a timeline event, instead of leaving a raw user bubble
+            # until the turn ends — and forever if it never does, which is
+            # exactly the auto-continue case. The post-turn stamp below is the
+            # fallback for an older agent without the parameter; re-stamping
+            # the same value is a no-op.
             try:
-                if "task_id" in inspect.signature(agent.run_conversation).parameters:
-                    run_kwargs["task_id"] = session["session_key"]
+                _run_params = inspect.signature(agent.run_conversation).parameters
             except (TypeError, ValueError):
-                pass
+                _run_params = {}
+            if "task_id" in _run_params:
+                run_kwargs["task_id"] = session["session_key"]
+            if display_kind and "persist_user_display_kind" in _run_params:
+                run_kwargs["persist_user_display_kind"] = display_kind
+                run_kwargs["persist_user_display_metadata"] = display_metadata
             result = agent.run_conversation(run_message, **run_kwargs)
             if display_kind and isinstance(text, str):
                 db = getattr(agent, "_session_db", None)
@@ -15440,6 +15560,9 @@ def _(rid, params: dict) -> dict:
                 "type": "send",
                 "message": msg,
                 "notice": notice,
+                # UIs render this, never `message` — the expanded bundle body
+                # is model-facing scaffolding (see _skill_scaffold_projection).
+                "display": _skill_scaffold_projection(msg),
             },
         )
 
@@ -15462,6 +15585,9 @@ def _(rid, params: dict) -> dict:
                         "type": "skill",
                         "message": msg,
                         "name": cmds[key].get("name", name),
+                        # UIs render this, never `message` — the expanded skill
+                        # body is model-facing scaffolding.
+                        "display": _skill_scaffold_projection(msg),
                     },
                 )
     except Exception:
@@ -15608,10 +15734,16 @@ def _(rid, params: dict) -> dict:
         history = session.get("history", [])
         if not history:
             return _err(rid, 4018, "no previous user message to retry")
-        # Walk backwards to find the last user message
+        # Walk backwards to the last *real* user turn. Timeline bookkeeping
+        # rows (display_kind set) are durable role=user but no client counts
+        # them as user turns — same predicate as CLI resume/count and the
+        # prompt.submit ordinal fix. Without this, /retry re-sends opaque
+        # markers (model_switch / async_delegation_complete / auto_continue)
+        # and truncates only the marker instead of the failed exchange.
         last_user_idx = None
         for i in range(len(history) - 1, -1, -1):
-            if history[i].get("role") == "user":
+            msg = history[i]
+            if msg.get("role") == "user" and not msg.get("display_kind"):
                 last_user_idx = i
                 break
         if last_user_idx is None:
@@ -17460,6 +17592,161 @@ def _voice_record_key() -> str:
     return str(record_key) if isinstance(record_key, str) and record_key else "ctrl+b"
 
 
+# ── Wake word ("Hey Kopi") ──────────────────────────────────────────────
+# The detector is process-global (one mic), like voice. It runs server-side so
+# both the TUI and desktop GUI share it; clients pass their surface identity to
+# wake.start and the shared gate (wake_surface_enabled) decides whether to arm.
+# On detection we emit wake.detected; the client opens a new session and starts
+# its own voice capture. The detector yields the mic to gateway voice.record
+# (pause/resume below) and to the desktop's browser mic (wake.pause/resume RPCs).
+_wake_lock = threading.Lock()
+_wake_active = False
+_wake_event_sid = ""
+# Transport captured at wake.start time. The detector callback fires on a
+# background thread where the request-scoped transport ContextVar is unset, so
+# write_json would fall back to stdio and the event would never cross the
+# desktop's websocket (#wake-detected-not-delivered). We pin the arming
+# request's transport here and bind it for the emit.
+_wake_transport: "Optional[Transport]" = None
+
+
+def _wake_is_active() -> bool:
+    with _wake_lock:
+        return _wake_active
+
+
+def _wake_resume_if_active() -> None:
+    if not _wake_is_active():
+        return
+    try:
+        from tools.wake_word import resume_listening
+        resume_listening()
+    except Exception as e:
+        logger.debug("wake resume failed: %s", e)
+
+
+def _wake_on_detect() -> None:
+    """Detector-thread callback: tell the client to open a fresh voice session."""
+    with _wake_lock:
+        sid = _wake_event_sid
+        transport = _wake_transport
+    try:
+        from tools.wake_word import wake_phrase
+        phrase = wake_phrase()
+    except Exception:
+        phrase = ""
+    logger.info("wake.detected: emitting to sid=%r (transport=%s)",
+                sid, type(transport).__name__ if transport else None)
+    # Bind the arming request's transport so write_json reaches the right peer
+    # (WS for desktop/dashboard) instead of falling back to stdio on this
+    # background thread.
+    token = bind_transport(transport) if transport is not None else None
+    try:
+        _emit("wake.detected", sid, {"phrase": phrase})
+    finally:
+        if token is not None:
+            reset_transport(token)
+
+
+@method("wake.start")
+def _(rid, params: dict) -> dict:
+    """Arm the wake-word listener for the calling surface ("tui" | "gui").
+
+    Idempotent and gated: returns ``{started: False, reason}`` when the wake
+    word is disabled, scoped to another surface, or its deps/mic aren't ready.
+    """
+    global _wake_active, _wake_event_sid, _wake_transport
+    surface = str(params.get("surface") or "auto").strip().lower()
+    try:
+        from tools.wake_word import (
+            check_wake_word_requirements,
+            load_wake_word_config,
+            start_listening,
+            wake_surface_enabled,
+        )
+    except Exception as e:
+        return _err(rid, 5026, f"wake module unavailable: {e}")
+
+    cfg = load_wake_word_config()
+    if not wake_surface_enabled(surface, cfg):
+        logger.info("wake.start(%s): disabled for surface (enabled=%s, surface=%s)",
+                    surface, cfg.get("enabled"), cfg.get("surface"))
+        return _ok(rid, {"started": False, "reason": "disabled_for_surface"})
+    reqs = check_wake_word_requirements(cfg)
+    if not reqs["available"]:
+        logger.warning("wake.start(%s): not available — %s", surface, reqs.get("hint"))
+        return _ok(rid, {"started": False, "reason": reqs.get("hint") or "unavailable"})
+
+    with _wake_lock:
+        _wake_event_sid = params.get("session_id") or _wake_event_sid
+        # Capture the live transport (WS for desktop) so the background detector
+        # thread can route wake.detected back to this client, not stdio.
+        _wake_transport = current_transport() or _wake_transport
+    try:
+        start_listening(_wake_on_detect, config=cfg)
+    except Exception as e:
+        logger.warning("wake.start(%s): failed to start listener: %s", surface, e)
+        return _err(rid, 5026, str(e))
+    with _wake_lock:
+        _wake_active = True
+    logger.info("wake.start(%s): listening for %r (%s)", surface, reqs["phrase"], reqs["provider"])
+    return _ok(rid, {"started": True, "phrase": reqs["phrase"], "provider": reqs["provider"]})
+
+
+@method("wake.stop")
+def _(rid, params: dict) -> dict:
+    global _wake_active
+    with _wake_lock:
+        _wake_active = False
+    try:
+        from tools.wake_word import stop_listening
+        stop_listening()
+    except Exception:
+        pass
+    return _ok(rid, {"stopped": True})
+
+
+@method("wake.pause")
+def _(rid, params: dict) -> dict:
+    """Release the mic (e.g. while the desktop's browser captures audio)."""
+    try:
+        from tools.wake_word import pause_listening
+        pause_listening()
+    except Exception:
+        pass
+    return _ok(rid, {"paused": True})
+
+
+@method("wake.resume")
+def _(rid, params: dict) -> dict:
+    """Reclaim the mic after a pause; no-op if the listener isn't armed."""
+    active = _wake_is_active()
+    if active:
+        _wake_resume_if_active()
+    return _ok(rid, {"resumed": active})
+
+
+@method("wake.status")
+def _(rid, params: dict) -> dict:
+    try:
+        from tools.wake_word import (
+            check_wake_word_requirements,
+            is_listening,
+            load_wake_word_config,
+        )
+        cfg = load_wake_word_config()
+        reqs = check_wake_word_requirements(cfg)
+        return _ok(rid, {
+            "listening": _wake_is_active() and is_listening(),
+            "phrase": reqs["phrase"],
+            "provider": reqs["provider"],
+            "available": reqs["available"],
+            "hint": reqs.get("hint", ""),
+        })
+    except Exception as e:
+        return _err(rid, 5026, str(e))
+
+
 @method("voice.toggle")
 def _(rid, params: dict) -> dict:
     """CLI parity for the ``/voice`` slash command.
@@ -17608,12 +17895,28 @@ def _(rid, params: dict) -> dict:
                 if isinstance(duration, (int, float)) and not isinstance(duration, bool)
                 else 3.0
             )
+            # Hand the mic to STT if the wake-word detector holds it; resume
+            # once a terminal capture event fires (one-shot transcript / silence
+            # limit), so wake-triggered and manual captures both coexist.
+            if _wake_is_active():
+                try:
+                    from tools.wake_word import pause_listening
+                    pause_listening()
+                except Exception:
+                    pass
+
+            def _on_transcript(t):
+                _voice_emit("voice.transcript", {"text": t})
+                _wake_resume_if_active()
+
+            def _on_silent():
+                _voice_emit("voice.transcript", {"no_speech_limit": True})
+                _wake_resume_if_active()
+
             started = start_continuous(
-                on_transcript=lambda t: _voice_emit("voice.transcript", {"text": t}),
+                on_transcript=_on_transcript,
                 on_status=lambda s: _voice_emit("voice.status", {"state": s}),
-                on_silent_limit=lambda: _voice_emit(
-                    "voice.transcript", {"no_speech_limit": True}
-                ),
+                on_silent_limit=_on_silent,
                 silence_threshold=safe_threshold,
                 silence_duration=safe_duration,
                 auto_restart=False,
@@ -17629,6 +17932,7 @@ def _(rid, params: dict) -> dict:
         from kopi_cli.voice import stop_continuous
 
         stop_continuous(force_transcribe=True)
+        _wake_resume_if_active()
         return _ok(rid, {"status": "stopped"})
     except ImportError:
         return _err(
@@ -17744,12 +18048,17 @@ def _(rid, params: dict) -> dict:
                 removed = 0
                 with session["history_lock"]:
                     history = session.get("history", [])
-                    while history and history[-1].get("role") in {"assistant", "tool"}:
-                        history.pop()
-                        removed += 1
-                    if history and history[-1].get("role") == "user":
-                        history.pop()
-                        removed += 1
+                    # Truncate from the last *real* user turn (no display_kind).
+                    # Same predicate as list_recent_user_messages / /undo / /retry.
+                    last_user_idx = None
+                    for i in range(len(history) - 1, -1, -1):
+                        msg = history[i]
+                        if msg.get("role") == "user" and not msg.get("display_kind"):
+                            last_user_idx = i
+                            break
+                    if last_user_idx is not None:
+                        removed = len(history) - last_user_idx
+                        del history[last_user_idx:]
                     if removed:
                         session["history_version"] = (
                             int(session.get("history_version", 0)) + 1
