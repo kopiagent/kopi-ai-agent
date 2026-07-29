@@ -106,6 +106,7 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
   readFileText: filePath => ipcRenderer.invoke('kopi:readFileText', filePath),
   selectPaths: options => ipcRenderer.invoke('kopi:selectPaths', options),
   writeClipboard: text => ipcRenderer.invoke('kopi:writeClipboard', text),
+  readClipboard: () => ipcRenderer.invoke('kopi:readClipboard'),
   saveImageFromUrl: url => ipcRenderer.invoke('kopi:saveImageFromUrl', url),
   saveImageBuffer: (data, ext) => ipcRenderer.invoke('kopi:saveImageBuffer', { data, ext }),
   saveClipboardImage: () => ipcRenderer.invoke('kopi:saveClipboardImage'),

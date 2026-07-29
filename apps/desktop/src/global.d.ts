@@ -124,6 +124,7 @@ declare global {
       readFileText: (filePath: string) => Promise<KopiReadFileTextResult>
       selectPaths: (options?: KopiSelectPathsOptions) => Promise<string[]>
       writeClipboard: (text: string) => Promise<boolean>
+      readClipboard: () => Promise<string>
       saveImageFromUrl: (url: string) => Promise<boolean>
       saveImageBuffer: (data: ArrayBuffer | Uint8Array, ext: string) => Promise<string>
       saveClipboardImage: () => Promise<string>

@@ -47,6 +47,7 @@ from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 
@@ -67,16 +68,46 @@ _CHAT_KIND = 9
 _FETCH_LIMIT = 50
 # Bound on the per-channel de-dupe set (events, not bytes).
 _SEEN_CAP = 500
-# Re-run ``buzz dms list`` every N poll sweeps to pick up new conversations.
+# Re-run DM discovery (``dms list`` plus the channels-list fallback) every
+# N poll sweeps to pick up conversations opened mid-run.
 _DM_DISCOVERY_EVERY = 5
 
 _DEFAULT_POLL_INTERVAL = 4.0
 _MIN_POLL_INTERVAL = 1.0
 _CLI_TIMEOUT = 30.0
 
+# WebSocket transport (NIP-42 authenticated Nostr subscription).
+# kind 44100 is Buzz's channel-membership event — used for live DM discovery.
+_WS_AUTH_TIMEOUT = 20.0
+_WS_MAX_MESSAGE_BYTES = 2_000_000
+_WS_MEMBERSHIP_KIND = 44100
+_WS_MEMBERSHIP_SUB_ID = "kopi-buzz-membership"
+
 # Where to look for a credentials JSON (keys: nsec / private_key_hex) when
 # BUZZ_PRIVATE_KEY is not set.  Module-level so tests can point it at a tmpdir.
 _DEFAULT_CREDENTIALS_DIR = Path("~/.config/buzz").expanduser()
+
+
+def _load_nostr_auth():
+    """Import the sibling nostr_auth module in a loader-agnostic way.
+
+    The adapter is imported both as a package module
+    (``plugins.platforms.buzz.adapter``) and as a bare single-file module by
+    the test plugin loader, where relative imports have no parent package.
+    """
+    try:
+        from . import nostr_auth  # type: ignore[no-redef]
+
+        return nostr_auth
+    except ImportError:
+        import importlib.util
+
+        path = Path(__file__).with_name("nostr_auth.py")
+        spec = importlib.util.spec_from_file_location("plugin_adapter_buzz_nostr_auth", path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +368,15 @@ class BuzzAdapter(BasePlatformAdapter):
             _rm_cfg = _rm_raw
         self.require_mention = str(_rm_cfg).strip().lower() not in ("false", "0", "no", "off")
 
+        # Inbound transport: "auto" (WebSocket with poll fallback, default),
+        # "websocket" (require WS; fail connect when it can't authenticate),
+        # or "poll" (CLI polling only). Env (BUZZ_TRANSPORT) overrides
+        # config.yaml.
+        _transport = (
+            os.getenv("BUZZ_TRANSPORT") or str(extra.get("transport", "auto") or "auto")
+        ).strip().lower()
+        self.transport = _transport if _transport in ("auto", "websocket", "poll") else "auto"
+
         # Auth: entries may be hex pubkeys or npubs; normalized to hex
         raw_allowed = os.getenv("BUZZ_ALLOWED_USERS") or extra.get("allowed_users", [])
         if isinstance(raw_allowed, str):
@@ -359,9 +399,17 @@ class BuzzAdapter(BasePlatformAdapter):
 
         # Runtime state
         self._poll_task: Optional[asyncio.Task] = None
+        self._ws_task: Optional[asyncio.Task] = None
+        self._ws_ready: Optional[asyncio.Event] = None
+        self._ws_active = False  # True while the WS loop owns inbound delivery
+        self._membership_since = 0
+        self._lock_key: Optional[str] = None
         # channel_id -> {"chat_type", "last_ts", "seen": OrderedDict[event_id, None]}
         self._channel_state: Dict[str, dict] = {}
         self._channel_names: Dict[str, str] = {}
+        # channel_id -> raw ``channels list`` entry; drives DM-vs-channel
+        # classification (see _may_reclassify_as_dm).
+        self._channel_meta: Dict[str, dict] = {}
         self._user_names: Dict[str, str] = {}
         self._poll_count = 0
 
@@ -417,6 +465,27 @@ class BuzzAdapter(BasePlatformAdapter):
         self._display_name = str(profiles[0].get("display_name") or "").strip()
         self._self_npub = hex_to_npub(self._self_pubkey) or ""
 
+        # Prevent two profiles from driving the same Buzz identity on the
+        # same relay (duplicate replies, split de-dupe state). Mirrors the
+        # IRC adapter's scoped-lock pattern.
+        try:
+            from gateway.status import acquire_scoped_lock
+
+            lock_key = f"{self.relay_url}:{self._self_pubkey}"
+            if not acquire_scoped_lock("buzz", lock_key):
+                logger.error(
+                    "Buzz: identity %s… on %s already in use by another profile",
+                    self._self_pubkey[:8],
+                    self.relay_url,
+                )
+                self._set_fatal_error(
+                    "lock_conflict", "Buzz identity in use by another profile", retryable=False
+                )
+                return False
+            self._lock_key = lock_key
+        except ImportError:
+            self._lock_key = None  # status module not available (e.g. tests)
+
         # Map channel ids to names and pick the watch set.
         code, out, err = await self._run_cli(["channels", "list"])
         if code != 0:
@@ -430,6 +499,9 @@ class BuzzAdapter(BasePlatformAdapter):
             for ch in listed
             if ch.get("channel_id")
         }
+        for ch in listed:
+            if ch.get("channel_id"):
+                self._channel_meta[str(ch["channel_id"])] = ch
         watch = self.channels or list(self._channel_names)
         if not watch:
             logger.error("Buzz: no channels to watch (configure BUZZ_CHANNELS or join a channel)")
@@ -442,20 +514,55 @@ class BuzzAdapter(BasePlatformAdapter):
             await self._seed_channel(channel_id, chat_type="group")
         await self._discover_dms(seed=True)
 
-        self._poll_task = asyncio.create_task(self._poll_loop())
+        # Inbound transport: prefer the NIP-42-authenticated WebSocket
+        # subscription (push, near-zero latency); fall back to CLI polling
+        # when the WS can't be established (transport="auto") or when the
+        # user pinned transport="poll".
+        transport_used = "poll"
+        if self.transport in ("auto", "websocket"):
+            if await self._start_websocket():
+                transport_used = "websocket"
+            elif self.transport == "websocket":
+                self._set_fatal_error(
+                    "ws_auth_failed",
+                    "Buzz WebSocket transport did not authenticate (transport=websocket)",
+                    retryable=True,
+                )
+                await self.disconnect()
+                return False
+        if transport_used == "poll":
+            self._poll_task = asyncio.create_task(self._poll_loop())
         self._mark_connected()
         logger.info(
-            "Buzz: connected to %s as %s, watching %d channel(s), poll interval %.1fs",
+            "Buzz: connected to %s as %s, watching %d channel(s) via %s%s",
             self.relay_url,
             self._display_name or self._self_npub[:16],
             len(self._channel_state),
-            self.poll_interval,
+            transport_used,
+            "" if transport_used == "websocket" else f", poll interval {self.poll_interval:.1f}s",
         )
         return True
 
     async def disconnect(self) -> None:
-        """Stop the poll loop and drop runtime state."""
+        """Stop the inbound transport and drop runtime state."""
         self._mark_disconnected()
+        lock_key = getattr(self, "_lock_key", None)
+        if lock_key:
+            try:
+                from gateway.status import release_scoped_lock
+
+                release_scoped_lock("buzz", lock_key)
+            except Exception:
+                pass
+            self._lock_key = None
+        self._ws_active = False
+        if self._ws_task and not self._ws_task.done():
+            self._ws_task.cancel()
+            try:
+                await self._ws_task
+            except asyncio.CancelledError:
+                pass
+        self._ws_task = None
         if self._poll_task and not self._poll_task.done():
             self._poll_task.cancel()
             try:
@@ -588,6 +695,185 @@ class BuzzAdapter(BasePlatformAdapter):
                     pass
         return {"name": name or chat_id, "type": chat_type, "chat_id": chat_id}
 
+    # ── Inbound: WebSocket transport (NIP-42 authenticated) ──────────────
+    #
+    # Push transport contributed in PR #73636 by @ScaleLeanChris, adapted to
+    # dispatch through the same _handle_event() machinery as the poll loop so
+    # de-dupe, mention gating, DM latching, and the allow-list behave
+    # identically on both transports.
+
+    def _websocket_url(self) -> str:
+        parsed = urlsplit(self.relay_url.strip())
+        scheme = {"http": "ws", "https": "wss"}.get(parsed.scheme, parsed.scheme)
+        if scheme not in ("ws", "wss") or not parsed.netloc:
+            raise ValueError("Buzz relay URL must use http(s) or ws(s)")
+        return urlunsplit((scheme, parsed.netloc, parsed.path or "", parsed.query, ""))
+
+    async def _start_websocket(self) -> bool:
+        """Start the WS loop; True when it authenticates within the timeout."""
+        try:
+            import websockets  # noqa: F401  (availability probe)
+
+            self._websocket_url()
+        except Exception as e:
+            logger.info("Buzz: WebSocket transport unavailable (%s); falling back to polling", e)
+            return False
+        self._ws_ready = asyncio.Event()
+        self._membership_since = int(time.time())
+        self._ws_task = asyncio.create_task(self._websocket_loop())
+        try:
+            await asyncio.wait_for(self._ws_ready.wait(), timeout=_WS_AUTH_TIMEOUT + 5)
+        except (asyncio.TimeoutError, TimeoutError):
+            logger.warning("Buzz: WebSocket did not authenticate in time")
+            self._ws_active = False
+            if self._ws_task and not self._ws_task.done():
+                self._ws_task.cancel()
+                try:
+                    await self._ws_task
+                except asyncio.CancelledError:
+                    pass
+            self._ws_task = None
+            return False
+        return True
+
+    async def _authenticate_websocket(self, websocket) -> None:
+        """NIP-42: wait for the relay's AUTH challenge, answer with a signed
+        kind-22242 event (plus the optional NIP-OA owner-attestation tag from
+        BUZZ_AUTH_TAG), and wait for the OK acknowledgment."""
+        build_auth_event = _load_nostr_auth().build_auth_event
+
+        raw = await asyncio.wait_for(websocket.recv(), timeout=_WS_AUTH_TIMEOUT)
+        message = json.loads(raw)
+        if not isinstance(message, list) or len(message) < 2 or message[0] != "AUTH":
+            raise ConnectionError("Buzz relay did not send a NIP-42 AUTH challenge")
+        event = build_auth_event(
+            private_key=self._private_key,
+            challenge=str(message[1]),
+            relay_url=self._websocket_url(),
+            auth_tag_json=os.getenv("BUZZ_AUTH_TAG", ""),
+        )
+        await websocket.send(json.dumps(["AUTH", event], separators=(",", ":")))
+        while True:
+            raw = await asyncio.wait_for(websocket.recv(), timeout=_WS_AUTH_TIMEOUT)
+            response = json.loads(raw)
+            if not isinstance(response, list) or not response:
+                continue
+            if response[0] == "OK" and len(response) >= 4 and response[1] == event["id"]:
+                if response[2] is True:
+                    return
+                raise ConnectionError(f"Buzz WebSocket AUTH rejected: {response[3]}")
+            if response[0] in ("NOTICE", "CLOSED"):
+                detail = response[-1] if len(response) > 1 else "authentication failed"
+                raise ConnectionError(f"Buzz WebSocket AUTH failed: {detail}")
+
+    async def _send_channel_subscription(self, websocket, subscription_id: str, channel_id: str) -> None:
+        state = self._channel_state.get(channel_id) or {}
+        since = max(int(state.get("last_ts") or time.time()) - 1, 0)
+        request = [
+            "REQ",
+            subscription_id,
+            {"kinds": [_CHAT_KIND], "#h": [channel_id], "since": since},
+        ]
+        await websocket.send(json.dumps(request, separators=(",", ":")))
+
+    async def _subscribe_websocket(self, websocket) -> Dict[str, Optional[str]]:
+        """Subscribe to every watched conversation plus membership events
+        (kind 44100 p-tagged to us) for live DM discovery."""
+        subscriptions: Dict[str, Optional[str]] = {}
+        for index, channel_id in enumerate(list(self._channel_state)):
+            subscription_id = f"kopi-buzz-{index}"
+            subscriptions[subscription_id] = channel_id
+            await self._send_channel_subscription(websocket, subscription_id, channel_id)
+        if self._self_pubkey:
+            request = [
+                "REQ",
+                _WS_MEMBERSHIP_SUB_ID,
+                {
+                    "kinds": [_WS_MEMBERSHIP_KIND],
+                    "#p": [self._self_pubkey],
+                    "since": max(self._membership_since - 1, 0),
+                },
+            ]
+            await websocket.send(json.dumps(request, separators=(",", ":")))
+            subscriptions[_WS_MEMBERSHIP_SUB_ID] = None
+        return subscriptions
+
+    async def _handle_membership_event(self, websocket, subscriptions: Dict[str, Optional[str]], event: dict) -> None:
+        """A membership event p-tagged to us: rediscover conversations and
+        subscribe to any new ones (fresh DMs dispatch from their beginning)."""
+        self._membership_since = max(self._membership_since, int(event.get("created_at") or 0))
+        before = set(self._channel_state)
+        await self._discover_dms(seed=False)
+        for channel_id in self._channel_state:
+            if channel_id in before:
+                continue
+            subscription_id = f"kopi-buzz-dm-{len(subscriptions)}"
+            subscriptions[subscription_id] = channel_id
+            await self._send_channel_subscription(websocket, subscription_id, channel_id)
+            logger.info("Buzz: subscribed to new conversation %s", channel_id)
+
+    async def _websocket_loop(self) -> None:
+        """Persistent authenticated subscription with bounded reconnect
+        backoff. Events route through _handle_event() — identical semantics
+        to the poll loop. On reconnect, per-channel `since` filters resume
+        from the last observed timestamps (same-second overlap de-duped by
+        event id)."""
+        import websockets
+
+        backoff = 1.0
+        try:
+            while True:
+                try:
+                    async with websockets.connect(
+                        self._websocket_url(),
+                        open_timeout=_WS_AUTH_TIMEOUT,
+                        close_timeout=5,
+                        ping_interval=20,
+                        ping_timeout=20,
+                        max_size=_WS_MAX_MESSAGE_BYTES,
+                    ) as websocket:
+                        await self._authenticate_websocket(websocket)
+                        subscriptions = await self._subscribe_websocket(websocket)
+                        self._ws_active = True
+                        if self._ws_ready is not None:
+                            self._ws_ready.set()
+                        backoff = 1.0
+                        async for raw in websocket:
+                            try:
+                                message = json.loads(raw)
+                            except (ValueError, TypeError):
+                                logger.warning("Buzz: ignoring malformed WebSocket frame")
+                                continue
+                            if not isinstance(message, list) or not message:
+                                continue
+                            if message[0] == "EVENT" and len(message) >= 3:
+                                subscription_id = str(message[1])
+                                event = message[2]
+                                if not isinstance(event, dict):
+                                    continue
+                                if subscription_id == _WS_MEMBERSHIP_SUB_ID:
+                                    await self._handle_membership_event(websocket, subscriptions, event)
+                                    continue
+                                channel_id = subscriptions.get(subscription_id)
+                                state = self._channel_state.get(channel_id or "")
+                                if channel_id and state is not None:
+                                    await self._handle_event(channel_id, state, event)
+                                    self._trim_seen(state)
+                            elif message[0] == "CLOSED":
+                                detail = message[-1] if len(message) > 2 else "subscription closed"
+                                raise ConnectionError(str(detail))
+                            elif message[0] == "NOTICE":
+                                logger.warning("Buzz: relay notice: %s", message[-1])
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    self._ws_active = False
+                    logger.warning("Buzz: WebSocket disconnected; retrying in %.1fs: %s", backoff, e)
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, 30.0)
+        finally:
+            self._ws_active = False
+
     # ── Inbound polling ───────────────────────────────────────────────────
 
     async def _poll_loop(self) -> None:
@@ -629,24 +915,52 @@ class BuzzAdapter(BasePlatformAdapter):
             if event_id:
                 state["seen"][str(event_id)] = None
             state["last_ts"] = max(state["last_ts"], created_at)
+            # History is never dispatched, but it still classifies: a DM that
+            # leaked in via ``channels list`` latches to chat_type="dm" here,
+            # so it bypasses the mention gate from the very first poll.
+            self._maybe_latch_dm(channel_id, state, event)
         self._trim_seen(state)
 
     async def _discover_dms(self, *, seed: bool) -> None:
         """Watch DM conversations.  New ones found mid-run dispatch from their
         beginning (a fresh conversation has no history worth suppressing);
-        ones present at startup are seeded like channels."""
+        ones present at startup are seeded like channels.
+
+        ``dms list`` is only a best-effort source: on some hosted relays it
+        returns ``[]`` even when DM conversations exist (#68871).  Those DMs
+        DO surface in ``channels list`` as entries named "DM" with an empty
+        description, so that listing is scanned as a fallback.  Fallback
+        finds are watched as ``group`` and latch to ``dm`` via p-tag
+        detection (_is_direct_message_event) rather than trusting the name
+        alone to unlock the mention-free DM path.
+        """
         code, out, _err = await self._run_cli(["dms", "list"])
+        if code == 0:
+            for dm in _parse_json_list(out):
+                dm_id = str(dm.get("dm_id") or "")
+                if not dm_id or dm_id in self._channel_state:
+                    continue
+                if seed:
+                    await self._seed_channel(dm_id, chat_type="dm")
+                else:
+                    self._channel_state[dm_id] = {"chat_type": "dm", "last_ts": 0, "seen": OrderedDict()}
+                self._channel_names.setdefault(dm_id, "DM")
+
+        code, out, _err = await self._run_cli(["channels", "list"])
         if code != 0:
             return
-        for dm in _parse_json_list(out):
-            dm_id = str(dm.get("dm_id") or "")
-            if not dm_id or dm_id in self._channel_state:
+        for ch in _parse_json_list(out):
+            ch_id = str(ch.get("channel_id") or "")
+            if not ch_id:
+                continue
+            self._channel_meta[ch_id] = ch
+            self._channel_names.setdefault(ch_id, str(ch.get("name") or ch_id))
+            if ch_id in self._channel_state or not self._may_reclassify_as_dm(ch_id):
                 continue
             if seed:
-                await self._seed_channel(dm_id, chat_type="dm")
+                await self._seed_channel(ch_id, chat_type="group")
             else:
-                self._channel_state[dm_id] = {"chat_type": "dm", "last_ts": 0, "seen": OrderedDict()}
-            self._channel_names.setdefault(dm_id, "DM")
+                self._channel_state[ch_id] = {"chat_type": "group", "last_ts": 0, "seen": OrderedDict()}
 
     async def _poll_channel(self, channel_id: str) -> None:
         state = self._channel_state.get(channel_id)
@@ -687,6 +1001,10 @@ class BuzzAdapter(BasePlatformAdapter):
         if pubkey == self._self_pubkey:
             return
 
+        # Reclassify a leaked DM before gating so its first un-mentioned
+        # message both latches the conversation and dispatches.
+        self._maybe_latch_dm(channel_id, state, event)
+
         is_dm = state["chat_type"] == "dm"
         # In shared channels, respond only when addressed — unless
         # require_mention is disabled, in which case respond to every message.
@@ -700,10 +1018,11 @@ class BuzzAdapter(BasePlatformAdapter):
             logger.debug("Buzz: ignoring message from unauthorized pubkey %s…", pubkey[:8])
             return
 
-        # In channels the message addressed us with a leading @mention; strip
-        # it so slash commands (@Chip /whoami -> /whoami) and clean prompts are
-        # recognized. DMs are already clean.
-        dispatch_text = content if is_dm else self._strip_mention(content)
+        # Strip a leading @mention so slash commands (@Chip /whoami ->
+        # /whoami) and clean prompts are recognized. DM messages often still
+        # open with "@Chip" even though no mention is required there, so the
+        # strip applies to both chat types.
+        dispatch_text = self._strip_mention(content)
 
         await self._dispatch_message(
             text=dispatch_text,
@@ -714,6 +1033,84 @@ class BuzzAdapter(BasePlatformAdapter):
             message_id=event_id,
             created_at=created_at,
         )
+
+    # ── DM classification (issue #68871) ──────────────────────────────────
+    #
+    # ``buzz dms list`` returns [] on some hosted relays even when DM
+    # conversations exist, so DMs leak in via ``channels list`` and get
+    # watched as chat_type="group" — which wrongly puts them behind the
+    # channel mention gate.  Classification therefore keys off the Nostr
+    # tags of the messages themselves.  Observed on a live hosted relay:
+    #
+    #   * every message another user sends IN A DM carries a structural
+    #     ["p", <our pubkey>] tag, even when the text never mentions us
+    #     (recipient addressing);
+    #   * in a real channel, a ["p", <our pubkey>] tag appears only when the
+    #     text visibly @mentions us (typed mention, with or without a reply
+    #     ["e", ...] tag) — never on plain broadcasts.
+    #
+    # So "p-tagged to self WITHOUT a visible mention in the content" is the
+    # DM discriminator: in a channel that combination does not occur, and a
+    # channel reply/mention that p-tags us is excluded because the mention
+    # is right there in the text.  As a second, independent guard, a
+    # conversation whose ``channels list`` metadata looks like a real
+    # community channel (real name / non-empty description) is never
+    # reclassified at all, whereas relay-materialized DMs are always named
+    # "DM" with an empty description.  Nothing is lost while unlatched: a
+    # DM message that DOES mention us dispatches through the mention gate
+    # anyway, so the latch flips exactly on the first message that needs it.
+
+    def _may_reclassify_as_dm(self, channel_id: str) -> bool:
+        """True when the conversation's metadata does not rule out a DM.
+
+        Known real community channels (real name or non-empty description in
+        ``channels list``) must never turn into DMs just because a message
+        p-tags us.  A conversation with no metadata at all is trusted only
+        when the user did not explicitly configure it as a watched channel.
+        """
+        meta = self._channel_meta.get(channel_id)
+        if meta is None:
+            return channel_id not in self.channels
+        name = str(meta.get("name") or "").strip()
+        description = str(meta.get("description") or "").strip()
+        return name == "DM" and not description
+
+    def _is_direct_message_event(self, channel_id: str, event: dict) -> bool:
+        """True when ``event`` is shaped like a direct message to us: a chat
+        message from another user, p-tagged to our pubkey, whose content does
+        NOT visibly mention us — i.e. the p-tag is structural DM addressing,
+        not the artifact of a typed @mention (see block comment above)."""
+        if not self._self_pubkey or not self._may_reclassify_as_dm(channel_id):
+            return False
+        if int(event.get("kind") or 0) != _CHAT_KIND:
+            return False
+        pubkey = str(event.get("pubkey") or "").lower()
+        if not pubkey or pubkey == self._self_pubkey:
+            return False
+        tags = event.get("tags")
+        if not isinstance(tags, list):
+            return False
+        p_tagged_to_self = any(
+            isinstance(tag, (list, tuple))
+            and len(tag) > 1
+            and tag[0] == "p"
+            and str(tag[1]).lower() == self._self_pubkey
+            for tag in tags
+        )
+        if not p_tagged_to_self:
+            return False
+        content = event.get("content")
+        return isinstance(content, str) and not self._is_mentioned(content)
+
+    def _maybe_latch_dm(self, channel_id: str, state: dict, event: dict) -> None:
+        """Latch a group conversation to chat_type="dm" once any direct
+        message is seen; the classification then sticks so subsequent
+        un-mentioned messages in the conversation dispatch too."""
+        if state["chat_type"] == "dm" or not self._is_direct_message_event(channel_id, event):
+            return
+        state["chat_type"] = "dm"
+        self._channel_names.setdefault(channel_id, "DM")
+        logger.info("Buzz: conversation %s reclassified as DM (message p-tagged to self)", channel_id)
 
     def _is_mentioned(self, content: str) -> bool:
         """True when the message addresses this agent (npub, hex, or name)."""
@@ -756,9 +1153,15 @@ class BuzzAdapter(BasePlatformAdapter):
         return stripped.strip()
 
     async def _resolve_user_name(self, pubkey: str) -> str:
-        """Resolve a pubkey to a display name (cached; falls back to npub prefix)."""
+        """Resolve a pubkey to a display name (cached; falls back to npub prefix).
+
+        Failures are cached too (negative caching): without it, every message
+        from a profile-less pubkey re-runs ``users get`` each poll sweep,
+        which amplifies badly when several adapter instances poll in one
+        process.
+        """
         cached = self._user_names.get(pubkey)
-        if cached:
+        if cached is not None:
             return cached
         name = ""
         code, out, _err = await self._run_cli(["users", "get", "--pubkey", pubkey])
@@ -866,6 +1269,7 @@ def _apply_yaml_config(yaml_cfg: dict, buzz_cfg: dict) -> Optional[dict]:
         "relay_url": "BUZZ_RELAY_URL",
         "cli_path": "BUZZ_CLI_PATH",
         "home_channel": "BUZZ_HOME_CHANNEL",
+        "transport": "BUZZ_TRANSPORT",
     }
     for src, env in _str_keys.items():
         val = extra.get(src)
