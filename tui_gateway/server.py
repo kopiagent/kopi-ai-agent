@@ -475,13 +475,19 @@ def _notify_session_boundary(
 ) -> None:
     """Fire session lifecycle hooks with CLI parity."""
     try:
-        from kopi_cli.plugins import invoke_hook as _invoke_hook
+        from kopi_cli.lifecycle import finalize_session, invoke_hook
 
-        _invoke_hook(
-            event_type,
-            session_id=session_id,
-            platform=_resolve_agent_platform(platform),
-        )
+        if event_type == "on_session_finalize":
+            finalize_session(
+                session_id=session_id,
+                platform=_resolve_agent_platform(platform),
+            )
+        else:
+            invoke_hook(
+                event_type,
+                session_id=session_id,
+                platform=_resolve_agent_platform(platform),
+            )
     except Exception:
         pass
 
@@ -504,6 +510,33 @@ def _claim_active_session_slot(
     except Exception as exc:
         logger.warning("Failed to claim active session slot: %s", exc)
         return None, None
+
+
+def _ensure_active_session_slot(sid: str, session: dict) -> str | None:
+    """Claim this session's cap slot on its first real turn; None when ok.
+
+    session.create / session.resume deliberately do NOT claim one. Every
+    desktop tile paint, background reconnect-resume and abandoned draft opens a
+    session just to paint a composer, and a slot held by one of those is
+    invisible everywhere: an unprompted draft has no DB row, and the sidebar
+    filters it out with min_messages=1. Idle desktop tabs therefore silently
+    starved the messaging gateway, which shares this cap — five parked tabs on
+    a websocket-flappy host locked a Discord bot out of a 5-slot cap while
+    running no agents at all. Claiming on the first turn mirrors the lazy
+    contract _ensure_session_db_row already uses for the row itself, and keeps
+    the invariant that anything holding a slot is something the user can see.
+    """
+    if session.get("active_session_lease") is not None:
+        return None
+    lease, limit_message = _claim_active_session_slot(
+        str(session.get("session_key") or ""),
+        live_session_id=sid,
+        surface=_session_source(session),
+    )
+    if limit_message is not None:
+        return limit_message
+    session["active_session_lease"] = lease
+    return None
 
 
 def _release_active_session_slot(session: dict | None) -> None:
@@ -660,7 +693,7 @@ def _finalize_session(session: dict | None, end_reason: str = "tui_close") -> No
     # the user Ctrl‑C's mid‑turn.
     if agent is not None:
         try:
-            from kopi_cli.plugins import invoke_hook
+            from kopi_cli.lifecycle import invoke_hook
 
             invoke_hook(
                 "on_session_end",
@@ -925,11 +958,6 @@ def _close_sessions_for_transport(
 
 
 def _shutdown_sessions() -> None:
-    try:
-        from tools.wake_word import stop_listening as _stop_wake
-        _stop_wake()
-    except Exception:
-        pass
     with _sessions_lock:
         sids = list(_sessions)
     for sid in sids:
@@ -979,6 +1007,24 @@ def _reap_idle_sessions() -> None:
     for sid in victims:
         _close_session_by_id(sid, end_reason="idle_timeout")
     _enforce_session_cap()
+    _reclaim_orphaned_leases()
+
+
+def _reclaim_orphaned_leases() -> None:
+    """Hand the registry the lease ids we still own so it can drop the rest."""
+    try:
+        from kopi_cli.active_sessions import release_orphaned_leases
+
+        with _sessions_lock:
+            live = {
+                lease.lease_id
+                for session in _sessions.values()
+                if (lease := session.get("active_session_lease")) is not None
+            }
+        if dropped := release_orphaned_leases(live):
+            logger.info("Reclaimed %d orphaned active-session lease(s)", dropped)
+    except Exception:
+        logger.debug("orphaned lease reclaim failed", exc_info=True)
 
 
 # Soft LRU cap on in-memory sessions. The 6h TTL reaper above only frees
@@ -6996,11 +7042,7 @@ def _(rid, params: dict) -> dict:
 
     ready = threading.Event()
     now = time.time()
-    lease, limit_message = _claim_active_session_slot(
-        key, live_session_id=sid, surface=source
-    )
-    if limit_message is not None:
-        return _err(rid, 4090, limit_message)
+    lease = None  # claimed lazily on the first turn (_ensure_active_session_slot)
 
     with _sessions_lock:
         _sessions[sid] = {
@@ -7444,11 +7486,7 @@ def _(rid, params: dict) -> dict:
     if is_truthy_value(params.get("lazy", False)):
         sid = uuid.uuid4().hex[:8]
         source = _resolve_session_source(str(params.get("source") or "").strip() or None)
-        lease, limit_message = _claim_active_session_slot(
-            target, live_session_id=sid, surface=source
-        )
-        if limit_message is not None:
-            return _err(rid, 4090, limit_message)
+        lease = None  # claimed lazily on the first turn (_ensure_active_session_slot)
         try:
             db.reopen_session(target)
             # The child's OWN conversation only — include_ancestors would prepend
@@ -7525,11 +7563,7 @@ def _(rid, params: dict) -> dict:
     if not is_truthy_value(params.get("eager_build", False)):
         sid = uuid.uuid4().hex[:8]
         source = _resolve_session_source(str(params.get("source") or "").strip() or None)
-        lease, limit_message = _claim_active_session_slot(
-            target, live_session_id=sid, surface=source
-        )
-        if limit_message is not None:
-            return _err(rid, 4090, limit_message)
+        lease = None  # claimed lazily on the first turn (_ensure_active_session_slot)
         # Interactive resume routes approvals/clarify through gateway prompts;
         # the deferred build wires the remaining per-session callbacks.
         _enable_gateway_prompts()
@@ -7604,11 +7638,7 @@ def _(rid, params: dict) -> dict:
     # dispatch thread (it's not a _LONG_HANDLER), blocking fast-path RPCs.
     sid = uuid.uuid4().hex[:8]
     source = _resolve_session_source(str(params.get("source") or "").strip() or None)
-    lease, limit_message = _claim_active_session_slot(
-        target, live_session_id=sid, surface=source
-    )
-    if limit_message is not None:
-        return _err(rid, 4090, limit_message)
+    lease = None  # claimed lazily on the first turn (_ensure_active_session_slot)
     _enable_gateway_prompts()
     home_token = (
         set_kopi_home_override(str(profile_home)) if profile_home is not None else None
@@ -10422,11 +10452,7 @@ def _(rid, params: dict) -> dict:
         new_key = _new_session_key()
         new_sid = uuid.uuid4().hex[:8]
         source = _session_source(session)
-        lease, limit_message = _claim_active_session_slot(
-            new_key, live_session_id=new_sid, surface=source
-        )
-        if limit_message is not None:
-            return _err(rid, 4090, limit_message)
+        lease = None  # claimed lazily on the first turn (_ensure_active_session_slot)
         branch_name = params.get("name", "")
         try:
             if branch_name:
@@ -10931,6 +10957,8 @@ def _(rid, params: dict) -> dict:
     session, err = _sess_nowait(params, rid)
     if err:
         return err
+    if (limit_message := _ensure_active_session_slot(sid, session)) is not None:
+        return _err(rid, 4090, limit_message)
     if truncate_user_ordinal is not None and isinstance(text, str):
         # A rewind/regenerate replays a turn from what the transcript shows. A
         # skill turn shows its invocation, so re-expand it here — otherwise
@@ -17592,161 +17620,6 @@ def _voice_record_key() -> str:
     return str(record_key) if isinstance(record_key, str) and record_key else "ctrl+b"
 
 
-# ── Wake word ("Hey Kopi") ──────────────────────────────────────────────
-# The detector is process-global (one mic), like voice. It runs server-side so
-# both the TUI and desktop GUI share it; clients pass their surface identity to
-# wake.start and the shared gate (wake_surface_enabled) decides whether to arm.
-# On detection we emit wake.detected; the client opens a new session and starts
-# its own voice capture. The detector yields the mic to gateway voice.record
-# (pause/resume below) and to the desktop's browser mic (wake.pause/resume RPCs).
-_wake_lock = threading.Lock()
-_wake_active = False
-_wake_event_sid = ""
-# Transport captured at wake.start time. The detector callback fires on a
-# background thread where the request-scoped transport ContextVar is unset, so
-# write_json would fall back to stdio and the event would never cross the
-# desktop's websocket (#wake-detected-not-delivered). We pin the arming
-# request's transport here and bind it for the emit.
-_wake_transport: "Optional[Transport]" = None
-
-
-def _wake_is_active() -> bool:
-    with _wake_lock:
-        return _wake_active
-
-
-def _wake_resume_if_active() -> None:
-    if not _wake_is_active():
-        return
-    try:
-        from tools.wake_word import resume_listening
-        resume_listening()
-    except Exception as e:
-        logger.debug("wake resume failed: %s", e)
-
-
-def _wake_on_detect() -> None:
-    """Detector-thread callback: tell the client to open a fresh voice session."""
-    with _wake_lock:
-        sid = _wake_event_sid
-        transport = _wake_transport
-    try:
-        from tools.wake_word import wake_phrase
-        phrase = wake_phrase()
-    except Exception:
-        phrase = ""
-    logger.info("wake.detected: emitting to sid=%r (transport=%s)",
-                sid, type(transport).__name__ if transport else None)
-    # Bind the arming request's transport so write_json reaches the right peer
-    # (WS for desktop/dashboard) instead of falling back to stdio on this
-    # background thread.
-    token = bind_transport(transport) if transport is not None else None
-    try:
-        _emit("wake.detected", sid, {"phrase": phrase})
-    finally:
-        if token is not None:
-            reset_transport(token)
-
-
-@method("wake.start")
-def _(rid, params: dict) -> dict:
-    """Arm the wake-word listener for the calling surface ("tui" | "gui").
-
-    Idempotent and gated: returns ``{started: False, reason}`` when the wake
-    word is disabled, scoped to another surface, or its deps/mic aren't ready.
-    """
-    global _wake_active, _wake_event_sid, _wake_transport
-    surface = str(params.get("surface") or "auto").strip().lower()
-    try:
-        from tools.wake_word import (
-            check_wake_word_requirements,
-            load_wake_word_config,
-            start_listening,
-            wake_surface_enabled,
-        )
-    except Exception as e:
-        return _err(rid, 5026, f"wake module unavailable: {e}")
-
-    cfg = load_wake_word_config()
-    if not wake_surface_enabled(surface, cfg):
-        logger.info("wake.start(%s): disabled for surface (enabled=%s, surface=%s)",
-                    surface, cfg.get("enabled"), cfg.get("surface"))
-        return _ok(rid, {"started": False, "reason": "disabled_for_surface"})
-    reqs = check_wake_word_requirements(cfg)
-    if not reqs["available"]:
-        logger.warning("wake.start(%s): not available — %s", surface, reqs.get("hint"))
-        return _ok(rid, {"started": False, "reason": reqs.get("hint") or "unavailable"})
-
-    with _wake_lock:
-        _wake_event_sid = params.get("session_id") or _wake_event_sid
-        # Capture the live transport (WS for desktop) so the background detector
-        # thread can route wake.detected back to this client, not stdio.
-        _wake_transport = current_transport() or _wake_transport
-    try:
-        start_listening(_wake_on_detect, config=cfg)
-    except Exception as e:
-        logger.warning("wake.start(%s): failed to start listener: %s", surface, e)
-        return _err(rid, 5026, str(e))
-    with _wake_lock:
-        _wake_active = True
-    logger.info("wake.start(%s): listening for %r (%s)", surface, reqs["phrase"], reqs["provider"])
-    return _ok(rid, {"started": True, "phrase": reqs["phrase"], "provider": reqs["provider"]})
-
-
-@method("wake.stop")
-def _(rid, params: dict) -> dict:
-    global _wake_active
-    with _wake_lock:
-        _wake_active = False
-    try:
-        from tools.wake_word import stop_listening
-        stop_listening()
-    except Exception:
-        pass
-    return _ok(rid, {"stopped": True})
-
-
-@method("wake.pause")
-def _(rid, params: dict) -> dict:
-    """Release the mic (e.g. while the desktop's browser captures audio)."""
-    try:
-        from tools.wake_word import pause_listening
-        pause_listening()
-    except Exception:
-        pass
-    return _ok(rid, {"paused": True})
-
-
-@method("wake.resume")
-def _(rid, params: dict) -> dict:
-    """Reclaim the mic after a pause; no-op if the listener isn't armed."""
-    active = _wake_is_active()
-    if active:
-        _wake_resume_if_active()
-    return _ok(rid, {"resumed": active})
-
-
-@method("wake.status")
-def _(rid, params: dict) -> dict:
-    try:
-        from tools.wake_word import (
-            check_wake_word_requirements,
-            is_listening,
-            load_wake_word_config,
-        )
-        cfg = load_wake_word_config()
-        reqs = check_wake_word_requirements(cfg)
-        return _ok(rid, {
-            "listening": _wake_is_active() and is_listening(),
-            "phrase": reqs["phrase"],
-            "provider": reqs["provider"],
-            "available": reqs["available"],
-            "hint": reqs.get("hint", ""),
-        })
-    except Exception as e:
-        return _err(rid, 5026, str(e))
-
-
 @method("voice.toggle")
 def _(rid, params: dict) -> dict:
     """CLI parity for the ``/voice`` slash command.
@@ -17895,28 +17768,12 @@ def _(rid, params: dict) -> dict:
                 if isinstance(duration, (int, float)) and not isinstance(duration, bool)
                 else 3.0
             )
-            # Hand the mic to STT if the wake-word detector holds it; resume
-            # once a terminal capture event fires (one-shot transcript / silence
-            # limit), so wake-triggered and manual captures both coexist.
-            if _wake_is_active():
-                try:
-                    from tools.wake_word import pause_listening
-                    pause_listening()
-                except Exception:
-                    pass
-
-            def _on_transcript(t):
-                _voice_emit("voice.transcript", {"text": t})
-                _wake_resume_if_active()
-
-            def _on_silent():
-                _voice_emit("voice.transcript", {"no_speech_limit": True})
-                _wake_resume_if_active()
-
             started = start_continuous(
-                on_transcript=_on_transcript,
+                on_transcript=lambda t: _voice_emit("voice.transcript", {"text": t}),
                 on_status=lambda s: _voice_emit("voice.status", {"state": s}),
-                on_silent_limit=_on_silent,
+                on_silent_limit=lambda: _voice_emit(
+                    "voice.transcript", {"no_speech_limit": True}
+                ),
                 silence_threshold=safe_threshold,
                 silence_duration=safe_duration,
                 auto_restart=False,
@@ -17932,7 +17789,6 @@ def _(rid, params: dict) -> dict:
         from kopi_cli.voice import stop_continuous
 
         stop_continuous(force_transcribe=True)
-        _wake_resume_if_active()
         return _ok(rid, {"status": "stopped"})
     except ImportError:
         return _err(

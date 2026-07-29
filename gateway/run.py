@@ -5978,10 +5978,9 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         active_count = len(getattr(self, "_running_agents", {}))
         if active_count < max_sessions:
             return None
-        return (
-            f"Kopi is at the active session limit ({active_count}/{max_sessions}). "
-            "Try again when another session finishes."
-        )
+        from kopi_cli.active_sessions import active_session_limit_message
+
+        return active_session_limit_message(active_count, max_sessions)
 
     def _claim_active_session_slot(
         self,
@@ -6893,9 +6892,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             except Exception as _e:
                 logger.debug("Shutdown transcript flush failed: %s", _e)
             try:
-                from kopi_cli.plugins import invoke_hook as _invoke_hook
-                _invoke_hook(
-                    "on_session_finalize",
+                from kopi_cli.lifecycle import finalize_session
+                finalize_session(
                     session_id=getattr(agent, "session_id", None),
                     platform="gateway",
                     reason="shutdown",
@@ -9187,11 +9185,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 for key, entry in _expired_entries:
                     try:
                         try:
-                            from kopi_cli.plugins import invoke_hook as _invoke_hook
+                            from kopi_cli.lifecycle import finalize_session
                             _parts = key.split(":")
                             _platform = _parts[2] if len(_parts) > 2 else ""
-                            _invoke_hook(
-                                "on_session_finalize",
+                            finalize_session(
                                 session_id=entry.session_id,
                                 platform=_platform,
                                 reason="session_expired",
@@ -11017,7 +11014,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         # (e.g. customer handover ingest) without triggering the pairing flow.
         if not is_internal:
             try:
-                from kopi_cli.plugins import invoke_hook as _invoke_hook
+                from kopi_cli.lifecycle import invoke_hook as _invoke_hook
                 _hook_results = _invoke_hook(
                     "pre_gateway_dispatch",
                     event=event,

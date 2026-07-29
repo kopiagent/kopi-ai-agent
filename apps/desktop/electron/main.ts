@@ -9271,8 +9271,8 @@ ipcMain.handle('kopi:window:openInstance', async () => {
 // shortcuts and the View menu. Reads and writes target the asking window.
 ipcMain.handle('kopi:zoom:get', event => {
   const window = BrowserWindow.fromWebContents(event.sender)
-  const level =
-    window && !window.isDestroyed() ? window.webContents.getZoomLevel() : DEFAULT_ZOOM_LEVEL
+
+  const level = window && !window.isDestroyed() ? window.webContents.getZoomLevel() : DEFAULT_ZOOM_LEVEL
 
   return { level, percent: zoomLevelToPercent(level) }
 })

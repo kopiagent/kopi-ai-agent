@@ -1962,7 +1962,7 @@ DEFAULT_CONFIG = {
         # class of over-claim that otherwise forces users to run
         # `git status` to verify edits landed.  Set false to suppress.
         "file_mutation_verifier": True,
-        # Nous credits status-bar notices (usage bands, grant-spent, depleted /
+        # Nous credits status-bar notices (usage bands, depleted /
         # restored).  When false, no credits notices are emitted — balance data
         # is still captured and /usage keeps working.  Off switch for sub +
         # top-up users who find the gauge noisy.
@@ -2372,30 +2372,6 @@ DEFAULT_CONFIG = {
         # voice chat instead of being sent to the agent. Case-insensitive,
         # surrounding punctuation ignored. Set [] to disable.
         "stop_phrases": ["stop"],
-    },
-
-    # "Hey Kopi" hands-free wake word (CLI). Always-on, on-device hotword
-    # detection that starts a fresh voice session — the "Hey Siri" pattern.
-    # Off by default; toggle with /wake or `wake_word.enabled: true`.
-    "wake_word": {
-        "enabled": False,
-        "surface": "auto",            # which surface owns the listener / opens the new session: "auto" (the running one) | "cli" | "tui" | "gui"
-        "provider": "openwakeword",   # "openwakeword" (free, local) | "porcupine" (premium; needs PORCUPINE_ACCESS_KEY)
-        "phrase": "hey jarvis",       # cosmetic label only; detection is keyed by the engine model/keyword below
-        "sensitivity": 0.5,           # 0.0-1.0 detection threshold (higher = stricter)
-        "start_new_session": True,    # start a fresh session on wake vs. continue the current one
-        "openwakeword": {
-            # Built-in model name ("hey_jarvis", "alexa", "hey_mycroft", ...) or
-            # a path to a custom .onnx/.tflite model. Train a "hey kopi" model
-            # and point this at it — see the wake-word docs.
-            "model": "hey_jarvis",
-            "inference_framework": "onnx",  # "onnx" | "tflite"
-        },
-        "porcupine": {
-            # Built-in keyword ("jarvis", "computer", "bumblebee", ...) or a path
-            # to a custom .ppn from the Picovoice Console.
-            "keyword": "jarvis",
-        },
     },
     
     "human_delay": {
@@ -2935,6 +2911,16 @@ DEFAULT_CONFIG = {
         # jobs from silently inheriting a paid default. Set to false only when
         # jobs should deliberately track changing global inference defaults.
         "model_drift_guard": True,
+        # Default inference model for cron jobs (Axis A — WHAT model an
+        # agent job runs on). Resolution at fire time: per-job user pin >
+        # cron.model > global model.default. When set, unpinned jobs follow
+        # this deliberately, so the #44585 model-drift fail-closed guard does
+        # not engage for the model axis — cron spend no longer shadows chat
+        # `/model` switches. Empty string = fall through to model.default.
+        "model": "",
+        # Inference provider paired with cron.model (NOT the scheduler
+        # provider below). Empty string = resolve from global config.
+        "model_provider": "",
         # Active cron SCHEDULER provider (Axis B — the trigger that decides
         # WHEN a due job fires). Empty string = the built-in in-process 60s
         # ticker (default). Name an installed provider (plugins/cron_providers/<name>/ or
@@ -3452,6 +3438,14 @@ DEFAULT_CONFIG = {
         # reads connected accounts silently). "off" -> plain intro only.
         # The offer fires at most once (latched under onboarding.seen).
         "profile_build": "ask",
+    },
+
+    # Privacy-safe aggregate metrics written only to this profile's local
+    # telemetry directory. Collection is opt-in and no remote sink exists.
+    "telemetry": {
+        "shared_metrics": {
+            "enabled": False,
+        },
     },
 
     # ``kopi update`` behaviour.
@@ -4433,13 +4427,6 @@ OPTIONAL_ENV_VARS = {
         "description": "Mistral API key for Voxtral TTS and transcription (STT)",
         "prompt": "Mistral API key",
         "url": "https://console.mistral.ai/",
-        "password": True,
-        "category": "tool",
-    },
-    "PORCUPINE_ACCESS_KEY": {
-        "description": "Picovoice access key for the Porcupine 'Hey Kopi' wake word engine (optional; openWakeWord is the free default)",
-        "prompt": "Picovoice access key",
-        "url": "https://console.picovoice.ai/",
         "password": True,
         "category": "tool",
     },
@@ -8917,6 +8904,31 @@ def cron_model_drift_guard_enabled(
     return cron_config.get("model_drift_guard", True) is not False
 
 
+def _cron_fleet_default_covers_axis(
+    axis: str,
+    config: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """True when cron.model / cron.model_provider covers *axis*.
+
+    An axis covered by the explicit cron-fleet default no longer follows the
+    global model/provider at fire time, so the drift guard never engages for
+    it and switch-time warnings would be false alarms.
+    """
+    if config is None:
+        try:
+            config = load_config()
+        except Exception:
+            return False
+    if not isinstance(config, dict):
+        return False
+    cron_config = config.get("cron")
+    if not isinstance(cron_config, dict):
+        return False
+    key = "model" if axis == "model" else "model_provider"
+    value = cron_config.get(key)
+    return isinstance(value, str) and bool(value.strip())
+
+
 def _load_cron_jobs_for_config_warning() -> List[Dict[str, Any]]:
     """Best-effort read of the active profile's cron jobs database.
 
@@ -8947,6 +8959,12 @@ def warn_unpinned_cron_jobs_after_model_config_change(
     if axis is None:
         return
     if not cron_model_drift_guard_enabled(config):
+        return
+    # A cron-fleet default covering this axis (cron.model /
+    # cron.model_provider) means unpinned jobs no longer follow the global
+    # value at all — the drift guard will not engage, so warning here would
+    # be a false alarm.
+    if _cron_fleet_default_covers_axis(axis, config):
         return
 
     new_value = str(value or "").strip().lower()

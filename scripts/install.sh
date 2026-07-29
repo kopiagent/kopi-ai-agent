@@ -1700,6 +1700,31 @@ EOF
     chmod +x "$command_link_dir/kopi"
     log_success "Installed kopi launcher → $command_link_display_dir/kopi"
 
+    # Also expose `kopi-acp`. ACP hosts (Zed, JetBrains, Buzz) resolve the
+    # agent by command name on the login-shell PATH, and the `kopi-acp`
+    # console script lives inside the venv, which is not on that PATH. Without
+    # this launcher those hosts report Kopi as not installed. (#21454 applies
+    # here too: clear the path first so `cat >` cannot follow an old symlink
+    # into the venv and overwrite the console script.)
+    rm -f "$command_link_dir/kopi-acp"
+    if [ "$USE_VENV" = true ]; then
+        cat > "$command_link_dir/kopi-acp" <<EOF
+#!/usr/bin/env bash
+unset PYTHONPATH
+unset PYTHONHOME
+exec "$KOPI_BIN" "$KOPI_ENTRYPOINT" acp "\$@"
+EOF
+    else
+        cat > "$command_link_dir/kopi-acp" <<EOF
+#!/usr/bin/env bash
+unset PYTHONPATH
+unset PYTHONHOME
+exec "$KOPI_BIN" acp "\$@"
+EOF
+    fi
+    chmod +x "$command_link_dir/kopi-acp"
+    log_success "Installed kopi-acp launcher → $command_link_display_dir/kopi-acp"
+
     if [ "$DISTRO" = "termux" ]; then
         export PATH="$command_link_dir:$PATH"
         log_info "$command_link_display_dir is the native Termux command path"
