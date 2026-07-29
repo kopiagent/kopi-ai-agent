@@ -62,6 +62,22 @@ def get_env_value(name, default=None):
     value = _get_env_value(name)
     return default if value is None else value
 
+
+def _resolve_provider_key(env_var: str, provider_id: str) -> str:
+    """Resolve an STT provider API key via the shared voice-key resolver.
+
+    Delegates to ``tools.tool_backend_helpers.resolve_provider_secret`` —
+    the single owner of STT/TTS key resolution (config > env/.env > the
+    credential pool populated by ``kopi auth add <provider_id>``).
+    Resolved at call time so tests that reload the helpers module see the
+    live function.
+    """
+    try:
+        from tools.tool_backend_helpers import resolve_provider_secret
+    except ImportError:  # pragma: no cover — helpers are in-repo
+        return str(get_env_value(env_var) or "").strip()
+    return resolve_provider_secret(env_var, provider_id, env_getter=get_env_value)
+
 # ---------------------------------------------------------------------------
 # Optional imports — graceful degradation
 # ---------------------------------------------------------------------------
@@ -101,7 +117,7 @@ XAI_STT_BASE_URL = os.getenv("XAI_STT_BASE_URL", "https://api.x.ai/v1")
 ELEVENLABS_STT_BASE_URL = os.getenv("ELEVENLABS_STT_BASE_URL", "https://api.elevenlabs.io/v1")
 # DeepInfra STT base URL now resolved via kopi_cli.models.deepinfra_base_url (shared).
 
-SUPPORTED_FORMATS = {".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm", ".ogg", ".aac", ".flac"}
+SUPPORTED_FORMATS = {".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm", ".ogg", ".oga", ".opus", ".aac", ".flac"}
 LOCAL_NATIVE_AUDIO_FORMATS = {".wav", ".aiff", ".aif"}
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
 
@@ -827,7 +843,7 @@ def _get_provider(stt_config: dict) -> str:
             return "none"
 
         if provider == "groq":
-            if _HAS_OPENAI and get_env_value("GROQ_API_KEY"):
+            if _HAS_OPENAI and _resolve_provider_key("GROQ_API_KEY", "groq"):
                 return "groq"
             logger.warning(
                 "STT provider 'groq' configured but GROQ_API_KEY not set"
@@ -843,7 +859,7 @@ def _get_provider(stt_config: dict) -> str:
             return "none"
 
         if provider == "mistral":
-            if _HAS_MISTRAL and get_env_value("MISTRAL_API_KEY"):
+            if _HAS_MISTRAL and _resolve_provider_key("MISTRAL_API_KEY", "mistral"):
                 return "mistral"
             logger.warning(
                 "STT provider 'mistral' configured but mistralai package "
@@ -862,7 +878,7 @@ def _get_provider(stt_config: dict) -> str:
             return "none"
 
         if provider == "elevenlabs":
-            if get_env_value("ELEVENLABS_API_KEY"):
+            if _resolve_provider_key("ELEVENLABS_API_KEY", "elevenlabs"):
                 return "elevenlabs"
             logger.warning(
                 "STT provider 'elevenlabs' configured but ELEVENLABS_API_KEY not set"
@@ -870,7 +886,7 @@ def _get_provider(stt_config: dict) -> str:
             return "none"
 
         if provider == "deepinfra":
-            if _HAS_OPENAI and (get_env_value("DEEPINFRA_API_KEY") or "").strip():
+            if _HAS_OPENAI and _resolve_provider_key("DEEPINFRA_API_KEY", "deepinfra"):
                 return "deepinfra"
             logger.warning(
                 "STT provider 'deepinfra' configured but DEEPINFRA_API_KEY not set "
@@ -895,7 +911,7 @@ def _get_provider(stt_config: dict) -> str:
     # Try lazy-install before falling through to cloud providers
     if _try_lazy_install_stt():
         return "local"
-    if _HAS_OPENAI and get_env_value("GROQ_API_KEY"):
+    if _HAS_OPENAI and _resolve_provider_key("GROQ_API_KEY", "groq"):
         logger.info("No local STT available, using Groq Whisper API")
         return "groq"
     if _HAS_OPENAI and _has_openai_audio_backend():
@@ -904,7 +920,7 @@ def _get_provider(stt_config: dict) -> str:
     # Only auto-select Mistral if the SDK is already present — don't trigger a
     # lazy-install during passive auto-detection. Explicit `provider: mistral`
     # (above) does lazy-install on first transcription call.
-    if _HAS_MISTRAL and get_env_value("MISTRAL_API_KEY"):
+    if _HAS_MISTRAL and _resolve_provider_key("MISTRAL_API_KEY", "mistral"):
         logger.info("No local STT available, using Mistral Voxtral Transcribe API")
         return "mistral"
     try:
@@ -915,10 +931,10 @@ def _get_provider(stt_config: dict) -> str:
             return "xai"
     except Exception:
         pass
-    if get_env_value("ELEVENLABS_API_KEY"):
+    if _resolve_provider_key("ELEVENLABS_API_KEY", "elevenlabs"):
         logger.info("No local STT available, using ElevenLabs Scribe STT API")
         return "elevenlabs"
-    if _HAS_OPENAI and (get_env_value("DEEPINFRA_API_KEY") or "").strip():
+    if _HAS_OPENAI and _resolve_provider_key("DEEPINFRA_API_KEY", "deepinfra"):
         logger.info("No local STT available, using DeepInfra Whisper API")
         return "deepinfra"
     return "none"
@@ -1144,7 +1160,7 @@ def _looks_like_cuda_lib_error(exc: BaseException) -> bool:
     return any(marker in msg for marker in _CUDA_LIB_ERROR_MARKERS)
 
 
-def _load_local_whisper_model(model_name: str):
+def _load_local_whisper_model(model_name: str, device: str = "auto", compute_type: str = "auto"):
     """Load faster-whisper with graceful CUDA → CPU fallback.
 
     faster-whisper's ``device="auto"`` picks CUDA when the ctranslate2 wheel
@@ -1154,12 +1170,16 @@ def _load_local_whisper_model(model_name: str):
     On those hosts the load itself sometimes succeeds and the dlopen failure
     only surfaces at first ``transcribe()`` call.
 
-    We try ``auto`` first (fast CUDA path when it works), and on any CUDA
-    library load failure fall back to CPU + int8.
+    ``device`` / ``compute_type`` default to ``"auto"`` so the historical
+    behaviour is unchanged; pass explicit values from ``stt.local.device`` /
+    ``stt.local.compute_type`` to pin a configuration (#9088).
+
+    We try the requested config first (fast CUDA path when it works), and on
+    any CUDA library load failure fall back to CPU + int8.
     """
     from faster_whisper import WhisperModel
     try:
-        return WhisperModel(model_name, device="auto", compute_type="auto")
+        return WhisperModel(model_name, device=device, compute_type=compute_type)
     except Exception as exc:
         if not _looks_like_cuda_lib_error(exc):
             raise
@@ -1180,10 +1200,20 @@ def _transcribe_local(file_path: str, model_name: str) -> Dict[str, Any]:
             return {"success": False, "transcript": "", "error": "faster-whisper not installed"}
 
     try:
+        local_cfg = _load_stt_config().get("local", {})
         # Lazy-load the model (downloads on first use, ~150 MB for 'base')
         if _local_model is None or _local_model_name != model_name:
             logger.info("Loading faster-whisper model '%s' (first load downloads the model)...", model_name)
-            _local_model = _load_local_whisper_model(model_name)
+            # Honour stt.local.device / stt.local.compute_type from config so
+            # users on hosts where ``auto`` mis-detects (NVIDIA libs present but
+            # not usable, etc.) can pin a working configuration (#9088).
+            # _load_local_whisper_model retains the CUDA→CPU fallback for the
+            # auto/CUDA paths.
+            _local_model = _load_local_whisper_model(
+                model_name,
+                device=local_cfg.get("device", "auto"),
+                compute_type=local_cfg.get("compute_type", "auto"),
+            )
             _local_model_name = model_name
 
         # Language: stt.local.language > stt.language > env var > auto-detect.
@@ -1338,7 +1368,7 @@ def _transcribe_groq(file_path: str, model_name: str) -> Dict[str, Any]:
     ``KOPI_LOCAL_STT_LANGUAGE`` (env). When none is set, Groq
     Whisper auto-detects.
     """
-    api_key = get_env_value("GROQ_API_KEY")
+    api_key = _resolve_provider_key("GROQ_API_KEY", "groq")
     if not api_key:
         return {"success": False, "transcript": "", "error": "GROQ_API_KEY not set"}
 
@@ -1483,7 +1513,7 @@ def _transcribe_mistral(file_path: str, model_name: str) -> Dict[str, Any]:
     Uses the ``mistralai`` Python SDK to call ``/v1/audio/transcriptions``.
     Requires ``MISTRAL_API_KEY`` environment variable.
     """
-    api_key = get_env_value("MISTRAL_API_KEY")
+    api_key = _resolve_provider_key("MISTRAL_API_KEY", "mistral")
     if not api_key:
         return {"success": False, "transcript": "", "error": "MISTRAL_API_KEY not set"}
 
@@ -1632,7 +1662,7 @@ def _transcribe_xai(file_path: str, model_name: str) -> Dict[str, Any]:
 
 def _transcribe_elevenlabs(file_path: str, model_name: str) -> Dict[str, Any]:
     """Transcribe using ElevenLabs Scribe STT API."""
-    api_key = get_env_value("ELEVENLABS_API_KEY")
+    api_key = _resolve_provider_key("ELEVENLABS_API_KEY", "elevenlabs")
     if not api_key:
         return {"success": False, "transcript": "", "error": "ELEVENLABS_API_KEY not set"}
 
@@ -1728,7 +1758,7 @@ def _transcribe_deepinfra(file_path: str, model_name: str) -> Dict[str, Any]:
     ``kopi_cli.models`` helpers so every DeepInfra surface resolves the
     base URL and model ids identically.
     """
-    api_key = (get_env_value("DEEPINFRA_API_KEY") or "").strip()
+    api_key = _resolve_provider_key("DEEPINFRA_API_KEY", "deepinfra")
     if not api_key:
         return {"success": False, "transcript": "", "error": "DEEPINFRA_API_KEY not set"}
 

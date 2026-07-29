@@ -10999,6 +10999,54 @@ def _ensure_fhs_path_guard() -> None:
         print("    (reload your shell or run 'source ~/.bashrc' to pick it up)")
 
 
+def _ensure_acp_launcher() -> None:
+    """Self-heal: install a ``kopi-acp`` launcher next to the ``kopi`` one.
+
+    Mirrors the launcher block in ``scripts/install.sh`` so existing installs
+    gain the ACP command on ``kopi update`` without a reinstall.  ACP hosts
+    (Zed, JetBrains, Buzz Desktop) spawn the agent by resolving the
+    ``kopi-acp`` command name against the login-shell PATH; the console
+    script of that name lives inside the install's venv, which is not on that
+    PATH, so those hosts report Kopi as not installed even when it is.
+
+    The shim simply delegates to the sibling ``kopi`` launcher with the
+    ``acp`` subcommand, which makes it correct for every install layout
+    (venv wrapper, FHS symlink, pipx/pip console script) without having to
+    reconstruct interpreter/entrypoint paths.
+
+    No-op on Windows (install.ps1 puts ``venv\\Scripts`` on the user PATH, so
+    ``kopi-acp.exe`` already resolves) and wherever a ``kopi-acp`` is
+    already present next to the ``kopi`` command.  Unwritable directories
+    (e.g. ``/usr/local/bin`` as non-root) are skipped silently.  Idempotent.
+    """
+    if sys.platform == "win32":
+        return
+    for bin_dir in (Path.home() / ".local" / "bin", Path("/usr/local/bin")):
+        kopi_cmd = bin_dir / "kopi"
+        acp_cmd = bin_dir / "kopi-acp"
+        try:
+            if not (kopi_cmd.is_file() or kopi_cmd.is_symlink()):
+                continue
+            # Already present — a console script (pip/pipx install), an
+            # earlier shim, or a symlink. is_symlink() catches broken
+            # symlinks that exists() would miss; never follow-and-overwrite
+            # (the #21454 failure mode).
+            if acp_cmd.exists() or acp_cmd.is_symlink():
+                continue
+            shim = (
+                "#!/usr/bin/env bash\n"
+                "# Kopi Agent — ACP launcher (written by `kopi update`).\n"
+                "# ACP hosts (Zed, JetBrains, Buzz) resolve the agent by this\n"
+                "# command name on the login-shell PATH.\n"
+                f'exec "{kopi_cmd}" acp "$@"\n'
+            )
+            acp_cmd.write_text(shim, encoding="utf-8")
+            acp_cmd.chmod(acp_cmd.stat().st_mode | 0o755)
+        except OSError:
+            continue
+        print(f"  ✓ Installed kopi-acp launcher → {acp_cmd}")
+
+
 def _size_delta_label(saved_mb: float) -> str:
     """Human label for a before/after database size delta, in MB.
 
@@ -12928,6 +12976,14 @@ def _cmd_update_impl(args, gateway_mode: bool):
             _ensure_fhs_path_guard()
         except Exception as e:
             logger.debug("FHS PATH guard check failed: %s", e)
+
+        # Self-heal the kopi-acp launcher for installs that predate it, so
+        # ACP hosts (Zed, JetBrains, Buzz) can resolve Kopi on PATH without
+        # a reinstall.  No-op on Windows and when already present.
+        try:
+            _ensure_acp_launcher()
+        except Exception as e:
+            logger.debug("kopi-acp launcher self-heal failed: %s", e)
 
         # Refresh the cua-driver binary used by the Computer Use toolset.
         # The upstream installer is gated on supported platforms and on the
@@ -15272,6 +15328,35 @@ def _plugin_cli_discovery_needed() -> bool:
     return True
 
 
+def _resolve_deferred_platform_cli_command(command_name: str | None) -> None:
+    """Materialize the deferred platform whose top-level CLI command matches.
+
+    Bundled platform plugins are cheap-registered as *deferred* entries to
+    avoid importing every gateway SDK during normal startup. A platform that
+    registers a top-level ``kopi <name>`` command (e.g. Photon ->
+    ``ctx.register_cli_command(name="photon", ...)``) only runs that side
+    effect when its module is imported. On the unknown-top-level-command slow
+    path, ``discover_plugins()`` records the deferred loader but does not
+    import it, so the CLI registration never happens and ``kopi photon``
+    fails with argparse ``invalid choice`` (issue #54678).
+
+    Resolving only the platform whose name matches the first positional token
+    keeps normal startup cheap while making the targeted command available.
+    """
+    if not command_name:
+        return
+    try:
+        from gateway.platform_registry import platform_registry
+
+        platform_registry.get(command_name)
+    except Exception as exc:
+        logging.getLogger(__name__).debug(
+            "Deferred platform CLI resolution failed for %s: %s",
+            command_name,
+            exc,
+        )
+
+
 _AGENT_COMMANDS = {None, "chat", "acp", "rl"}
 _AGENT_SUBCOMMANDS = {
     "cron": ("cron_command", {"run", "tick"}),
@@ -16132,6 +16217,11 @@ def main():
                 seen_plugin_commands.add(cmd_info["name"])
 
             discover_plugins()
+            # A bundled platform whose top-level CLI command is the one being
+            # invoked is still only a deferred entry at this point; import it
+            # so its register_cli_command side effect runs before we read
+            # _cli_commands (issue #54678).
+            _resolve_deferred_platform_cli_command(_first_positional_argv())
             for cmd_info in get_plugin_manager()._cli_commands.values():
                 if cmd_info["name"] in seen_plugin_commands:
                     continue

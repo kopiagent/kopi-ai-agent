@@ -69,6 +69,23 @@ def get_env_value(name, default=None):
         return os.getenv(name, default)
     value = _get_env_value(name)
     return default if value is None else value
+
+
+def _resolve_provider_key(env_var: str, provider_id: str) -> str:
+    """Resolve a TTS provider API key via the shared voice-key resolver.
+
+    Delegates to ``tools.tool_backend_helpers.resolve_provider_secret`` —
+    the single owner of STT/TTS key resolution (config > env/.env > the
+    credential pool populated by ``kopi auth add <provider_id>``).
+    Resolved at call time so tests that reload the helpers module see the
+    live function.
+    """
+    try:
+        from tools.tool_backend_helpers import resolve_provider_secret
+    except ImportError:  # pragma: no cover — helpers are in-repo
+        return str(get_env_value(env_var) or "").strip()
+    return resolve_provider_secret(env_var, provider_id, env_getter=get_env_value)
+
 from tools.managed_tool_gateway import resolve_managed_tool_gateway
 from tools.tool_backend_helpers import (
     managed_nous_tools_enabled,
@@ -995,21 +1012,20 @@ def _ffmpeg_transcode_to_opus(input_path: str, ogg_path: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 def _sniff_audio_container(path: str) -> str:
-    """Return 'ogg' | 'wav' | 'mp3' | 'flac' | 'unknown' from magic bytes."""
+    """Return a container id ('ogg', 'wav', 'mp3', 'flac', ...) or 'unknown'.
+
+    Delegates to the shared magic-byte sniffer in ``tools.audio_container``
+    (one module owns container detection for both this outbound repair and
+    the inbound gateway audio cache).
+    """
+    from tools.audio_container import sniff_container
+
     try:
         with open(path, "rb") as fh:
             head = fh.read(12)
     except OSError:
         return "unknown"
-    if head[:4] == b"OggS":
-        return "ogg"
-    if head[:4] == b"RIFF" and head[8:12] == b"WAVE":
-        return "wav"
-    if head[:4] == b"fLaC":
-        return "flac"
-    if head[:3] == b"ID3" or (len(head) >= 2 and head[0] == 0xFF and (head[1] & 0xE0) == 0xE0):
-        return "mp3"
-    return "unknown"
+    return sniff_container(head) or "unknown"
 
 
 def _repair_ogg_container(file_str: str) -> str:
@@ -1093,7 +1109,7 @@ def _generate_elevenlabs(text: str, output_path: str, tts_config: Dict[str, Any]
     Returns:
         Path to the saved audio file.
     """
-    api_key = (get_env_value("ELEVENLABS_API_KEY") or "")
+    api_key = (_resolve_provider_key("ELEVENLABS_API_KEY", "elevenlabs") or "")
     if not api_key:
         raise ValueError("ELEVENLABS_API_KEY not set. Get one at https://elevenlabs.io/")
 
@@ -1262,7 +1278,7 @@ def _generate_deepinfra_tts(text: str, output_path: str, tts_config: Dict[str, A
     the shared ``kopi_cli.models`` helpers so every DeepInfra surface
     resolves them identically.
     """
-    api_key = (get_env_value("DEEPINFRA_API_KEY") or "").strip()
+    api_key = _resolve_provider_key("DEEPINFRA_API_KEY", "deepinfra")
     if not api_key:
         raise ValueError(
             "DEEPINFRA_API_KEY not set. Run `kopi setup` to configure, "
@@ -1543,7 +1559,7 @@ def _generate_minimax_tts(text: str, output_path: str, tts_config: Dict[str, Any
     """
     import requests
 
-    api_key = (get_env_value("MINIMAX_API_KEY") or "")
+    api_key = (_resolve_provider_key("MINIMAX_API_KEY", "minimax") or "")
     if not api_key:
         raise ValueError("MINIMAX_API_KEY not set. Get one at https://platform.minimax.io/")
 
@@ -1664,7 +1680,7 @@ def _generate_mistral_tts(text: str, output_path: str, tts_config: Dict[str, Any
     and writes the raw bytes to *output_path*.
     Supports native Opus output for Telegram voice bubbles.
     """
-    api_key = (get_env_value("MISTRAL_API_KEY") or "")
+    api_key = (_resolve_provider_key("MISTRAL_API_KEY", "mistral") or "")
     if not api_key:
         raise ValueError("MISTRAL_API_KEY not set. Get one at https://console.mistral.ai/")
 
@@ -1913,7 +1929,10 @@ def _generate_gemini_tts(text: str, output_path: str, tts_config: Dict[str, Any]
     """
     import requests
 
-    api_key = (get_env_value("GEMINI_API_KEY") or get_env_value("GOOGLE_API_KEY") or "").strip()
+    api_key = (
+        _resolve_provider_key("GEMINI_API_KEY", "gemini")
+        or _resolve_provider_key("GOOGLE_API_KEY", "gemini")
+    )
     if not api_key:
         raise ValueError(
             "GEMINI_API_KEY not set. Get one at https://aistudio.google.com/app/apikey"
@@ -2747,7 +2766,7 @@ def check_tts_requirements() -> bool:
             _import_elevenlabs()
         except ImportError:
             return False
-        return bool(get_env_value("ELEVENLABS_API_KEY"))
+        return bool(_resolve_provider_key("ELEVENLABS_API_KEY", "elevenlabs"))
     if provider == "openai":
         try:
             _import_openai_client()
@@ -2759,9 +2778,9 @@ def check_tts_requirements() -> bool:
             _import_openai_client()
         except ImportError:
             return False
-        return bool(get_env_value("DEEPINFRA_API_KEY"))
+        return bool(_resolve_provider_key("DEEPINFRA_API_KEY", "deepinfra"))
     if provider == "minimax":
-        return bool(get_env_value("MINIMAX_API_KEY"))
+        return bool(_resolve_provider_key("MINIMAX_API_KEY", "minimax"))
     if provider == "xai":
         try:
             from tools.xai_http import resolve_xai_http_credentials
@@ -2770,13 +2789,16 @@ def check_tts_requirements() -> bool:
         except Exception:
             return False
     if provider == "gemini":
-        return bool(get_env_value("GEMINI_API_KEY") or get_env_value("GOOGLE_API_KEY"))
+        return bool(
+            _resolve_provider_key("GEMINI_API_KEY", "gemini")
+            or _resolve_provider_key("GOOGLE_API_KEY", "gemini")
+        )
     if provider == "mistral":
         try:
             _import_mistral_client()
         except ImportError:
             return False
-        return bool(get_env_value("MISTRAL_API_KEY"))
+        return bool(_resolve_provider_key("MISTRAL_API_KEY", "mistral"))
     if provider == "neutts":
         return _check_neutts_available()
     if provider == "kittentts":
@@ -3075,7 +3097,7 @@ if __name__ == "__main__":
     print("\nProvider availability:")
     print(f"  Edge TTS:   {'installed' if _check(_import_edge_tts, 'edge') else 'not installed (pip install edge-tts)'}")
     print(f"  ElevenLabs: {'installed' if _check(_import_elevenlabs, 'el') else 'not installed (pip install elevenlabs)'}")
-    print(f"    API Key:  {'set' if get_env_value('ELEVENLABS_API_KEY') else 'not set'}")
+    print(f"    API Key:  {'set' if _resolve_provider_key('ELEVENLABS_API_KEY', 'elevenlabs') else 'not set'}")
     print(f"  OpenAI:     {'installed' if _check(_import_openai_client, 'oai') else 'not installed'}")
     print(
         "    API Key:  "

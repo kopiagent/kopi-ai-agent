@@ -100,7 +100,9 @@ def remove_wrapper_script():
     """Remove the kopi wrapper script if it exists."""
     wrapper_paths = [
         Path.home() / ".local" / "bin" / "kopi",
+        Path.home() / ".local" / "bin" / "kopi-acp",
         Path("/usr/local/bin/kopi"),
+        Path("/usr/local/bin/kopi-acp"),
     ]
     
     removed = []

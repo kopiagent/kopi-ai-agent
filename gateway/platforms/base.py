@@ -26,9 +26,18 @@ from utils import normalize_proxy_url
 logger = logging.getLogger(__name__)
 
 # Audio file extensions Kopi recognizes for native audio delivery.
-# Kept in sync with tools/send_message_tool.py and cron/scheduler.py via
-# should_send_media_as_audio() below.
-_AUDIO_EXTS = frozenset({'.ogg', '.opus', '.mp3', '.wav', '.m4a', '.flac'})
+# Keep Telegram's narrower attachment/voice sets below separate: formats such
+# as MPEG-2 Layer II are audio to Kopi but unsupported by sendAudio/sendVoice.
+_AUDIO_MIME_TYPES = {
+    ".ogg": "audio/ogg",
+    ".opus": "audio/opus",
+    ".mp3": "audio/mpeg",
+    ".m2a": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/m4a",
+    ".flac": "audio/flac",
+}
+_AUDIO_EXTS = frozenset(_AUDIO_MIME_TYPES)
 # Telegram's Bot API sendAudio only accepts MP3 / M4A. Other audio
 # formats either need to go through sendVoice (Opus/OGG) or must be
 # delivered as a regular document.
@@ -844,6 +853,18 @@ def get_audio_cache_dir() -> Path:
     return d
 
 
+def _sniff_audio_ext(data: bytes, fallback_ext: str) -> str:
+    """Prefer a container-matching extension when audio magic bytes are obvious.
+
+    Thin wrapper around the shared sniffer in ``tools.audio_container`` —
+    ONE module owns container detection for both the outbound TTS repair
+    (``tools/tts_tool.py``) and this inbound cache path.
+    """
+    from tools.audio_container import sniff_audio_ext
+
+    return sniff_audio_ext(data, fallback_ext)
+
+
 def cache_audio_from_bytes(data: bytes, ext: str = ".ogg") -> str:
     """
     Save raw audio bytes to the cache and return the absolute file path.
@@ -857,7 +878,8 @@ def cache_audio_from_bytes(data: bytes, ext: str = ".ogg") -> str:
     """
     validate_inbound_media_size(len(data), media_type="audio")
     cache_dir = get_audio_cache_dir()
-    filename = f"audio_{uuid.uuid4().hex[:12]}{ext}"
+    sniffed_ext = _sniff_audio_ext(data, ext)
+    filename = f"audio_{uuid.uuid4().hex[:12]}{sniffed_ext}"
     filepath = cache_dir / filename
     filepath.write_bytes(data)
     return str(filepath)
@@ -1480,7 +1502,7 @@ MEDIA_DELIVERY_EXTS: Tuple[str, ...] = (
     # Video (embed inline where supported)
     ".mp4", ".mov", ".avi", ".mkv", ".webm", ".3gp",
     # Audio (delivered as voice/audio where supported)
-    ".mp3", ".wav", ".ogg", ".opus", ".m4a", ".flac",
+    ".mp3", ".m2a", ".wav", ".ogg", ".opus", ".m4a", ".flac",
     # Documents (uploaded as file attachments)
     ".pdf", ".docx", ".doc", ".odt", ".rtf", ".txt", ".md", ".epub",
     # Spreadsheets / data
@@ -1838,7 +1860,7 @@ def cache_media_bytes(
         or default_kind == "image"
     )
     is_video = mime.startswith("video/") or ext in SUPPORTED_VIDEO_TYPES or default_kind == "video"
-    is_audio = mime.startswith("audio/") or default_kind == "audio"
+    is_audio = mime.startswith("audio/") or ext in _AUDIO_EXTS or default_kind == "audio"
 
     if is_image:
         img_ext = ext if ext in SUPPORTED_IMAGE_DOCUMENT_TYPES else ".jpg"
@@ -1855,9 +1877,9 @@ def cache_media_bytes(
         return CachedMedia(to_agent_visible_cache_path(path), SUPPORTED_VIDEO_TYPES.get(vid_ext, "video/mp4"), "video", display)
 
     if is_audio:
-        aud_ext = ext if ext in {".ogg", ".mp3", ".wav", ".m4a", ".opus", ".flac"} else ".ogg"
+        aud_ext = ext if ext in _AUDIO_EXTS else ".ogg"
         path = cache_audio_from_bytes(data, ext=aud_ext)
-        out_mime = mime if mime.startswith("audio/") else f"audio/{aud_ext.lstrip('.')}"
+        out_mime = mime if mime.startswith("audio/") else _AUDIO_MIME_TYPES[aud_ext]
         return CachedMedia(to_agent_visible_cache_path(path), out_mime, "audio", display)
 
     # Any other file type is cached and surfaced to the agent as a local path
