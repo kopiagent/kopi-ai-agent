@@ -3599,6 +3599,17 @@ class DiscordAdapter(BasePlatformAdapter):
 
             filename = os.path.basename(audio_path)
 
+            reference = None
+            if reply_to and self._reply_to_mode != "off":
+                try:
+                    ref_msg = await channel.fetch_message(int(reply_to))
+                    if hasattr(ref_msg, "to_reference"):
+                        reference = ref_msg.to_reference(fail_if_not_exists=False)
+                    else:
+                        reference = ref_msg
+                except Exception as e:
+                    logger.debug("Could not fetch voice reply-to message: %s", e)
+
             with open(audio_path, "rb") as f:
                 file_data = f.read()
 
@@ -3630,7 +3641,7 @@ class DiscordAdapter(BasePlatformAdapter):
                 waveform_b64 = base64.b64encode(waveform_bytes).decode()
 
                 import json as _json
-                payload = _json.dumps({
+                payload_data = {
                     "flags": 8192,
                     "attachments": [{
                         "id": "0",
@@ -3638,7 +3649,13 @@ class DiscordAdapter(BasePlatformAdapter):
                         "duration_secs": round(duration_secs, 2),
                         "waveform": waveform_b64,
                     }],
-                })
+                }
+                if reference is not None:
+                    payload_data["message_reference"] = {
+                        "message_id": str(reply_to),
+                        "fail_if_not_exists": False,
+                    }
+                payload = _json.dumps(payload_data)
                 form = [
                     {"name": "payload_json", "value": payload},
                     {
@@ -3656,7 +3673,23 @@ class DiscordAdapter(BasePlatformAdapter):
             except Exception as voice_err:
                 logger.debug("Voice message flag failed, falling back to file: %s", voice_err)
                 file = discord.File(io.BytesIO(file_data), filename=filename)
-                msg = await channel.send(file=file)
+                try:
+                    msg = await channel.send(file=file, reference=reference)
+                except Exception as send_err:
+                    err_text = str(send_err)
+                    if (
+                        reference is not None
+                        and (
+                            (
+                                "error code: 50035" in err_text
+                                and "Cannot reply to a system message" in err_text
+                            )
+                            or "error code: 10008" in err_text
+                        )
+                    ):
+                        msg = await channel.send(file=file, reference=None)
+                    else:
+                        raise
                 return SendResult(success=True, message_id=str(msg.id))
         except Exception as e:  # pragma: no cover - defensive logging
             logger.error("[%s] Failed to send audio, falling back to base adapter: %s", self.name, e, exc_info=True)
@@ -3682,6 +3715,9 @@ class DiscordAdapter(BasePlatformAdapter):
             "ambient_gain": 0.18,    # idle bed loudness (0..1)
             "duck_gain": 0.06,       # ambient loudness while speech plays
             "speech_gain": 1.0,      # TTS / ack loudness
+            "lead_silence_ms": 200,  # silence prepended to each clip so the
+                                     # voice socket's warm-up doesn't clip
+                                     # the first word/syllable
             "ack_enabled": True,     # speak a short phrase before tool calls
             "ack_phrases": [
                 "Let me look into that.",
@@ -3759,6 +3795,27 @@ class DiscordAdapter(BasePlatformAdapter):
         self._voice_mixers[guild_id] = mixer
         logger.info("Voice mixer installed (guild=%d, ambient=%s)", guild_id, bool(ambient))
 
+    def _lead_silence_bytes(self) -> bytes:
+        """PCM silence prepended to speech clips on the mixer path.
+
+        Discord's voice socket needs a brief warm-up before receiving clients
+        actually hear audio; the first ~100-200ms is otherwise clipped, cutting
+        off the first word/syllable.  Returns b"" when ``lead_silence_ms`` is
+        unset or <= 0 so the behaviour is opt-out.
+        """
+        cfg = getattr(self, "_voice_fx_cfg", None) or {}
+        try:
+            lead_ms = int(cfg.get("lead_silence_ms", 0) or 0)
+        except (TypeError, ValueError):
+            return b""
+        if lead_ms <= 0:
+            return b""
+        try:
+            from voice_mixer import BYTES_PER_MS
+        except ImportError:
+            from .voice_mixer import BYTES_PER_MS
+        return b"\x00" * (BYTES_PER_MS * lead_ms)
+
     async def play_ack_in_voice(self, guild_id: int, phrase: Optional[str] = None) -> bool:
         """Speak a short acknowledgement over the ambient bed.
 
@@ -3800,7 +3857,8 @@ class DiscordAdapter(BasePlatformAdapter):
             if not pcm:
                 return False
             mixer.play_speech(
-                pcm, gain=float(self._voice_fx_cfg.get("speech_gain", 1.0))
+                self._lead_silence_bytes() + pcm,
+                gain=float(self._voice_fx_cfg.get("speech_gain", 1.0)),
             )
             self._reset_voice_timeout(guild_id)
             return True
@@ -3820,8 +3878,15 @@ class DiscordAdapter(BasePlatformAdapter):
         mixers = getattr(self, "_voice_mixers", None)
         return bool(mixers) and mixers.get(guild_id) is not None
 
-    async def join_voice_channel(self, channel) -> bool:
-        """Join a Discord voice channel. Returns True on success."""
+    async def join_voice_channel(self, channel, *, text_channel_id: int = None, source: dict = None) -> bool:
+        """Join a Discord voice channel. Returns True on success.
+
+        When ``text_channel_id`` is provided, the binding is stored so
+        voice transcriptions are routed to the correct text channel
+        (``_voice_text_channels``) without requiring `/voice join`.
+        This supports automatic/programmatic voice joins where the
+        command flow that normally establishes the binding is absent.
+        """
         if not self._client or not DISCORD_AVAILABLE:
             return False
         guild_id = channel.guild.id
@@ -3840,6 +3905,13 @@ class DiscordAdapter(BasePlatformAdapter):
             vc = await channel.connect()
             self._voice_clients[guild_id] = vc
             self._reset_voice_timeout(guild_id)
+
+            # Store text-channel binding for automatic/programmatic joins
+            # so voice transcriptions can be routed without /voice join.
+            if text_channel_id is not None:
+                self._voice_text_channels[guild_id] = text_channel_id
+            if source is not None:
+                self._voice_sources[guild_id] = source
 
             # Start voice receiver (Phase 2: listen to users)
             try:
@@ -3917,7 +3989,7 @@ class DiscordAdapter(BasePlatformAdapter):
             pcm = await asyncio.to_thread(decode_to_pcm, audio_path)
             if pcm:
                 speech_gain = float(self._voice_fx_cfg.get("speech_gain", 1.0))
-                mixer.play_speech(pcm, gain=speech_gain)
+                mixer.play_speech(self._lead_silence_bytes() + pcm, gain=speech_gain)
                 # Block until the speech child drains so callers serialise
                 # replies (mirrors legacy semantics) but the ambient keeps
                 # playing underneath the whole time.
@@ -3956,7 +4028,17 @@ class DiscordAdapter(BasePlatformAdapter):
                     logger.error("Voice playback error: %s", error)
                 loop.call_soon_threadsafe(done.set)
 
-            source = discord.FFmpegPCMAudio(audio_path)
+            # Prepend a short lead of silence so the voice socket's warm-up
+            # doesn't clip the first word (mirrors the mixer path above).
+            ffmpeg_opts: Dict[str, Any] = {}
+            _fx_cfg = getattr(self, "_voice_fx_cfg", None) or {}
+            try:
+                lead_ms = int(_fx_cfg.get("lead_silence_ms", 0) or 0)
+            except (TypeError, ValueError):
+                lead_ms = 0
+            if lead_ms > 0:
+                ffmpeg_opts["options"] = f"-af adelay={lead_ms}:all=1"
+            source = discord.FFmpegPCMAudio(audio_path, **ffmpeg_opts)
             source = discord.PCMVolumeTransformer(source, volume=1.0)
             vc.play(source, after=_after)
             try:

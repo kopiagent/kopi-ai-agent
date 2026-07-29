@@ -500,6 +500,118 @@ class TestCheckVoiceRequirements:
         assert result["stt_available"] is False
         assert "STT provider: MISSING" in result["details"]
 
+    def test_command_stt_provider_selected(self, monkeypatch):
+        """Catch-all branch fires for a selected command provider (not any provider)."""
+        monkeypatch.setattr("tools.voice_mode._audio_available", lambda: True)
+        monkeypatch.setattr("tools.voice_mode.detect_audio_environment",
+                            lambda: {"available": True, "warnings": []})
+        monkeypatch.setattr(
+            "tools.transcription_tools._load_stt_config",
+            lambda: {
+                "enabled": True,
+                "provider": "my-custom-stt",
+                "providers": {
+                    "my-custom-stt": {
+                        "type": "command",
+                        "command": "whisper_cpp {input}",
+                    },
+                },
+            },
+        )
+        from tools.voice_mode import check_voice_requirements
+
+        result = check_voice_requirements()
+        assert result["available"] is True
+        assert result["stt_available"] is True
+        assert "STT provider: OK (command: my-custom-stt)" in result["details"]
+
+    def test_unrelated_command_provider_not_confused(self, monkeypatch):
+        """Unrelated command provider does NOT make a different selected provider appear OK."""
+        monkeypatch.setattr("tools.voice_mode._audio_available", lambda: True)
+        monkeypatch.setattr("tools.voice_mode.detect_audio_environment",
+                            lambda: {"available": True, "warnings": []})
+        monkeypatch.setattr(
+            "tools.transcription_tools._load_stt_config",
+            lambda: {
+                "enabled": True,
+                "provider": "unknown-selected",
+                "providers": {
+                    "unrelated-command": {
+                        "type": "command",
+                        "command": "whisper_cpp {input}",
+                    },
+                },
+            },
+        )
+        monkeypatch.setattr(
+            "agent.transcription_registry.get_provider", lambda p: None,
+        )
+        monkeypatch.setattr(
+            "kopi_cli.plugins._ensure_plugins_discovered",
+            lambda force=False: None,
+        )
+
+        from tools.voice_mode import check_voice_requirements
+
+        result = check_voice_requirements()
+        assert result["available"] is False
+        assert result["stt_available"] is False
+        assert "STT provider: MISSING" in result["details"]
+
+    def test_plugin_stt_provider(self, monkeypatch):
+        """Plugin STT provider is recognized."""
+        monkeypatch.setattr("tools.voice_mode._audio_available", lambda: True)
+        monkeypatch.setattr("tools.voice_mode.detect_audio_environment",
+                            lambda: {"available": True, "warnings": []})
+        monkeypatch.setattr(
+            "tools.transcription_tools._load_stt_config",
+            lambda: {"enabled": True, "provider": "my-plugin-stt"},
+        )
+        plugin_provider = MagicMock()
+        plugin_provider.is_available.return_value = True
+        monkeypatch.setattr(
+            "agent.transcription_registry.get_provider",
+            lambda p: plugin_provider if p == "my-plugin-stt" else None,
+        )
+        monkeypatch.setattr(
+            "kopi_cli.plugins._ensure_plugins_discovered",
+            lambda force=False: None,
+        )
+
+        from tools.voice_mode import check_voice_requirements
+
+        result = check_voice_requirements()
+        assert result["available"] is True
+        assert result["stt_available"] is True
+        assert "STT provider: OK (plugin: my-plugin-stt)" in result["details"]
+
+    def test_unavailable_plugin_stt_provider(self, monkeypatch):
+        """A registered but unavailable plugin does not satisfy requirements."""
+        monkeypatch.setattr("tools.voice_mode._audio_available", lambda: True)
+        monkeypatch.setattr("tools.voice_mode.detect_audio_environment",
+                            lambda: {"available": True, "warnings": []})
+        monkeypatch.setattr(
+            "tools.transcription_tools._load_stt_config",
+            lambda: {"enabled": True, "provider": "my-plugin-stt"},
+        )
+        plugin_provider = MagicMock()
+        plugin_provider.is_available.return_value = False
+        monkeypatch.setattr(
+            "agent.transcription_registry.get_provider",
+            lambda p: plugin_provider if p == "my-plugin-stt" else None,
+        )
+        monkeypatch.setattr(
+            "kopi_cli.plugins._ensure_plugins_discovered",
+            lambda force=False: None,
+        )
+
+        from tools.voice_mode import check_voice_requirements
+
+        result = check_voice_requirements()
+        assert result["available"] is False
+        assert result["stt_available"] is False
+        assert "STT provider: MISSING" in result["details"]
+
 
 # ============================================================================
 # AudioRecorder
@@ -837,9 +949,20 @@ class TestTranscribeRecording:
         monkeypatch.setattr("tools.voice_mode._TEMP_DIR", str(temp_dir))
         monkeypatch.setattr("tools.transcription_tools.MAX_FILE_SIZE", 70 * 1024)
 
+        call_count = 0
         seen_paths = []
 
         def fake_transcribe(path, model=None):
+            nonlocal call_count
+            call_count += 1
+            # First call is on the original file — simulate remote provider
+            # rejecting it as too large so chunking kicks in.
+            if call_count == 1:
+                return {
+                    "success": False,
+                    "transcript": "",
+                    "error": "File too large: 0.1MB (max 0.1MB)",
+                }
             seen_paths.append(path)
             assert model == "base"
             assert path != str(wav_path)
@@ -877,7 +1000,17 @@ class TestTranscribeRecording:
         monkeypatch.setattr("tools.voice_mode._TEMP_DIR", str(temp_dir))
         monkeypatch.setattr("tools.transcription_tools.MAX_FILE_SIZE", 70 * 1024)
 
+        call_count = 0
+
         def fake_transcribe(path, model=None):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {
+                    "success": False,
+                    "transcript": "",
+                    "error": "File too large: 0.1MB (max 0.1MB)",
+                }
             return {"success": False, "transcript": "", "error": "provider rejected audio"}
 
         with patch("tools.transcription_tools.transcribe_audio", side_effect=fake_transcribe):
@@ -888,6 +1021,97 @@ class TestTranscribeRecording:
         assert result["error"].startswith("Chunk 1/")
         assert "provider rejected audio" in result["error"]
         assert list(temp_dir.iterdir()) == []
+
+    def test_trusts_transcribe_audio_skip_chunk_for_local(self, tmp_path, monkeypatch):
+        """Local providers never return 'File too large' — no chunking."""
+        wav_path = tmp_path / "record.wav"
+        n_frames = 50000
+        audio = struct.pack(f"<{n_frames}h", *([1000] * n_frames))
+        with wave.open(str(wav_path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            wf.writeframes(audio)
+
+        mock_transcribe = MagicMock(return_value={
+            "success": True,
+            "transcript": "local whisper result",
+            "provider": "local",
+        })
+
+        with patch("tools.transcription_tools.transcribe_audio", mock_transcribe):
+            from tools.voice_mode import transcribe_recording
+            result = transcribe_recording(str(wav_path), model="base")
+
+        assert result["success"] is True
+        assert result["transcript"] == "local whisper result"
+        assert "chunks" not in result
+        mock_transcribe.assert_called_once_with(str(wav_path), model="base")
+
+    def test_chunks_when_transcribe_audio_returns_file_too_large(self, tmp_path, monkeypatch):
+        """Remote provider rejects large file → chunking fallback."""
+        wav_path = tmp_path / "record.wav"
+        n_frames = 50000
+        audio = struct.pack(f"<{n_frames}h", *([1000] * n_frames))
+        with wave.open(str(wav_path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            wf.writeframes(audio)
+
+        temp_dir = tmp_path / "chunks"
+        temp_dir.mkdir()
+        monkeypatch.setattr("tools.voice_mode._TEMP_DIR", str(temp_dir))
+        monkeypatch.setattr("tools.transcription_tools.MAX_FILE_SIZE", 70 * 1024)
+
+        call_count = 0
+
+        def fake_transcribe(path, model=None):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {
+                    "success": False,
+                    "transcript": "",
+                    "error": "File too large: 30.0MB (max 25MB)",
+                }
+            return {
+                "success": True,
+                "transcript": f"chunk {call_count - 1}",
+                "provider": "openai",
+            }
+
+        with patch("tools.transcription_tools.transcribe_audio", side_effect=fake_transcribe):
+            from tools.voice_mode import transcribe_recording
+            result = transcribe_recording(str(wav_path), model="whisper-1")
+
+        assert result["success"] is True
+        assert result.get("chunks", 0) > 1
+
+    def test_other_error_does_not_trigger_chunk(self, tmp_path, monkeypatch):
+        """Non-size errors from transcribe_audio are returned as-is."""
+        wav_path = tmp_path / "record.wav"
+        n_frames = 50000
+        audio = struct.pack(f"<{n_frames}h", *([1000] * n_frames))
+        with wave.open(str(wav_path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            wf.writeframes(audio)
+
+        mock_transcribe = MagicMock(return_value={
+            "success": False,
+            "transcript": "",
+            "error": "STT is disabled in config.yaml",
+        })
+
+        with patch("tools.transcription_tools.transcribe_audio", mock_transcribe):
+            from tools.voice_mode import transcribe_recording
+            result = transcribe_recording(str(wav_path), model="base")
+
+        assert result["success"] is False
+        assert "STT is disabled" in result["error"]
+        mock_transcribe.assert_called_once()
 
 
 class TestWhisperHallucinationFilter:
