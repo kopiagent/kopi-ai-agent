@@ -634,12 +634,14 @@ def enabled() -> bool:
     """Return the shared-metrics policy for the active Kopi profile."""
     profile_key = relay_runtime.current_profile_key()
     try:
-        from kopi_cli.config import read_raw_config
+        from kopi_cli.config import read_raw_config_readonly
 
         # Collection consent is profile-owned. Managed config overlays may
         # control runtime policy, but cannot opt a profile into or out of
-        # shared metrics.
-        config = read_raw_config() or {}
+        # shared metrics. Read-only fast path: this gate runs 2-3x per agent
+        # turn, and the mutable read_raw_config() paid a full config deepcopy
+        # on every call.
+        config = read_raw_config_readonly() or {}
     except Exception:
         logger.debug("Unable to read Kopi shared-metrics policy", exc_info=True)
         value = False
