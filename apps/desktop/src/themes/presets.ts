@@ -11,12 +11,18 @@ import type { DesktopTheme, DesktopThemeTypography } from './types'
 // Covers macOS, Windows, Linux, plus the `emoji` generic for anything else.
 export const EMOJI_FALLBACK = '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", emoji'
 
+// Apple-first system stacks. macOS renders SF Pro / SF Mono — the same faces
+// Apple ships across its own UI — and the trailing entries only ever apply on
+// platforms where those aren't installed (Segoe on Windows, the generic
+// families elsewhere). Ordering matters: putting the Apple faces first is what
+// makes the app look native on macOS instead of falling into a webfont.
 const SYSTEM_SANS =
-  '"Segoe WPC", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif, ' +
+  '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", ' +
+  '"Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif, ' +
   EMOJI_FALLBACK
 
 const SYSTEM_MONO =
-  '"Cascadia Code", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Monaco, Consolas, monospace, ' + EMOJI_FALLBACK
+  'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, "Cascadia Code", Consolas, monospace, ' + EMOJI_FALLBACK
 
 export const DEFAULT_TYPOGRAPHY: DesktopThemeTypography = { fontSans: SYSTEM_SANS, fontMono: SYSTEM_MONO }
 
@@ -24,13 +30,26 @@ const NOUS_BLUE = '#0053FD'
 const PSYCHE_BLUE = '#1540B1'
 const PSYCHE_WARM = '#FFE6CB'
 
-// kopiaiagent.com marketing palette: blue + amber on clean slate neutrals.
-const KOPI_BLUE = '#2563eb'
-const KOPI_AMBER = '#f59e0b'
-const KOPI_SLATE_900 = '#0f172a'
+// kopiaiagent.com marketing palette — the coffee identity. Ported from the
+// site's daisyUI `[data-theme=kopi]` block (OKLCH there, converted to hex
+// here so every desktop surface can consume it):
+//   --p  oklch(58.84% .124 52.5)   -> #b5652d  roasted-bean primary
+//   --b1 oklch(97.35% .014 88.7)   -> #faf6ec  cream canvas
+//   --b2 oklch(92.20% .040 86.1)   -> #f1e4c8  latte
+//   --b3 oklch(87.85% .043 82.5)   -> #e5d5b8  crema border
+//   --bc oklch(20.00% .015 47.9)   -> #1c1410  espresso text
+//   --n  oklch(30.02% .031 58.1)   -> #3a2a1e  dark roast
+//   --a  oklch(48.28% .068 174.8)  -> #2e6b5c  the logo's green accent
+const KOPI_COFFEE = '#b5652d'
+const KOPI_CREAM = '#faf6ec'
+const KOPI_LATTE = '#f1e4c8'
+const KOPI_CREMA = '#e5d5b8'
+const KOPI_ESPRESSO = '#1c1410'
+const KOPI_DARK_ROAST = '#3a2a1e'
+const KOPI_GREEN = '#2e6b5c'
 
-const kopiTint = (pct: number) => `color-mix(in srgb, ${KOPI_BLUE} ${pct}%, #FFFFFF)`
-const kopiTintTransparent = (pct: number) => `color-mix(in srgb, ${KOPI_BLUE} ${pct}%, transparent)`
+const kopiTint = (pct: number) => `color-mix(in srgb, ${KOPI_COFFEE} ${pct}%, ${KOPI_CREAM})`
+const kopiTintTransparent = (pct: number) => `color-mix(in srgb, ${KOPI_COFFEE} ${pct}%, transparent)`
 
 /**
  * Kopi — matches the kopiaiagent.com marketing site: blue #2563eb primary,
@@ -39,66 +58,67 @@ const kopiTintTransparent = (pct: number) => `color-mix(in srgb, ${KOPI_BLUE} ${
 export const kopiTheme: DesktopTheme = {
   name: 'kopi',
   label: 'Kopi',
-  description: 'kopiaiagent.com look — blue & amber on clean slate',
+  description: 'kopiaiagent.com look — roasted coffee on cream',
   colors: {
-    background: '#f8fafc',
-    foreground: KOPI_SLATE_900,
-    card: '#ffffff',
-    cardForeground: KOPI_SLATE_900,
-    muted: '#f1f5f9',
-    mutedForeground: '#64748b',
-    popover: '#ffffff',
-    popoverForeground: KOPI_SLATE_900,
-    primary: KOPI_BLUE,
-    primaryForeground: '#ffffff',
+    background: KOPI_CREAM,
+    foreground: KOPI_ESPRESSO,
+    card: '#fffdf7',
+    cardForeground: KOPI_ESPRESSO,
+    muted: KOPI_LATTE,
+    mutedForeground: '#6f5b49',
+    popover: '#fffdf7',
+    popoverForeground: KOPI_ESPRESSO,
+    primary: KOPI_COFFEE,
+    primaryForeground: KOPI_CREAM,
     secondary: kopiTint(7),
-    secondaryForeground: '#334155',
-    accent: 'color-mix(in srgb, #f59e0b 12%, #FFFFFF)',
-    accentForeground: '#92400e',
-    border: '#e2e8f0',
+    secondaryForeground: KOPI_DARK_ROAST,
+    accent: `color-mix(in srgb, ${KOPI_GREEN} 12%, ${KOPI_CREAM})`,
+    accentForeground: KOPI_GREEN,
+    border: KOPI_CREMA,
     input: kopiTintTransparent(30),
-    ring: KOPI_BLUE,
-    midground: KOPI_BLUE,
-    composerRing: KOPI_BLUE,
-    destructive: '#dc2626',
-    destructiveForeground: '#ffffff',
-    sidebarBackground: '#f1f5f9',
-    sidebarBorder: '#e2e8f0',
+    ring: KOPI_COFFEE,
+    midground: KOPI_COFFEE,
+    composerRing: KOPI_COFFEE,
+    destructive: '#b3261e',
+    destructiveForeground: KOPI_CREAM,
+    sidebarBackground: KOPI_LATTE,
+    sidebarBorder: KOPI_CREMA,
     userBubble: kopiTint(6),
     userBubbleBorder: kopiTintTransparent(24)
   },
   darkColors: {
-    background: KOPI_SLATE_900,
-    foreground: '#e2e8f0',
-    card: '#1e293b',
-    cardForeground: '#e2e8f0',
-    muted: '#1e293b',
-    mutedForeground: '#94a3b8',
-    popover: '#1e293b',
-    popoverForeground: '#e2e8f0',
-    primary: '#3b82f6',
-    primaryForeground: '#ffffff',
-    secondary: '#334155',
-    secondaryForeground: '#cbd5e1',
-    accent: '#78350f',
-    accentForeground: '#fbbf24',
-    border: '#334155',
-    input: '#1e293b',
-    ring: '#3b82f6',
-    midground: '#3b82f6',
-    composerRing: KOPI_AMBER,
-    destructive: '#ef4444',
-    destructiveForeground: '#fef2f2',
-    sidebarBackground: '#0b1120',
-    sidebarBorder: '#1e293b',
-    userBubble: '#1e3a5f',
-    userBubbleBorder: '#2563eb'
+    background: '#17110d',
+    foreground: '#efe3d2',
+    card: '#241a13',
+    cardForeground: '#efe3d2',
+    muted: '#241a13',
+    mutedForeground: '#a08d79',
+    popover: '#241a13',
+    popoverForeground: '#efe3d2',
+    primary: '#d98a4f',
+    primaryForeground: '#1c1410',
+    secondary: KOPI_DARK_ROAST,
+    secondaryForeground: '#e5d5b8',
+    accent: '#1f3f37',
+    accentForeground: '#7fbfab',
+    border: '#3a2a1e',
+    input: '#241a13',
+    ring: '#d98a4f',
+    midground: '#d98a4f',
+    composerRing: '#d98a4f',
+    destructive: '#e5534b',
+    destructiveForeground: '#fdf3f2',
+    sidebarBackground: '#120d09',
+    sidebarBorder: '#2b2019',
+    userBubble: '#2e2118',
+    userBubbleBorder: '#8a5a34'
   },
+  // Apple typography: the OS faces (SF Pro / SF Mono), no webfont. Dropping
+  // the Google Fonts fetch also removes a third-party request on every launch
+  // and a flash of fallback text before Inter arrives.
   typography: {
-    fontSans: `"Inter", ${SYSTEM_SANS}`,
-    fontMono: `"JetBrains Mono", ${SYSTEM_MONO}`,
-    fontUrl:
-      'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap'
+    fontSans: SYSTEM_SANS,
+    fontMono: SYSTEM_MONO
   }
 }
 

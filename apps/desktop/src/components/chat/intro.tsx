@@ -146,6 +146,33 @@ function pickCopy(copies: IntroCopy[], seed = 0): IntroCopy {
 
 const WORDMARK = 'KOPI AGENT'
 
+/**
+ * The brand mark — the steaming cup from kopiaiagent.com's favicon, redrawn as
+ * inline SVG so it inherits theme colours and costs no network request. Kept
+ * transparent (the site's dark rounded tile is dropped) so it sits directly on
+ * the cream canvas.
+ */
+function CoffeeMark({ className }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 64 64">
+      {/* steam */}
+      <path
+        d="M26 14c-2 2.5-2 4.5 0 7M32 12c-2 2.5-2 4.5 0 7M38 14c-2 2.5-2 4.5 0 7"
+        opacity="0.55"
+        stroke="var(--dt-muted-foreground)"
+        strokeLinecap="round"
+        strokeWidth="2.2"
+      />
+      {/* cup */}
+      <path d="M18 28h24v10a10 10 0 0 1-10 10h-4a10 10 0 0 1-10-10V28z" fill="var(--dt-primary)" />
+      {/* handle */}
+      <path d="M42 30h4a5 5 0 0 1 0 10h-4" stroke="var(--dt-primary)" strokeWidth="3.2" />
+      {/* saucer */}
+      <rect fill="var(--dt-accent-foreground)" height="3.5" rx="1.75" width="32" x="14" y="50" />
+    </svg>
+  )
+}
+
 function resolveCopy(personality?: string, seed?: number): IntroCopy {
   const personalityKey = normalizeKey(personality)
 
@@ -166,15 +193,28 @@ export function Intro({ personality, seed }: IntroProps) {
       data-slot="aui_intro"
     >
       <div className="w-full min-w-0">
+        <CoffeeMark className="mx-auto mb-5 h-14 w-14 sm:h-16 sm:w-16" />
+
+        {/* The wordmark carries the composition: SF Pro Display (rounded,
+            optical) with weight contrast — KOPI heavy, AGENT light — so the
+            lockup reads as designed rather than as a system font scaled up.
+            fit-text needs both copies byte-identical: the aria-hidden one is
+            what it measures against the container. */}
         <p
           aria-label={WORDMARK}
-          className="fit-text mx-auto mb-1 w-[calc(100%-1rem)] font-['Collapse'] font-bold uppercase leading-[0.9] tracking-[0.08em] text-midground mix-blend-plus-lighter dark:text-foreground/90"
+          className="fit-text font-rounded mx-auto mb-3 w-[calc(100%-1rem)] uppercase leading-[0.92] tracking-[0.02em] text-midground dark:text-foreground/90"
           style={{ '--fit-min': '2.75rem' } as CSSProperties}
         >
           <span>
-            <span>{WORDMARK}</span>
+            <span>
+              <span className="font-extrabold">KOPI</span>{' '}
+              <span className="font-light tracking-[0.14em]">AGENT</span>
+            </span>
           </span>
-          <span aria-hidden="true">{WORDMARK}</span>
+          <span aria-hidden="true">
+            <span className="font-extrabold">KOPI</span>{' '}
+            <span className="font-light tracking-[0.14em]">AGENT</span>
+          </span>
         </p>
 
         <p className="m-0 text-center leading-normal tracking-tight">{copy.body}</p>
