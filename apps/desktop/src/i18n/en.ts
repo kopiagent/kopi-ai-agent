@@ -912,7 +912,7 @@ export const en: Translations = {
       noProviders: 'No providers are available for this toolset right now.',
       ready: 'Ready',
       needsSignIn: 'Needs sign-in',
-      needsSetup: 'Needs setup',
+      needsSetup: 'Setup required',
       nousIncluded: 'Included with a KOPI subscription — sign in to KOPI Proxy to activate.',
       nousAuthNeededTitle: 'Sign in to KOPI Proxy',
       nousAuthNeededMessage: provider => `${provider} is saved but won't activate until you sign in to KOPI Proxy.`,
