@@ -27,7 +27,6 @@
  * trust seam.
  */
 
-import { getStatus } from '@/kopi'
 import { installPluginSdk, sdkImportMap } from '@/sdk/runtime'
 import { notifyError } from '@/store/notifications'
 
@@ -247,8 +246,16 @@ async function scanDiskPlugins(): Promise<void> {
   scanning = true
 
   try {
-    const { kopi_home } = await getStatus()
-    const { entries } = await desktop.readDir(`${kopi_home}/desktop-plugins`)
+    // The plugin root is a LOCAL Electron path, resolved independently of the
+    // connected backend — a remote backend's kopi_home is a remote path and
+    // yields `undefined/desktop-plugins` here (#66899).
+    const root = await desktop.desktopPluginsRoot?.()
+
+    if (!root) {
+      return
+    }
+
+    const { entries } = await desktop.readDir(root)
     const seen = new Set<string>()
 
     for (const dir of entries.filter(e => e.isDirectory)) {
@@ -343,10 +350,17 @@ export function watchRuntimePlugins(): void {
     }
 
     try {
-      const { kopi_home } = await getStatus()
-      const watch = await desktop.watchDirectory(`${kopi_home}/desktop-plugins`)
+      // Same Electron-local root as the scanner — never the backend's
+      // kopi_home, which is a remote path in remote mode (#66899).
+      const root = await desktop.desktopPluginsRoot?.()
 
-      // null = dir not there yet (see watchDirectory in electron/main.ts):
+      if (!root) {
+        return false
+      }
+
+      const watch = await desktop.watchDirectory(root)
+
+      // KOPI: null = dir not there yet (see watchDirectory in electron/main.ts);
       // stay on the poll, which retries this on each tick.
       if (!watch) {
         return false
