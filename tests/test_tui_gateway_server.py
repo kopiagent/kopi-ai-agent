@@ -2407,7 +2407,7 @@ def test_session_resume_uses_parent_lineage_for_display(monkeypatch):
         def get_ancestor_display_prefix(self, _sid):
             return []
 
-        def get_messages_as_conversation(self, target, include_ancestors=False, repair_alternation=False):
+        def get_messages_as_conversation(self, target, include_ancestors=False, repair_alternation=False, **_kwargs):
             captured.setdefault("history_calls", []).append((target, include_ancestors))
             return (
                 [
@@ -2477,7 +2477,7 @@ def test_live_visible_history_prefers_db_display_with_candidate():
 
     class DB:
         def get_messages_as_conversation(
-            self, key, include_ancestors=False, repair_alternation=False
+            self, key, include_ancestors=False, repair_alternation=False, **_kwargs
         ):
             assert key == "s1"
             assert include_ancestors is True
@@ -2541,7 +2541,7 @@ def test_live_visible_history_keeps_candidate_and_fresh_tail():
     ]
 
     class DB:
-        def get_messages_as_conversation(self, key, include_ancestors=False, repair_alternation=False):
+        def get_messages_as_conversation(self, key, include_ancestors=False, repair_alternation=False, **_kwargs):
             return list(db_display)
 
     result = server._live_visible_history({"session_key": "s1"}, DB(), in_memory)
@@ -2779,7 +2779,7 @@ def test_session_resume_passes_stored_runtime_to_agent(monkeypatch):
         def get_ancestor_display_prefix(self, _sid):
             return []
 
-        def get_messages_as_conversation(self, target, include_ancestors=False, repair_alternation=False):
+        def get_messages_as_conversation(self, target, include_ancestors=False, repair_alternation=False, **_kwargs):
             return [{"role": "user", "content": "hello"}]
 
     def fake_make_agent(sid, key, session_id=None, session_db=None, **kwargs):
@@ -2848,7 +2848,7 @@ def test_session_resume_profile_uses_profile_db_cwd(monkeypatch, tmp_path):
         def get_ancestor_display_prefix(self, _sid):
             return []
 
-        def get_messages_as_conversation(self, _target, include_ancestors=False, repair_alternation=False):
+        def get_messages_as_conversation(self, _target, include_ancestors=False, repair_alternation=False, **_kwargs):
             return [{"role": "user", "content": "hello"}]
 
         def update_session_cwd(self, *_args):
@@ -7400,7 +7400,7 @@ def test_slash_exec_r7_read_commands_use_metadata_mirror_flag_on(monkeypatch):
         def get_ancestor_display_prefix(self, _sid):
             return []
 
-        def get_messages_as_conversation(self, key, include_ancestors=True, repair_alternation=False):
+        def get_messages_as_conversation(self, key, include_ancestors=True, repair_alternation=False, **_kwargs):
             assert key == "session-key"
             assert include_ancestors is True
             return list(history_from_db)
@@ -10679,7 +10679,7 @@ def test_session_history_uses_session_profile_db(monkeypatch, tmp_path):
     seen: dict = {}
 
     class LaunchDB:
-        def get_messages_as_conversation(self, _key, include_ancestors=True):
+        def get_messages_as_conversation(self, _key, include_ancestors=True, **_kwargs):
             seen["launch"] = True
             return [{"role": "user", "content": "launch"}]
 
@@ -10687,7 +10687,7 @@ def test_session_history_uses_session_profile_db(monkeypatch, tmp_path):
         def __init__(self, db_path=None):
             seen["db_path"] = db_path
 
-        def get_messages_as_conversation(self, _key, include_ancestors=True):
+        def get_messages_as_conversation(self, _key, include_ancestors=True, **_kwargs):
             seen["profile"] = True
             return [{"role": "user", "content": "from-profile"}]
 
