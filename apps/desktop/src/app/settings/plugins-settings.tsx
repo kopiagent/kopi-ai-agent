@@ -22,10 +22,19 @@ function reveal(file: string) {
 
 async function revealPluginsDir() {
   try {
-    const { kopi_home } = await getStatus()
+    // Electron owns the local plugin root — deriving it from the backend's
+    // kopi_home breaks against a remote backend (#66899).
+    const dir = await window.kopiDesktop?.desktopPluginsRoot?.()
+
+    if (!dir) {
+      notifyError('Desktop plugins are unavailable', 'Could not resolve the plugins folder')
+
+      return
+    }
+
     // openDir (not reveal): the door often doesn't exist on first use, and
     // showItemInFolder on a missing path silently no-ops (esp. Windows).
-    const result = await window.kopiDesktop?.openDir?.(`${kopi_home}/desktop-plugins`)
+    const result = await window.kopiDesktop?.openDir?.(dir)
 
     if (result && !result.ok) {
       notifyError(result.error ?? 'unknown error', 'Could not open the plugins folder')

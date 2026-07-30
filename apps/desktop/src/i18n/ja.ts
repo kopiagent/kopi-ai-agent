@@ -949,6 +949,9 @@ export const ja = defineLocale({
       needsSetup: 'セットアップが必要',
       nousIncluded: 'KOPI サブスクリプションに含まれています。有効にするには KOPI Proxy にサインインしてください。',
       nousAuthNeededTitle: 'KOPI Proxy にサインイン',
+      activeBackend: '使用中',
+      activeBackendHint: 'これが現在アクティブなバックエンドです',
+      useBackend: 'このバックエンドを使う',
       nousAuthNeededMessage: provider =>
         `${provider} は保存されましたが、KOPI Proxy にサインインするまで有効になりません。`,
       nousAuthSignIn: 'サインイン',
