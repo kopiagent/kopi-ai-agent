@@ -381,7 +381,7 @@ def test_shared_metrics_and_rich_plugin_share_one_core_session(
         "KOPI_NEMO_RELAY_ATIF_OUTPUT_DIRECTORY", str(tmp_path / "atif")
     )
     monkeypatch.setattr(
-        "kopi_cli.config.read_raw_config",
+        "kopi_cli.config.read_raw_config_readonly",
         lambda: {"telemetry": {"shared_metrics": {"enabled": True}}},
     )
     plugin = _fresh_plugin(monkeypatch, fake)

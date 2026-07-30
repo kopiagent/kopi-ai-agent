@@ -26,7 +26,6 @@ from typing import Any, Optional
 
 from kopi_cli import kanban_db as kb
 from kopi_cli import kanban_swarm as ks
-from kopi_cli.profiles import get_active_profile_name
 
 
 # ---------------------------------------------------------------------------
