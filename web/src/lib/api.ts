@@ -324,6 +324,7 @@ export interface OfficeStateResponse {
   agents: OfficeAgent[];
   count: number;
   ts: number;
+}
 
 function appendQueryParam(url: string, key: string, value?: string): string {
   if (!value) return url;
