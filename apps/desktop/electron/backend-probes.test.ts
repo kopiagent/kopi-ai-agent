@@ -12,11 +12,19 @@ import path from 'node:path'
 
 import { test } from 'vitest'
 
-import { canImportKopiCli, kopiRuntimeImportProbe, shouldTrustKopiOverride, verifyKopiCli } from './backend-probes'
+import {
+  canImportKopiCli,
+  DEFAULT_PROBE_TIMEOUT_MS,
+  kopiRuntimeImportProbe,
+  PROBE_TIMEOUT_MS,
+  resolveProbeTimeoutMs,
+  shouldTrustKopiOverride,
+  verifyKopiCli
+} from './backend-probes'
 
 // Resolve the host's own Node binary -- guaranteed to be on disk and
 // runnable. We use it as both a stand-in for "a python that doesn't
-// have kopi_cli" (since `node -m kopi_cli.main --version` will exit
+// have kopi_cli" (since `node -c "import kopi_cli"` will exit
 // non-zero) and as a way to script verifyKopiCli's success path
 // (a tiny script we write to disk that exits 0 on --version).
 const NODE_BIN = process.execPath
@@ -27,10 +35,12 @@ test('canImportKopiCli returns false when path is falsy', () => {
   assert.equal(canImportKopiCli(undefined), false)
 })
 
-test('canImportKopiCli returns false when interpreter cannot run the Kopi CLI module', () => {
-  // node IS an interpreter, but `node -m kopi_cli.main --version` is
-  // not a runnable Kopi CLI. Different exit reason from a real Python's
-  // ModuleNotFoundError, same resolver signal: fall through.
+test('canImportKopiCli returns false when interpreter cannot run -c', () => {
+  // node IS an interpreter, but `node -c "import kopi_cli"` is a
+  // SyntaxError -- different exit reason from a real Python's
+  // ModuleNotFoundError, but the predicate is "exit 0 or not" and
+  // both land on "not", which is exactly what we want for the
+  // resolver fall-through.
   assert.equal(canImportKopiCli(NODE_BIN), false)
 })
 
@@ -93,9 +103,25 @@ test('verifyKopiCli returns true when --version exits 0', () => {
 })
 
 test('verifyKopiCli swallows timeouts (does not throw)', () => {
-  // We can't easily provoke a real 5s hang in CI without slowing the
+  // We can't easily provoke a real hang in CI without slowing the
   // suite, but we CAN confirm that an invocation that DOES throw
   // (because the binary is missing) returns false rather than
   // propagating. Same code path the timeout case takes.
   assert.equal(verifyKopiCli('/definitely/not/a/real/binary/anywhere'), false)
+})
+
+test('default probe timeout is 15s (not the old 5s death-loop value)', () => {
+  assert.equal(DEFAULT_PROBE_TIMEOUT_MS, 15_000)
+  // Module constant uses process.env at load time; with no override it
+  // matches the default (tests run without KOPI_PROBE_TIMEOUT_MS).
+  assert.equal(PROBE_TIMEOUT_MS, DEFAULT_PROBE_TIMEOUT_MS)
+})
+
+test('resolveProbeTimeoutMs honours KOPI_PROBE_TIMEOUT_MS', () => {
+  assert.equal(resolveProbeTimeoutMs({}), DEFAULT_PROBE_TIMEOUT_MS)
+  assert.equal(resolveProbeTimeoutMs({ KOPI_PROBE_TIMEOUT_MS: '30000' }), 30_000)
+  assert.equal(resolveProbeTimeoutMs({ KOPI_PROBE_TIMEOUT_MS: '0' }), DEFAULT_PROBE_TIMEOUT_MS)
+  assert.equal(resolveProbeTimeoutMs({ KOPI_PROBE_TIMEOUT_MS: 'nope' }), DEFAULT_PROBE_TIMEOUT_MS)
+  // Cap runaway values
+  assert.equal(resolveProbeTimeoutMs({ KOPI_PROBE_TIMEOUT_MS: '999999' }), 120_000)
 })

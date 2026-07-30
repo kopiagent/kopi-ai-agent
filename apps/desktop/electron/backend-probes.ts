@@ -20,8 +20,9 @@
  * actually works.
  *
  * Both probes are deliberately fast and forgiving:
- *   - 5s timeout (a hung interpreter beats forever, but we still give
- *     slow disks / cold caches room to breathe)
+ *   - default 15s timeout (5s was too short on cold Windows disks / AV;
+ *     issue #61764 death-loop) with KOPI_PROBE_TIMEOUT_MS override
+ *   - one automatic retry after a timeout before declaring the runtime dead
  *   - stdio ignored (we only care about exit code; stdout/stderr are
  *     not surfaced to the user, just to recentKopiLog for forensics
  *     via the caller's catch block if it chooses)
@@ -34,7 +35,82 @@
 
 import { execFileSync } from 'node:child_process'
 
-const PROBE_TIMEOUT_MS = 5000
+/** Default probe budget. 5s false-negativeed healthy Windows cold starts (#61764). */
+const DEFAULT_PROBE_TIMEOUT_MS = 15_000
+
+/**
+ * Resolve the backend probe timeout (ms).
+ * Honours KOPI_PROBE_TIMEOUT_MS when it parses as a positive integer.
+ */
+function resolveProbeTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.KOPI_PROBE_TIMEOUT_MS
+
+  if (raw == null || raw === '') {
+    return DEFAULT_PROBE_TIMEOUT_MS
+  }
+
+  const n = Number.parseInt(String(raw), 10)
+
+  if (!Number.isFinite(n) || n <= 0) {
+    return DEFAULT_PROBE_TIMEOUT_MS
+  }
+
+  // Clamp absurd values (ms) so a typo can't hang startup forever.
+  return Math.min(n, 120_000)
+}
+
+const PROBE_TIMEOUT_MS = resolveProbeTimeoutMs()
+
+function isTimeoutError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') {
+    return false
+  }
+
+  const e = err as { code?: string; killed?: boolean; signal?: string }
+
+  if (e.killed === true) {
+    return true
+  }
+
+  if (e.code === 'ETIMEDOUT') {
+    return true
+  }
+
+  // Node marks timed-out execFileSync with SIGTERM on some platforms.
+  if (e.signal === 'SIGTERM') {
+    return true
+  }
+
+  return false
+}
+
+/**
+ * Run execFileSync; on timeout only, retry once before failing.
+ * Non-timeout failures (ENOENT, non-zero exit) fail immediately.
+ */
+function execProbeSync(
+  command: string,
+  args: string[],
+  options: {
+    cwd?: string
+    env?: NodeJS.ProcessEnv
+    stdio: 'ignore'
+    timeout: number
+    shell?: boolean
+    windowsHide?: boolean
+  }
+): void {
+  try {
+    execFileSync(command, args, options)
+  } catch (err) {
+    if (!isTimeoutError(err)) {
+      throw err
+    }
+
+    // One cold-cache / AV miss should not force kopi-setup --update (#61764).
+    execFileSync(command, args, options)
+  }
+}
 
 /**
  * Return the Python snippet used to verify Kopi can import far enough to
@@ -48,8 +124,7 @@ function kopiRuntimeImportProbe() {
 }
 
 /**
- * Return true iff the Kopi CLI module can start far enough to answer
- * ``--version``.
+ * Return true iff the Kopi runtime import probe exits 0.
  *
  * Used to gate the "fallback to system Python with kopi_cli installed"
  * rung of resolveKopiBackend. Without this, a system Python 3.11-3.13
@@ -58,10 +133,9 @@ function kopiRuntimeImportProbe() {
  * site-packages -- and the resolver returns a backend that immediately
  * dies on spawn.
  *
- * This intentionally exercises the same ``python -m kopi_cli.main`` entrypoint
- * the desktop backend will spawn. A shallow import can pass when the source tree
- * is visible on ``PYTHONPATH`` but runtime dependencies such as Rich are missing,
- * then the real backend dies before it announces a port.
+ * The probe intentionally imports kopi_cli.config, not just the top-level
+ * package: a broken/empty Windows launcher venv can still see the source tree
+ * through PYTHONPATH but lack PyYAML, then die on the first real CLI import.
  *
  * @param {string} pythonPath - Absolute path to a python.exe / python.
  * @param {object} [opts.env] - Additional environment for the probe.
@@ -73,7 +147,7 @@ function canImportKopiCli(pythonPath: string, opts: { env?: Record<string, strin
   }
 
   try {
-    execFileSync(pythonPath, ['-m', 'kopi_cli.main', '--version'], {
+    execProbeSync(pythonPath, ['-c', kopiRuntimeImportProbe()], {
       env: { ...process.env, ...(opts.env || {}) },
       stdio: 'ignore',
       timeout: PROBE_TIMEOUT_MS,
@@ -122,7 +196,7 @@ function verifyKopiCli(kopiCommand: string, opts?: { shell?: boolean }) {
   }
 
   try {
-    execFileSync(kopiCommand, ['--version'], {
+    execProbeSync(kopiCommand, ['--version'], {
       stdio: 'ignore',
       timeout: PROBE_TIMEOUT_MS,
       shell: Boolean(opts?.shell),
@@ -135,4 +209,13 @@ function verifyKopiCli(kopiCommand: string, opts?: { shell?: boolean }) {
   }
 }
 
-export { canImportKopiCli, kopiRuntimeImportProbe, PROBE_TIMEOUT_MS, shouldTrustKopiOverride, verifyKopiCli }
+export {
+  canImportKopiCli,
+  DEFAULT_PROBE_TIMEOUT_MS,
+  execProbeSync,
+  kopiRuntimeImportProbe,
+  PROBE_TIMEOUT_MS,
+  resolveProbeTimeoutMs,
+  shouldTrustKopiOverride,
+  verifyKopiCli
+}

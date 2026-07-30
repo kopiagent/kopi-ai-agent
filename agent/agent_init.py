@@ -118,7 +118,7 @@ def _provider_default_routes(provider: str) -> set[str]:
         from kopi_cli.providers import KOPI_OVERLAYS, get_provider
 
         overlay = KOPI_OVERLAYS.get(provider)
-        provider_def = get_provider(provider)
+        provider_def = get_provider(provider, allow_network=False)
         for value in (
             getattr(overlay, "base_url_override", ""),
             getattr(provider_def, "base_url", ""),
