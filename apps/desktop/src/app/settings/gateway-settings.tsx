@@ -8,17 +8,7 @@ import { Tip } from '@/components/ui/tooltip'
 import type { DesktopAuthProvider, DesktopCloudAgent, DesktopCloudOrg, DesktopConnectionProbeResult } from '@/global'
 import { useI18n } from '@/i18n'
 import { ExternalLink } from '@/lib/external-link'
-import {
-  AlertCircle,
-  Check,
-  FileText,
-  Globe,
-  HelpCircle,
-  Loader2,
-  LogIn,
-  Monitor,
-  RefreshCw
-} from '@/lib/icons'
+import { AlertCircle, Check, FileText, Globe, HelpCircle, Loader2, LogIn, Monitor, RefreshCw } from '@/lib/icons'
 import { selectableCardClass } from '@/lib/selectable-card'
 import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
@@ -42,7 +32,9 @@ const KOPI_OFFERED_MODES: readonly Mode[] = ['local', 'remote']
  *  DesktopGatewayConfig in global.d.ts), so it maps to 'remote'; 'ssh' has no
  *  remote-URL equivalent, so it falls back to the local default. */
 const coerceOfferedMode = (mode: Mode): Mode => {
-  if (KOPI_OFFERED_MODES.includes(mode)) {return mode}
+  if (KOPI_OFFERED_MODES.includes(mode)) {
+    return mode
+  }
 
   return mode === 'cloud' ? 'remote' : 'local'
 }

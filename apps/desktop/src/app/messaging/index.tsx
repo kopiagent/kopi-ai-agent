@@ -188,6 +188,18 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
   )
 
   useRefreshHotkey(() => void refreshAll())
+
+  useEffect(() => {
+    void refreshAll()
+  }, [refreshAll])
+
+  const changeEventsAvailable = useStore($changeEventsAvailable)
+  const platformsChangeTick = useStore($platformsChangeTick)
+  const pairingChangeTick = useStore($pairingChangeTick)
+
+  // A new pending request (or a grant from another surface) moves the pairing
+  // store on disk; the change watcher turns that into pairing.changed.
+  useEffect(() => {
     if (!changeEventsAvailable || pairingChangeTick === 0 || document.hidden) {
       return
     }
