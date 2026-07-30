@@ -17,7 +17,13 @@ import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
 import { createBackendConnectionState } from './backend-connection-state'
 import { buildDesktopBackendEnv, normalizeKopiHomeRoot } from './backend-env'
 import { isReauthRequiredError, waitForKopiReady } from './backend-health'
-import { canImportKopiCli, shouldTrustKopiOverride, verifyKopiCli } from './backend-probes'
+import {
+  canImportKopiCli,
+  execProbeSync,
+  PROBE_TIMEOUT_MS,
+  shouldTrustKopiOverride,
+  verifyKopiCli
+} from './backend-probes'
 import { waitForDashboardPortAnnouncement } from './backend-ready'
 import { shouldLatchBackendStartFailure, shouldLatchRemoteReauthFailure } from './backend-start-failure'
 import { detectRemoteDisplay, isWindowsBinaryPathInWsl, isWslEnvironment } from './bootstrap-platform'
@@ -1890,11 +1896,22 @@ function backendSupportsServe(backend) {
   if (supported === null) {
     try {
       const prefix = backend.args && backend.args[0] === '-m' ? backend.args.slice(0, 2) : []
-      execFileSync(backend.command, [...prefix, 'serve', '--help'], {
+      // Same cold-Windows Python-startup class as the runtime probes
+      // (#61764/#72632/#72707): `serve --help` imports at least as much as
+      // `kopi --version` (~10.5s measured cold), and a false negative here
+      // is cached for the process lifetime, silently routing a modern
+      // runtime through the legacy `dashboard` form. Share the probe budget
+      // and its timeout-only retry instead of a thinner local bound.
+      execProbeSync(backend.command, [...prefix, 'serve', '--help'], {
         cwd: backend.root || undefined,
         env: { ...process.env, KOPI_HOME, ...(backend.env || {}) },
-        timeout: 15000,
+        timeout: PROBE_TIMEOUT_MS,
         stdio: 'ignore',
+        // `.cmd`/`.bat` shim backends carry shell: true in their descriptor
+        // (see resolveKopiBackend step 4); execFileSync of a .cmd without
+        // shell throws EINVAL on modern Node, which the catch below would
+        // mis-cache as "serve unsupported" for the process lifetime.
+        shell: Boolean(backend.shell),
         windowsHide: true
       })
       supported = true
@@ -2051,7 +2068,10 @@ function findSystemPython() {
         const out = execFileSync(
           'reg',
           ['query', `${hive}\\SOFTWARE\\Python\\PythonCore\\${version}\\InstallPath`, '/ve', '/reg:64'],
-          hiddenWindowsChildOptions({ encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+          // Registry reads are near-instant; the bound only exists so a
+          // pathologically wedged reg.exe can't hang the synchronous boot
+          // resolver forever (this ran unbounded before).
+          hiddenWindowsChildOptions({ encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000 })
         )
 
         // Output format: "    (Default)    REG_SZ    C:\Path\To\Python\"
@@ -2106,7 +2126,12 @@ function findSystemPython() {
           [`-${version}`, '-c', 'import sys; print(sys.executable)'],
           hiddenWindowsChildOptions({
             encoding: 'utf8',
-            stdio: ['ignore', 'pipe', 'ignore']
+            stdio: ['ignore', 'pipe', 'ignore'],
+            // Bare interpreter startup — much lighter than the kopi-import
+            // probes, but still python.exe under cold cache / AV scan, so
+            // share the probe budget rather than running unbounded (this
+            // synchronous exec previously had no timeout at all).
+            timeout: PROBE_TIMEOUT_MS
           })
         )
 
@@ -3883,17 +3908,20 @@ function resolveKopiBackend(backendArgs) {
       // through to the install-script bootstrap if the optional probe times
       // out under load; the pinned backend is the only valid runtime there.
       if (shouldTrustKopiOverride(kopiOverride) || verifyKopiCli(kopiCommand, { shell: shellForProbe })) {
-        return (
-          unwrapWindowsVenvKopiCommand(kopiCommand, backendArgs) || {
-            label: `existing Kopi CLI at ${kopiCommand}`,
-            command: kopiCommand,
-            args: backendArgs,
-            bootstrap: false,
-            env: {},
-            kind: 'command',
-            shell: shellForProbe
-          }
-        )
+        // `unwrapped` above already answered "is this a Windows venv shim?" —
+        // it was null (not a shim, or its import probe failed). Do NOT re-run
+        // unwrapWindowsVenvKopiCommand here: the second call repeats the
+        // same un-memoized import probe, costing up to another full probe
+        // timeout on the boot path for an answer we already have.
+        return {
+          label: `existing Kopi CLI at ${kopiCommand}`,
+          command: kopiCommand,
+          args: backendArgs,
+          bootstrap: false,
+          env: {},
+          kind: 'command',
+          shell: shellForProbe
+        }
       }
 
       rememberLog(`Ignoring existing Kopi CLI at ${kopiCommand}: --version probe failed; falling through to bootstrap.`)
@@ -8052,9 +8080,7 @@ async function spawnPoolBackend(profile, entry) {
       onWaitTick: reason => {
         if (!poolAnnounced) {
           poolAnnounced = true
-          rememberLog(
-            `[updates] update in progress (${reason}); deferring pool backend start for profile "${profile}"`
-          )
+          rememberLog(`[updates] update in progress (${reason}); deferring pool backend start for profile "${profile}"`)
         }
       },
       pollMs: UPDATE_WAIT_POLL_MS,
