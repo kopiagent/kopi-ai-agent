@@ -36,6 +36,12 @@ def _write_sidecar_fixture(tmp_path: Path, *, sdk_available: bool) -> Path:
     sidecar = tmp_path / "sidecar"
     sidecar.mkdir()
     shutil.copyfile("plugins/platforms/photon/sidecar/index.mjs", sidecar / "index.mjs")
+    # index.mjs imports sibling helper modules — copy every non-patch .mjs so
+    # the fixture keeps working as helpers are extracted from index.mjs.
+    for helper in Path("plugins/platforms/photon/sidecar").glob("*.mjs"):
+        if helper.name in ("index.mjs", "patch-spectrum-mixed-attachments.mjs"):
+            continue
+        shutil.copyfile(helper, sidecar / helper.name)
     (sidecar / "patch-spectrum-mixed-attachments.mjs").write_text(
         "export function patchSpectrumTs() { throw new Error('forced patch failure'); }\n",
         encoding="utf-8",
@@ -148,6 +154,15 @@ def test_sidecar_healthz_reports_stream_health() -> None:
     assert "return ok(res, { stream: streamHealthSnapshot() });" in index
     assert "STREAM_INTERRUPTED_DEGRADE_COUNT" in index
     assert "process.exit(75);" in index
+
+
+def test_sidecar_exposes_richlink_send_endpoint() -> None:
+    """The loopback endpoint should wrap spectrum-ts' richlink() builder."""
+    index = Path("plugins/platforms/photon/sidecar/index.mjs").read_text(encoding="utf-8")
+    assert "richlink: spectrumRichlink" in index
+    assert 'if (req.url === "/send-richlink")' in index
+    assert "isHttpUrl(url)" in index
+    assert "space.send(spectrumRichlink(url.trim()))" in index
 
 
 def test_sidecar_intercepts_both_console_channels() -> None:
