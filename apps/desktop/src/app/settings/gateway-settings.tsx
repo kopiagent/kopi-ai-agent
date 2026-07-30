@@ -11,15 +11,13 @@ import { ExternalLink } from '@/lib/external-link'
 import {
   AlertCircle,
   Check,
-  Cloud,
   FileText,
   Globe,
   HelpCircle,
   Loader2,
   LogIn,
   Monitor,
-  RefreshCw,
-  Terminal
+  RefreshCw
 } from '@/lib/icons'
 import { selectableCardClass } from '@/lib/selectable-card'
 import { cn } from '@/lib/utils'
@@ -31,6 +29,24 @@ import { EmptyState, ListRow, Pill, SettingsContent, SettingsSkeleton } from './
 import { enrichSelectedSshHost, selectSshHost } from './ssh-host-selection'
 
 type Mode = 'local' | 'remote' | 'cloud' | 'ssh'
+
+// KOPI: only Local and Remote gateways are offered. The 'cloud' (Kopi Cloud)
+// and 'ssh' modes stay in the type/IPC/main-process layers so we keep zero
+// divergence from upstream there — they are simply not selectable in the UI,
+// and a saved config carrying one is coerced below. Mirrors the onboarding
+// provider lock: hide at the picker, don't rip out the machinery.
+const KOPI_OFFERED_MODES: readonly Mode[] = ['local', 'remote']
+
+/** Coerce a saved hidden mode onto an offered one so the picker is never in an
+ *  unreachable state. 'cloud' is a remote connection under the hood (see
+ *  DesktopGatewayConfig in global.d.ts), so it maps to 'remote'; 'ssh' has no
+ *  remote-URL equivalent, so it falls back to the local default. */
+const coerceOfferedMode = (mode: Mode): Mode => {
+  if (KOPI_OFFERED_MODES.includes(mode)) {return mode}
+
+  return mode === 'cloud' ? 'remote' : 'local'
+}
+
 type AuthMode = 'oauth' | 'token'
 type ProbeStatus = 'idle' | 'probing' | 'done' | 'error'
 // Kopi Cloud discovery lifecycle for the cloud-mode panel.
@@ -165,7 +181,10 @@ export function GatewaySettings({ embedded = false }: { embedded?: boolean } = {
   const [connectedCloudUrl, setConnectedCloudUrl] = useState('')
 
   const acceptSavedConfig = (config: GatewaySettingsState) => {
-    setState(config)
+    // KOPI: a config saved before the picker was narrowed (or written by an
+    // env override) can still carry 'cloud'/'ssh' — coerce so the UI always
+    // has a selected, visible card.
+    setState({ ...config, mode: coerceOfferedMode(config.mode) })
     setConnectedCloudUrl(savedCloudConnectionUrl(config))
   }
 
@@ -1051,7 +1070,8 @@ export function GatewaySettings({ embedded = false }: { embedded?: boolean } = {
         <div className="text-[length:var(--conversation-caption-font-size)] font-medium text-(--ui-text-secondary)">
           {g.modeTitle}
         </div>
-        <div className="grid auto-rows-fr grid-cols-1 gap-2 sm:grid-cols-2 min-[72rem]:grid-cols-4">
+        {/* KOPI: Local + Remote only — see KOPI_OFFERED_MODES. */}
+        <div className="grid auto-rows-fr grid-cols-1 gap-2 sm:grid-cols-2">
           <ModeCard
             active={state.mode === 'local'}
             description={scope === null ? g.localDesc : g.inheritDesc}
@@ -1061,14 +1081,6 @@ export function GatewaySettings({ embedded = false }: { embedded?: boolean } = {
             title={scope === null ? g.localTitle : g.inheritTitle}
           />
           <ModeCard
-            active={state.mode === 'cloud'}
-            description={g.cloudDesc}
-            disabled={state.envOverride}
-            icon={Cloud}
-            onSelect={() => setState(current => ({ ...current, mode: 'cloud' }))}
-            title={g.cloudTitle}
-          />
-          <ModeCard
             active={state.mode === 'remote'}
             description={g.remoteDesc}
             disabled={state.envOverride}
@@ -1076,15 +1088,6 @@ export function GatewaySettings({ embedded = false }: { embedded?: boolean } = {
             icon={Globe}
             onSelect={() => setState(current => ({ ...current, mode: 'remote' }))}
             title={g.remoteTitle}
-          />
-          <ModeCard
-            active={state.mode === 'ssh'}
-            description={g.sshDesc}
-            disabled={state.envOverride}
-            hint={g.sshTrustHint}
-            icon={Terminal}
-            onSelect={() => setState(current => ({ ...current, mode: 'ssh' }))}
-            title={g.sshTitle}
           />
         </div>
       </div>

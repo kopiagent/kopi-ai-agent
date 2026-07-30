@@ -75,4 +75,31 @@ describe('GatewaySettings', () => {
       screen.queryByText('Start a private Kopi backend on localhost. This is the default and works offline.')
     ).toBeNull()
   })
+
+  // KOPI divergence: the picker offers Local + Remote only. Upstream ships two
+  // more cards (Kopi Cloud, Connect via SSH); a sync that reintroduces them
+  // must fail here rather than silently restoring modes we don't support.
+  it('offers only the local and remote gateway modes', async () => {
+    const { GatewaySettings } = await import('./gateway-settings')
+
+    render(<GatewaySettings />)
+    expect(await screen.findByText('Local gateway')).toBeTruthy()
+    expect(screen.getByText('Remote gateway')).toBeTruthy()
+    expect(screen.queryByText('Kopi Cloud')).toBeNull()
+    expect(screen.queryByText('Connect via SSH')).toBeNull()
+  })
+
+  it('coerces a saved cloud connection onto the remote card', async () => {
+    getConnectionConfig.mockResolvedValue({
+      ...localConnection,
+      mode: 'cloud',
+      remoteUrl: 'https://agent.example.com'
+    })
+    const { GatewaySettings } = await import('./gateway-settings')
+
+    render(<GatewaySettings />)
+    // The hidden 'cloud' mode must not leave the picker without a selection.
+    expect(await screen.findByText('Remote gateway')).toBeTruthy()
+    expect(screen.queryByText('Kopi Cloud')).toBeNull()
+  })
 })
