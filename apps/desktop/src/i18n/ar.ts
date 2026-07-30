@@ -397,6 +397,8 @@ export const ar = defineLocale({
       translucencyDesc: 'إظهار سطح المكتب من خلال النافذة بالكامل. متاح على macOS وWindows فقط.',
       backdropTitle: 'خلفية النافذة',
       backdropDesc: 'اختيار مقدار مزج خلفية سطح المكتب مع سطح Kopi.',
+      reactionsTitle: 'تفاعلات الرسائل',
+      reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل مع الرسائل، ويمكن لـ Kopi التفاعل مع رسائلك.',
       embedsTitle: 'التضمينات المضمّنة',
       embedsDesc:
         'تُحمّل المعاينات الغنية من مواقع طرف ثالث (YouTube، X، …). "اسأل" يعرض عنصرا نائبا حتى تسمح لكل واحد؛ "دائما" يحمّلها تلقائيا؛ "إيقاف" يبقي الروابط عادية.',
@@ -2281,6 +2283,7 @@ export const ar = defineLocale({
       refresh: 'تحديث',
       moreActions: 'إجراءات إضافية',
       branchNewChat: 'تفريع إلى محادثة جديدة',
+      react: 'تفاعل',
       dismissError: 'تجاهل الخطأ',
       readAloudFailed: 'فشلت القراءة بصوت عال',
       preparingAudio: 'جار تجهيز الصوت',
