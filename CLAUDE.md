@@ -10,8 +10,30 @@
 
 三步缺一不可。禁止:直推 main、CI 红着合、"只跑了受影响的测试就说没问题"。
 
-**唯一豁免**:纯文档改动(只动 `*.md`、不碰任何代码/配置/锁文件)可跳过本地全量,
-但**仍必须走 PR 且 CI 全绿**。拿不准是否算"纯文档"就按全量跑 —— 豁免从窄不从宽。
+### 豁免(仅此两类,从窄不从宽)
+
+两类改动**可跳过本地全量**,但**都仍须走 PR 且 CI 全绿** ——
+分支保护是仓库层面强制的:任何改动都推不了 main,必需检查 `All required checks pass`
+不通过就合不了。豁免免的是"本地那 10 分钟",不是 CI。
+
+1. **纯文档**:只动 `*.md`,不碰任何代码/配置/锁文件。
+2. **纯版本号 bump(发版用)**:只动 `scripts/bump-version.sh` 会改的那几样 ——
+   `package.json` / `apps/desktop/package.json` / `pyproject.toml` /
+   `kopi_cli/__init__.py`(`__version__` + `__release_date__`)+ 重锁的 `uv.lock`。
+   代码与刚跑过全量的那次**逐字相同**,再跑一遍纯属浪费。
+
+   发版前只需确认这三件事,然后直接提 PR:
+
+   ```bash
+   bash scripts/bump-version.sh          # 不传参 = 只校验四处一致
+   uv lock --check                       # 锁文件无漂移
+   git diff --stat origin/main..HEAD     # 确认只有上面那 5 个文件
+   ```
+
+   🔴 **前提**:被发版的那个 commit 必须**已经**通过完整流程进了 main。
+   如果 bump 的同时还夹带了任何代码改动,豁免作废,按全量跑。
+
+拿不准算不算豁免,就按全量跑。
 
 ---
 
@@ -128,17 +150,30 @@ gh pr merge <PR> --rebase --delete-branch     # 多提交需保留结构(如 syn
 
 ---
 
-## 发版(在上述基础上追加)
+## 发版
+
+**前提**:要发的那个 commit 已经走完整流程进了 main(全量 + PR + CI 全绿)。
+此时的 bump 命中「纯版本号 bump」豁免 —— **不必再跑本地全量**。
 
 ```bash
 bash scripts/bump-version.sh <x.y.z>   # 同步四处版本 + __release_date__ + 重锁 uv.lock
+bash scripts/bump-version.sh           # 复校四处一致
+uv lock --check                        # 锁文件无漂移
+git diff --stat origin/main..HEAD      # 确认只有那 5 个文件,没夹带代码
+
+# → 提 PR,CI 全绿后 squash 合并,然后:
+git tag v<x.y.z> && git push origin v<x.y.z>   # 触发 desktop-release 三端构建
 ```
 
-走同样的 PR 流程合入后,再打 tag `v<x.y.z>` 推送触发三端桌面构建。
+tag 推送后在 `desktop release` workflow 出包(mac/win/linux)。
+mac 包是 ad-hoc 签名未公证,安装需 `xattr -dr com.apple.quarantine /Applications/Kopi.app`
+(配齐 `CSC_LINK`/`APPLE_ID` 等 secrets 后 CI 会自动签名+公证,届时无需此步)。
 
 ---
 
 ## 自检清单(汇报"测试通过"前逐条确认)
+
+> 命中豁免(纯文档 / 纯版本号 bump)时,跳过前 7 条,只需最后两条 + 豁免自身的确认命令。
 
 - [ ] `unset HTTP_PROXY/HTTPS_PROXY` 了
 - [ ] Python 全量看到 `100% complete` 的 Summary
