@@ -82,7 +82,9 @@ def resolve_cache_home(home_path: Optional[Path] = None) -> Path:
     (and tests that don't thread a home through) working.
     """
     if home_path is None:
-        home_path = Path(os.getenv("KOPI_HOME", Path.home() / ".kopi"))
+        from kopi_constants import get_kopi_home
+
+        home_path = get_kopi_home()
     return home_path
 
 

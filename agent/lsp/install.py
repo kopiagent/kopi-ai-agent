@@ -124,10 +124,9 @@ def _is_windows() -> bool:
 
 def kopi_lsp_bin_dir() -> Path:
     """Return the Kopi-owned bin staging dir for LSP servers."""
-    home = os.environ.get("KOPI_HOME")
-    if home is None:
-        home = os.path.join(os.path.expanduser("~"), ".kopi")
-    p = Path(home) / "lsp" / "bin"
+    from kopi_constants import get_kopi_home
+
+    p = get_kopi_home() / "lsp" / "bin"
     p.mkdir(parents=True, exist_ok=True)
     return p
 

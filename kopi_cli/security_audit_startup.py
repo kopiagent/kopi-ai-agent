@@ -168,9 +168,12 @@ def _path_is_mounted(path: Path) -> bool:
 def _container_no_volume_mount(kopi_home: Optional[Path]) -> Optional[str]:
     if not _in_container():
         return None
-    home = kopi_home or Path(
-        os.environ.get("KOPI_HOME", os.path.expanduser("~/.kopi"))
-    )
+    if kopi_home is not None:
+        home = kopi_home
+    else:
+        from kopi_constants import get_kopi_home
+
+        home = get_kopi_home()
     try:
         if _path_is_mounted(home):
             return None

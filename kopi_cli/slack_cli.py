@@ -256,12 +256,9 @@ def slack_manifest_command(args) -> int:
     if write_target is not None:
         if isinstance(write_target, bool) and write_target:
             # --write with no value → default location
-            try:
-                from kopi_constants import get_kopi_home
+            from kopi_constants import get_kopi_home
 
-                target = Path(get_kopi_home()) / "slack-manifest.json"
-            except Exception:
-                target = Path(os.environ.get("KOPI_HOME") or str(Path.home() / ".kopi")) / "slack-manifest.json"
+            target = Path(get_kopi_home()) / "slack-manifest.json"
         else:
             target = Path(write_target).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
