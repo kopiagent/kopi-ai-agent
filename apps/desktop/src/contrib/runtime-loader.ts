@@ -344,7 +344,15 @@ export function watchRuntimePlugins(): void {
 
     try {
       const { kopi_home } = await getStatus()
-      dirWatchId = (await desktop.watchDirectory(`${kopi_home}/desktop-plugins`)).id
+      const watch = await desktop.watchDirectory(`${kopi_home}/desktop-plugins`)
+
+      // null = dir not there yet (see watchDirectory in electron/main.ts):
+      // stay on the poll, which retries this on each tick.
+      if (!watch) {
+        return false
+      }
+
+      dirWatchId = watch.id
 
       return true
     } catch {
