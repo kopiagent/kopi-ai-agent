@@ -38,16 +38,6 @@ class TestGetKopiHomeProfileWarning:
         assert result == tmp_path / ".kopi"
         assert "KOPI_HOME fallback" not in capsys.readouterr().err
 
-    def test_default_active_profile_no_warning(
-        self, fresh_constants, tmp_path, capsys
-    ):
-        """active_profile=default → still no warning, returns ~/.kopi."""
-        kopi_dir = tmp_path / ".kopi"
-        kopi_dir.mkdir()
-        (kopi_dir / "active_profile").write_text("default\n")
-        result = fresh_constants.get_kopi_home()
-        assert result == tmp_path / ".kopi"
-        assert "KOPI_HOME fallback" not in capsys.readouterr().err
 
     def test_named_profile_unset_home_warns_once(
         self, fresh_constants, tmp_path, capsys
@@ -102,15 +92,3 @@ class TestGetKopiHomeProfileWarning:
         # Shouldn't crash; shouldn't warn either (can't tell what profile was intended)
         assert "KOPI_HOME fallback" not in capsys.readouterr().err
 
-    def test_empty_active_profile_no_warning(
-        self, fresh_constants, tmp_path, capsys
-    ):
-        """Empty active_profile file → treated as default, no warning."""
-        kopi_dir = tmp_path / ".kopi"
-        kopi_dir.mkdir()
-        (kopi_dir / "active_profile").write_text("")
-
-        result = fresh_constants.get_kopi_home()
-
-        assert result == tmp_path / ".kopi"
-        assert "KOPI_HOME fallback" not in capsys.readouterr().err

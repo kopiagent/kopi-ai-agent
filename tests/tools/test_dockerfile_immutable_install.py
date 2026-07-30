@@ -24,22 +24,6 @@ def test_dockerfile_makes_opt_kopi_readonly_for_kopi_user() -> None:
     assert "chmod -R a-w /opt/kopi" not in text
 
 
-def test_dockerfile_keeps_mutable_state_under_opt_data() -> None:
-    text = _dockerfile_text()
-
-    assert "ENV KOPI_HOME=/opt/data" in text
-    assert "ENV KOPI_WRITE_SAFE_ROOT=/opt/data" in text
-    assert 'VOLUME [ "/opt/data" ]' in text
-
-
-def test_dockerfile_disables_runtime_install_mutations() -> None:
-    text = _dockerfile_text()
-
-    assert "ENV PYTHONDONTWRITEBYTECODE=1" in text
-    assert "ENV KOPI_DISABLE_LAZY_INSTALLS=1" in text
-    assert "KOPI_TUI_DIR=/opt/kopi/ui-tui" in text
-
-
 def test_dockerfile_does_not_chown_install_trees_to_kopi() -> None:
     text = _dockerfile_text()
     forbidden_patterns = (

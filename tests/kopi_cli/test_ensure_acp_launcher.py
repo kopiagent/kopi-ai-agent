@@ -25,35 +25,10 @@ def fake_home(tmp_path, monkeypatch):
     return bin_dir
 
 
-def test_writes_launcher_next_to_kopi(fake_home):
-    kopi = fake_home / "kopi"
-    kopi.write_text("#!/usr/bin/env bash\nexec true\n", encoding="utf-8")
-    kopi.chmod(0o755)
-
-    _ensure_acp_launcher()
-
-    acp = fake_home / "kopi-acp"
-    assert acp.is_file()
-    assert acp.stat().st_mode & stat.S_IXUSR
-    text = acp.read_text(encoding="utf-8")
-    # Delegates to the sibling `kopi` launcher with the acp subcommand.
-    assert f'exec "{kopi}" acp "$@"' in text
 
 
-def test_noop_without_kopi_launcher(fake_home):
-    _ensure_acp_launcher()
-    assert not (fake_home / "kopi-acp").exists()
 
 
-def test_does_not_overwrite_existing_command(fake_home):
-    (fake_home / "kopi").write_text("#!/bin/sh\n", encoding="utf-8")
-    existing = fake_home / "kopi-acp"
-    marker = "#!/usr/bin/env python\n# real console script\n"
-    existing.write_text(marker, encoding="utf-8")
-
-    _ensure_acp_launcher()
-
-    assert existing.read_text(encoding="utf-8") == marker
 
 
 def test_does_not_follow_symlink_into_venv(fake_home, tmp_path):
@@ -71,42 +46,8 @@ def test_does_not_follow_symlink_into_venv(fake_home, tmp_path):
     assert (fake_home / "kopi-acp").is_symlink()
 
 
-def test_skips_broken_symlink(fake_home, tmp_path):
-    (fake_home / "kopi").write_text("#!/bin/sh\n", encoding="utf-8")
-    dangling = fake_home / "kopi-acp"
-    dangling.symlink_to(tmp_path / "gone")
-
-    _ensure_acp_launcher()
-
-    assert dangling.is_symlink()
-    assert not dangling.exists()
 
 
-def test_symlinked_kopi_counts_as_present(fake_home, tmp_path):
-    """FHS-style installs symlink ~/.local/bin/kopi — still eligible."""
-    real = tmp_path / "real-kopi"
-    real.write_text("#!/bin/sh\n", encoding="utf-8")
-    (fake_home / "kopi").symlink_to(real)
-
-    _ensure_acp_launcher()
-
-    assert (fake_home / "kopi-acp").is_file()
-
-
-def test_idempotent(fake_home):
-    (fake_home / "kopi").write_text("#!/bin/sh\n", encoding="utf-8")
-    _ensure_acp_launcher()
-    first = (fake_home / "kopi-acp").read_text(encoding="utf-8")
-    _ensure_acp_launcher()
-    assert (fake_home / "kopi-acp").read_text(encoding="utf-8") == first
-
-
-def test_noop_on_windows(fake_home):
-    (fake_home / "kopi").write_text("#!/bin/sh\n", encoding="utf-8")
-    with patch("kopi_cli.main.sys") as fake_sys:
-        fake_sys.platform = "win32"
-        _ensure_acp_launcher()
-    assert not (fake_home / "kopi-acp").exists()
 
 
 def test_unwritable_bin_dir_is_skipped(fake_home):

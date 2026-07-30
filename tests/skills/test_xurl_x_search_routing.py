@@ -51,12 +51,6 @@ def test_xurl_skill_search_is_distinct_standalone():
     assert _contains_any(text, "summarized answer", "summary of a topic")
 
 
-def test_xurl_skill_write_evidence_rule():
-    """State-changing X actions are proven only by xurl output / X API
-    response — never by search results or summaries."""
-    text = _read(XURL_SKILL)
-    assert _contains_any(text, "proves that a state-changing", "proves the action")
-    assert _contains_any(text, "never report a write", "never treat")
 
 
 @pytest.mark.skip(

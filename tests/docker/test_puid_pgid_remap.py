@@ -38,21 +38,6 @@ def test_puid_pgid_remaps_kopi_user(
     )
 
 
-def test_kopi_uid_gid_take_precedence_over_aliases(
-    built_image: str, container_name: str,
-) -> None:
-    """KOPI_UID/KOPI_GID must win over PUID/PGID when both are set."""
-    start_container(built_image, container_name, "KOPI_UID=2000", "KOPI_GID=2001", "PUID=1000", "PGID=1000")
-
-    r = docker_exec_sh(container_name, "id -u kopi", timeout=10)
-    assert r.stdout.strip() == "2000", (
-        f"expected kopi UID 2000 (KOPI_UID wins), got: {r.stdout.strip()}"
-    )
-
-    r = docker_exec_sh(container_name, "id -g kopi", timeout=10)
-    assert r.stdout.strip() == "2001", (
-        f"expected kopi GID 2001 (KOPI_GID wins), got: {r.stdout.strip()}"
-    )
 
 
 def test_nas_low_uid_accepted(

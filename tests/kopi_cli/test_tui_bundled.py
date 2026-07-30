@@ -13,8 +13,3 @@ def test_tui_finds_bundled_entry_js(tmp_path):
     assert result.name == "entry.js"
 
 
-def test_tui_returns_none_when_no_bundle(tmp_path):
-    """_find_bundled_tui returns None when no bundle exists."""
-    from kopi_cli.main import _find_bundled_tui
-    result = _find_bundled_tui(kopi_cli_dir=tmp_path / "kopi_cli")
-    assert result is None

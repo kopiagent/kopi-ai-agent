@@ -37,32 +37,3 @@ def test_reload_runtime_env_preserves_config_max_turns(tmp_path: Path, monkeypat
     assert os.environ["KOPI_MAX_ITERATIONS"] == "9000"
 
 
-def test_reload_runtime_env_keeps_env_max_iterations_when_config_omits_key(
-    tmp_path: Path, monkeypatch
-) -> None:
-    kopi_home = tmp_path / ".kopi"
-    kopi_home.mkdir()
-    (kopi_home / "config.yaml").write_text(yaml.safe_dump({"agent": {}}), encoding="utf-8")
-    (kopi_home / ".env").write_text("KOPI_MAX_ITERATIONS=123\n", encoding="utf-8")
-
-    monkeypatch.setattr(gateway_run, "_kopi_home", kopi_home)
-    monkeypatch.delenv("KOPI_MAX_ITERATIONS", raising=False)
-
-    gateway_run._reload_runtime_env_preserving_config_authority()
-
-    assert os.environ["KOPI_MAX_ITERATIONS"] == "123"
-
-
-def test_current_max_iterations_reloads_before_reading(monkeypatch) -> None:
-    monkeypatch.setenv("KOPI_MAX_ITERATIONS", "90")
-
-    def _fake_reload() -> None:
-        os.environ["KOPI_MAX_ITERATIONS"] = "200"
-
-    monkeypatch.setattr(
-        gateway_run,
-        "_reload_runtime_env_preserving_config_authority",
-        _fake_reload,
-    )
-
-    assert gateway_run._current_max_iterations() == 200

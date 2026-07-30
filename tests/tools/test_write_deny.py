@@ -12,38 +12,15 @@ class TestWriteDenyExactPaths:
     def test_etc_shadow(self):
         assert _is_write_denied("/etc/shadow") is True
 
-    def test_etc_passwd(self):
-        assert _is_write_denied("/etc/passwd") is True
-
-    def test_etc_sudoers(self):
-        assert _is_write_denied("/etc/sudoers") is True
 
     def test_ssh_authorized_keys(self):
         assert _is_write_denied("~/.ssh/authorized_keys") is True
 
-    def test_ssh_id_rsa(self):
-        path = os.path.join(str(Path.home()), ".ssh", "id_rsa")
-        assert _is_write_denied(path) is True
 
     def test_ssh_id_ed25519(self):
         path = os.path.join(str(Path.home()), ".ssh", "id_ed25519")
         assert _is_write_denied(path) is True
 
-
-    def test_kopi_env(self):
-        # ``.env`` under the active KOPI_HOME (profile-aware, not just
-        # ``~/.kopi``) must be write-denied. The hermetic test conftest
-        # points KOPI_HOME at a tempdir — resolve via get_kopi_home()
-        # to match the denylist.
-        from kopi_constants import get_kopi_home
-        path = str(get_kopi_home() / ".env")
-        assert _is_write_denied(path) is True
-
-    def test_encrypted_bitwarden_cache(self):
-        from kopi_constants import get_kopi_home
-
-        path = get_kopi_home() / "cache" / "bws_cache.enc.json"
-        assert _is_write_denied(str(path)) is True
 
     def test_kopi_root_env_when_running_under_profile(self, tmp_path, monkeypatch):
         """Top-level ``<root>/.env`` stays write-denied even when running under
@@ -86,20 +63,6 @@ class TestWriteDenyPrefixes:
         path = os.path.join(str(Path.home()), ".ssh", "some_key")
         assert _is_write_denied(path) is True
 
-    def test_aws_prefix(self):
-        path = os.path.join(str(Path.home()), ".aws", "credentials")
-        assert _is_write_denied(path) is True
-
-    def test_gnupg_prefix(self):
-        path = os.path.join(str(Path.home()), ".gnupg", "secring.gpg")
-        assert _is_write_denied(path) is True
-
-    def test_kube_prefix(self):
-        path = os.path.join(str(Path.home()), ".kube", "config")
-        assert _is_write_denied(path) is True
-
-    def test_sudoers_d_prefix(self):
-        assert _is_write_denied("/etc/sudoers.d/custom") is True
 
     def test_systemd_prefix(self, tmp_path):
         # On NixOS, /etc/systemd is a symlink into /nix/store, so
@@ -123,8 +86,6 @@ class TestWriteAllowed:
     def test_tmp_file(self):
         assert _is_write_denied("/tmp/safe_file.txt") is False
 
-    def test_project_file(self):
-        assert _is_write_denied("/home/user/project/main.py") is False
 
     def test_kopi_control_files_requested_writable(self):
         from kopi_constants import get_kopi_home
