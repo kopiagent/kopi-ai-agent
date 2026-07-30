@@ -3765,7 +3765,7 @@ class TestAuxiliaryTaskExtraBody:
             }
         }
 
-        with patch("kopi_cli.config.load_config", return_value=config), patch(
+        with patch("kopi_cli.config.load_config", return_value=config), patch("kopi_cli.config.load_config_readonly", return_value=config), patch(
             "agent.auxiliary_client._get_cached_client",
             return_value=(client, "glm-4.5-air"),
         ):
@@ -3796,7 +3796,7 @@ class TestAuxiliaryTaskExtraBody:
             }
         }
 
-        with patch("kopi_cli.config.load_config", return_value=config), patch(
+        with patch("kopi_cli.config.load_config", return_value=config), patch("kopi_cli.config.load_config_readonly", return_value=config), patch(
             "agent.auxiliary_client._get_cached_client",
             return_value=(client, "glm-4.5-air"),
         ):
@@ -3822,7 +3822,7 @@ class TestAuxiliaryTaskExtraBody:
             }
         }
 
-        with patch("kopi_cli.config.load_config", return_value=config), patch(
+        with patch("kopi_cli.config.load_config", return_value=config), patch("kopi_cli.config.load_config_readonly", return_value=config), patch(
             "agent.auxiliary_client._get_cached_client",
             return_value=(client, "glm-4.5-air"),
         ):
@@ -3841,7 +3841,7 @@ class TestAuxiliaryTaskExtraBody:
 
         config = {"auxiliary": {"session_search": {"reasoning_effort": "none"}}}
 
-        with patch("kopi_cli.config.load_config", return_value=config), patch(
+        with patch("kopi_cli.config.load_config", return_value=config), patch("kopi_cli.config.load_config_readonly", return_value=config), patch(
             "agent.auxiliary_client._get_cached_client",
             return_value=(client, "glm-4.5-air"),
         ):
@@ -3865,7 +3865,7 @@ class TestAuxiliaryTaskExtraBody:
             }
         }
 
-        with patch("kopi_cli.config.load_config", return_value=config), patch(
+        with patch("kopi_cli.config.load_config", return_value=config), patch("kopi_cli.config.load_config_readonly", return_value=config), patch(
             "agent.auxiliary_client._get_cached_client",
             return_value=(client, "glm-4.5-air"),
         ):
@@ -3881,7 +3881,7 @@ class TestAuxiliaryTaskExtraBody:
 
         config = {"auxiliary": {"session_search": {"reasoning_effort": "warp9"}}}
 
-        with patch("kopi_cli.config.load_config", return_value=config), patch(
+        with patch("kopi_cli.config.load_config", return_value=config), patch("kopi_cli.config.load_config_readonly", return_value=config), patch(
             "agent.auxiliary_client._get_cached_client",
             return_value=(client, "glm-4.5-air"),
         ), caplog.at_level(logging.WARNING, logger="agent.auxiliary_client"):
@@ -3896,7 +3896,7 @@ class TestAuxiliaryTaskExtraBody:
         from agent.auxiliary_client import _get_task_extra_body
 
         config = {"auxiliary": {"session_search": {"reasoning_effort": ""}}}
-        with patch("kopi_cli.config.load_config", return_value=config):
+        with patch("kopi_cli.config.load_config", return_value=config), patch("kopi_cli.config.load_config_readonly", return_value=config):
             assert _get_task_extra_body("session_search") == {}
 
     @pytest.mark.parametrize("moa_task", ["moa_reference", "moa_aggregator"])
@@ -3906,7 +3906,7 @@ class TestAuxiliaryTaskExtraBody:
         from agent.auxiliary_client import _get_task_extra_body
 
         config = {"auxiliary": {moa_task: {"reasoning_effort": "xhigh"}}}
-        with patch("kopi_cli.config.load_config", return_value=config), \
+        with patch("kopi_cli.config.load_config", return_value=config), patch("kopi_cli.config.load_config_readonly", return_value=config), \
              caplog.at_level(logging.WARNING, logger="agent.auxiliary_client"):
             result = _get_task_extra_body(moa_task)
 
