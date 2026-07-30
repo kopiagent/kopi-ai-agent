@@ -234,6 +234,30 @@ T = TypeVar("T")
 
 DEFAULT_DB_PATH = get_kopi_home() / "state.db"
 
+# Import-time snapshot used by _default_db_path() to detect a deliberately
+# re-pointed DEFAULT_DB_PATH (tests monkeypatch the constant directly).
+_IMPORT_DEFAULT_DB_PATH = DEFAULT_DB_PATH
+
+
+def _default_db_path() -> Path:
+    """Resolve the default state DB path at call time.
+
+    ``DEFAULT_DB_PATH`` is computed when this module is first imported, which
+    freezes the developer's real ``~/.kopi`` even when a test fixture later
+    redirects ``KOPI_HOME`` — importing this module during collection was
+    enough to point every default ``SessionDB()`` at the real state.db.
+
+    Precedence:
+
+    1. A deliberately re-pointed ``DEFAULT_DB_PATH`` (differs from the
+       import-time snapshot — the established test escape hatch) wins.
+    2. Otherwise resolve ``get_kopi_home()`` fresh so a runtime
+       ``KOPI_HOME`` redirect takes effect regardless of import order.
+    """
+    if DEFAULT_DB_PATH != _IMPORT_DEFAULT_DB_PATH:
+        return DEFAULT_DB_PATH
+    return get_kopi_home() / "state.db"
+
 # ---------------------------------------------------------------------------
 # WAL-compatibility fallback
 # ---------------------------------------------------------------------------
@@ -537,19 +561,38 @@ def resolve_journal_mode() -> str:
     return mode if mode in ("wal", "delete") else "wal"
 
 
+class WalUnsupportedError(sqlite3.OperationalError):
+    """Raised by :func:`apply_wal_with_fallback` when ``require_wal=True`` and
+    the filesystem cannot provide WAL journal mode.
+
+    Covers both shapes of WAL refusal on network filesystems (NFS / SMB / FUSE
+    / the AgentFS NFS overlay): SQLite *raising* ``SQLITE_PROTOCOL`` ("locking
+    protocol"), and the quieter macOS-NFS case where ``PRAGMA journal_mode=WAL``
+    silently returns the still-effective mode without raising.  Subclasses
+    ``sqlite3.OperationalError`` so existing ``except sqlite3.OperationalError``
+    DB-init handling still catches it, while callers that specifically mandate
+    WAL can catch this narrower type.
+    """
+
+
 def apply_wal_with_fallback(
     conn: sqlite3.Connection,
     *,
     db_label: str = "state.db",
+    require_wal: bool = False,
 ) -> str:
     """Set ``journal_mode=WAL`` on ``conn``, falling back to DELETE on failure.
 
     Returns the journal mode actually set (``"wal"`` or ``"delete"``).
 
-    On WAL-incompatible filesystems (NFS, SMB, some FUSE, ZFS), SQLite raises
-    ``OperationalError("locking protocol")`` or ``OperationalError("disk I/O error")``
-    when setting WAL.  We fall back to DELETE mode — the pre-WAL default, which
-    works on NFS and ZFS — and log one WARNING explaining why.
+    On WAL-incompatible filesystems (NFS, SMB, some FUSE, ZFS), SQLite either
+    raises ``OperationalError("locking protocol")`` /
+    ``OperationalError("disk I/O error")`` or — on macOS NFS / SMB /
+    the AgentFS NFS overlay — silently refuses the switch and leaves the DB in
+    DELETE.  Either way the degradation is logged at ERROR level (it is a real
+    loss of concurrency — a write blocks concurrent readers — not a cosmetic
+    warning) and, by default, the function falls back to DELETE (the pre-WAL
+    default, which works on NFS and ZFS) so the feature keeps working.
 
     On SQLite builds that still contain the WAL-reset corruption bug
     (issue #69784), refuse to enable WAL on fresh / non-WAL databases
@@ -567,11 +610,17 @@ def apply_wal_with_fallback(
     the WAL-reset bug as real through 3.51.2 with serious consequences.  Until
     a fixed runtime is delivered, keep new databases out of WAL.
 
-    The WARNING is deduplicated per ``db_label``: repeated connections
-    to the same underlying DB (e.g. kanban_db.connect() which is called
-    on every kanban operation) log once per process, not once per call.
-    Different db_labels log independently, so state.db and kanban.db
-    each get one warning on the same NFS mount.
+    Callers that genuinely require WAL concurrency (and would rather fail loudly
+    than run silently degraded) pass ``require_wal=True``; the function then
+    raises :class:`WalUnsupportedError` instead of returning ``"delete"``.  All
+    current callers deliberately keep the default ``require_wal=False`` so
+    NFS-homed installs keep working.
+
+    The ERROR is deduplicated per ``db_label``: repeated connections to the
+    same underlying DB (e.g. kanban_db.connect() which is called on every
+    kanban operation) log once per process, not once per call.  Different
+    db_labels log independently, so state.db and kanban.db each get one error
+    on the same NFS mount.
 
     Shared by :class:`SessionDB` and ``kopi_cli.kanban_db.connect`` so
     both databases get identical fallback behavior.
@@ -631,22 +680,62 @@ def apply_wal_with_fallback(
             _apply_macos_checkpoint_barrier(conn)
             _enforce_macos_synchronous_full(conn)
             return "wal"
-        _log_wal_fallback_once(
-            db_label,
-            sqlite3.OperationalError(
-                f"journal_mode=WAL refused without raising (still {mode!r})"
-            ),
+        # Silent refusal (macOS NFS / SMB / AgentFS overlay): WAL was not
+        # honored, but nothing raised.
+        silent_exc = WalUnsupportedError(
+            f"journal_mode=WAL refused without raising (still {mode!r})"
         )
+        if require_wal:
+            raise silent_exc
+        _log_wal_fallback_once(db_label, silent_exc)
         return mode or "delete"
     except sqlite3.OperationalError as exc:
+        # The require_wal silent-refusal raise above is a WalUnsupportedError
+        # (an OperationalError subclass) and lands here — propagate it
+        # unchanged rather than re-running it through the marker logic.
+        if isinstance(exc, WalUnsupportedError):
+            raise
         msg = str(exc).lower()
         if not any(marker in msg for marker in _WAL_INCOMPAT_MARKERS):
             # Unrelated OperationalError — don't silently swallow.
             raise
+        # ``disk i/o error`` is ambiguous: on ZFS / APFS-CoW it is a
+        # deterministic WAL-incompatibility (SHM corruption under concurrent
+        # connection bursts — #55305, #71498), but it can also be a one-shot
+        # transient EIO (page-cache pressure, brief lock contention).
+        # Treating a transient EIO as a permanent downgrade signal produced
+        # the mixed-journal-mode corruption pattern fixed in 5c49cd0ed0
+        # (process A downgrades to DELETE while sibling processes set WAL).
+        # Disambiguate by retrying the pragma a couple of times: transient
+        # EIO clears and we return "wal"; the deterministic filesystem cases
+        # keep failing and fall through to the guarded DELETE fallback.
+        if "disk i/o error" in msg:
+            for _ in range(2):
+                time.sleep(0.05)
+                try:
+                    row = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+                except sqlite3.OperationalError as retry_exc:
+                    if "disk i/o error" not in str(retry_exc).lower():
+                        raise
+                    exc = retry_exc
+                    continue
+                mode = (
+                    str(row[0]).strip().lower()
+                    if row and row[0] is not None
+                    else ""
+                )
+                if mode == "wal":
+                    _apply_macos_checkpoint_barrier(conn)
+                    _enforce_macos_synchronous_full(conn)
+                    return "wal"
+                break
         # Don't downgrade if another process already set WAL on disk.
         existing = _on_disk_journal_mode(conn)
         if existing == "wal":
             raise
+        if require_wal:
+            # Caller mandates WAL — fail loudly instead of degrading to DELETE.
+            raise WalUnsupportedError(str(exc)) from exc
         _log_wal_fallback_once(db_label, exc)
         conn.execute("PRAGMA journal_mode=DELETE")
         return "delete"
@@ -729,25 +818,80 @@ def _log_wal_reset_bug_once(
 
 
 def _log_wal_fallback_once(db_label: str, exc: Exception) -> None:
-    """Log a single WARNING per (process, db_label) about WAL fallback.
+    """Log a single ERROR per (process, db_label) about WAL fallback.
+
+    ERROR (not WARNING): a DB silently dropped to DELETE means a real loss of
+    concurrency — under the kanban dispatcher + workers a write blocks readers,
+    surfacing as SQLITE_BUSY/lock contention — so it must be loud, not cosmetic.
 
     Without this dedup, NFS users running kanban (which opens a fresh
     connection on every operation — see kopi_cli/kanban_db.py) would
-    fill errors.log with hundreds of identical warnings per hour.
+    fill errors.log with hundreds of identical errors per hour.
     """
     with _wal_fallback_warned_lock:
         if db_label in _wal_fallback_warned_paths:
             return
         _wal_fallback_warned_paths.add(db_label)
-    logger.warning(
+    logger.error(
         "%s: WAL journal_mode unsupported on this filesystem (%s) — "
         "falling back to journal_mode=DELETE (slower rollback-journal "
         "mode; reduces concurrency but works on NFS/SMB/FUSE/ZFS). See "
-        "https://www.sqlite.org/wal.html for details. This warning "
+        "https://www.sqlite.org/wal.html for details. This message "
         "fires once per process per database.",
         db_label,
         exc,
     )
+
+
+# ---------------------------------------------------------------------------
+# Config-driven database pragmas
+# ---------------------------------------------------------------------------
+def apply_database_pragmas(
+    conn: sqlite3.Connection,
+    *,
+    db_label: str = "state.db",
+) -> None:
+    """Apply optional WAL-sizing PRAGMAs from ``config.yaml``.
+
+    Reads the ``database:`` section and applies ``wal_autocheckpoint``
+    and ``journal_size_limit`` when set to integer values.  The journal
+    mode itself is NOT handled here — ``database.journal_mode`` is owned
+    by :func:`resolve_journal_mode` inside :func:`apply_wal_with_fallback`,
+    which layers the operator setting under all the safety guards
+    (never live-downgrading an on-disk WAL DB, filesystem fallback,
+    WAL-reset-bug gating).  Keeping a single owner prevents a second,
+    unguarded journal-mode switch path.
+
+    Best-effort: config load or pragma failures are ignored so DB init
+    never breaks on a malformed ``database:`` section.
+    """
+    try:
+        # Local import avoids a circular import with kopi_cli.config.
+        from kopi_cli.config import cfg_get, load_config_readonly
+
+        cfg = load_config_readonly()
+    except Exception:
+        return
+
+    for pragma_name in ("wal_autocheckpoint", "journal_size_limit"):
+        raw_value = cfg_get(cfg, "database", pragma_name, default=None)
+        if raw_value is None:
+            continue
+        try:
+            value = int(str(raw_value).strip())
+        except (TypeError, ValueError):
+            logger.warning(
+                "%s: ignoring non-integer database.%s=%r",
+                db_label,
+                pragma_name,
+                raw_value,
+            )
+            continue
+        try:
+            conn.execute(f"PRAGMA {pragma_name}={value}")
+        except sqlite3.OperationalError:
+            pass
+
 
 # ---------------------------------------------------------------------------
 # Malformed-schema recovery
@@ -1645,7 +1789,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
     _IMPORT_MAX_TOTAL_BYTES = 25 * 1024 * 1024
 
     def __init__(self, db_path: Path = None, read_only: bool = False):
-        self.db_path = db_path or DEFAULT_DB_PATH
+        self.db_path = db_path or _default_db_path()
         self.read_only = read_only
 
         self._lock = threading.Lock()
@@ -1768,6 +1912,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                 self._wal_active = (
                     apply_wal_with_fallback(self._conn, db_label="state.db") == "wal"
                 )
+                apply_database_pragmas(self._conn, db_label="state.db")
                 self._conn.execute("PRAGMA foreign_keys=ON")
                 self._fts_cjk_loaded = load_fts5_cjk_extension(self._conn)
                 self._init_schema()
