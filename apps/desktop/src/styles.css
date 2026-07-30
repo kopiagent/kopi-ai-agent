@@ -377,8 +377,12 @@
     --dt-user-bubble: var(--ui-chat-bubble-background);
     --dt-user-bubble-border: var(--ui-stroke-tertiary);
 
+    /* Apple-first, matching themes/presets.ts SYSTEM_SANS. This is the value
+       the first paint uses before the theme's typography is applied, so a
+       Windows-first order here caused a visible face swap on macOS. */
     --dt-font-sans:
-      'Segoe WPC', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif,
+      -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue',
+      'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif,
       'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', emoji;
     /* Key caps always use the native UI face — never theme typography overrides. */
     --dt-font-kbd: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
@@ -386,8 +390,8 @@
        terminal's primary — so code/diff match the terminal on every platform
        instead of drifting to a system Cascadia Code where it's installed. */
     --dt-font-mono:
-      'JetBrains Mono', 'Cascadia Code', 'SF Mono', ui-monospace, Menlo, Consolas, monospace, 'Apple Color Emoji',
-      'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', emoji;
+      ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, 'Cascadia Code', Consolas, monospace,
+      'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', emoji;
     --dt-base-size: 1rem;
     --dt-line-height: 1.5;
     --dt-letter-spacing: 0;
@@ -1229,6 +1233,17 @@ text-* variant utilities. */ .btn-arc {
   color: var(--ui-text-tertiary);
   font-size: 0.875rem;
   line-height: 1.45;
+}
+
+/* Rounded display face for the brand wordmark. `ui-rounded` is the CSS
+   generic that macOS resolves to SF Pro Rounded — Apple's own rounded UI
+   face — so this stays native rather than shipping a webfont. Platforms
+   without a rounded system face fall through to the regular sans stack,
+   which is a graceful degrade (rounder-than-nothing beats tofu). */
+.font-rounded {
+  font-family:
+    ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Display', 'Segoe UI',
+    system-ui, sans-serif;
 }
 
 .fit-text {
