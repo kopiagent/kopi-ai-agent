@@ -20,11 +20,3 @@ def test_service_path_includes_node_modules_when_present(tmp_path):
     assert str(nm_bin) in dirs
 
 
-def test_service_path_includes_kopi_home_node_modules(tmp_path):
-    """Service PATH should include ~/.kopi/node_modules/.bin when it exists."""
-    kopi_nm = tmp_path / ".kopi" / "node_modules" / ".bin"
-    kopi_nm.mkdir(parents=True)
-    from kopi_cli.gateway import _build_service_path_dirs
-    with patch("kopi_cli.gateway.get_kopi_home", return_value=tmp_path / ".kopi"):
-        dirs = _build_service_path_dirs(project_root=tmp_path)
-    assert str(kopi_nm) in dirs

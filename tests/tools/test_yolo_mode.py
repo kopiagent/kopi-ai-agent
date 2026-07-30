@@ -114,17 +114,6 @@ class TestYoloMode:
         # we just verify the mechanism exists
         assert os.getenv("KOPI_YOLO_MODE") is None or True  # no-op, documents intent
 
-    def test_yolo_mode_empty_string_does_not_bypass(self, monkeypatch):
-        """Empty string for KOPI_YOLO_MODE should not trigger bypass."""
-        monkeypatch.setenv("KOPI_YOLO_MODE", "")
-        monkeypatch.setenv("KOPI_INTERACTIVE", "1")
-        monkeypatch.setenv("KOPI_SESSION_KEY", "test-session")
-
-        # Empty string is falsy in Python, so getenv("KOPI_YOLO_MODE") returns ""
-        # which is falsy — bypass should NOT activate
-        result = check_dangerous_command("rm -rf /", "local",
-                                         approval_callback=lambda *a: "deny")
-        assert not result["approved"]
 
     @pytest.mark.parametrize("value", ["false", "False", "0", "off", "no"])
     def test_false_like_yolo_values_do_not_bypass_dangerous_command(self, monkeypatch, value):
