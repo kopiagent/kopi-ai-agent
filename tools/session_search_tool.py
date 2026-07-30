@@ -954,8 +954,8 @@ def session_search(
 def check_session_search_requirements() -> bool:
     """Requires the SQLite state database."""
     try:
-        from kopi_state import DEFAULT_DB_PATH
-        return DEFAULT_DB_PATH.parent.exists()
+        from kopi_state import _default_db_path
+        return _default_db_path().parent.exists()
     except ImportError:
         return False
 
