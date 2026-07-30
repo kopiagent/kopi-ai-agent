@@ -504,6 +504,21 @@ def _load_secrets_config(home_path: Path) -> dict:
     config_path = home_path / "config.yaml"
     if not config_path.exists():
         return {}
+    # Prefer the shared (mtime, size)-keyed raw-config cache — this is the
+    # first config.yaml read in a normal `kopi` startup, so populating the
+    # shared cache here lets main.py's early bridge and kopi_logging reuse
+    # the same parse (one parse per process instead of 3-4). Falls back to a
+    # direct isolated parse if the shared reader is unavailable, preserving
+    # the "malformed config can't take down dotenv loading" property (the
+    # shared reader also swallows parse errors and returns {}).
+    if home_path == _process_kopi_home():
+        try:
+            from kopi_cli.config import read_raw_config
+
+            data = read_raw_config() or {}
+            return data.get("secrets") or {}
+        except Exception:
+            pass
     try:
         import yaml  # type: ignore
     except ImportError:
@@ -514,3 +529,13 @@ def _load_secrets_config(home_path: Path) -> dict:
     except Exception:  # noqa: BLE001
         return {}
     return data.get("secrets") or {}
+
+
+def _process_kopi_home() -> Path:
+    """The KOPI_HOME the shared config cache is keyed to."""
+    try:
+        from kopi_constants import get_kopi_home
+
+        return get_kopi_home()
+    except Exception:
+        return Path.home() / ".kopi"
