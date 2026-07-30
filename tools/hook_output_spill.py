@@ -117,13 +117,9 @@ def _resolve_spill_dir(directory_override: Optional[str], session_id: Optional[s
     if directory_override:
         base = Path(os.path.expanduser(directory_override))
     else:
-        try:
-            from kopi_constants import get_kopi_home
-            base = Path(get_kopi_home()) / "hook_outputs"
-        except Exception:
-            # Last-resort fallback: KOPI_HOME env var, then ~/.kopi
-            home = os.environ.get("KOPI_HOME") or os.path.expanduser("~/.kopi")
-            base = Path(home) / "hook_outputs"
+        from kopi_constants import get_kopi_home
+
+        base = Path(get_kopi_home()) / "hook_outputs"
 
     # Group by session so spills are contained per conversation.
     session_segment = session_id or "no-session"

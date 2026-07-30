@@ -57,14 +57,15 @@ class AuditEvent(enum.Enum):
 
 
 def _resolve_log_path() -> Path:
-    """``$KOPI_HOME/logs/dashboard-auth.log`` with the standard fallback.
+    """``$KOPI_HOME/logs/dashboard-auth.log``.
 
-    Mirrors ``kopi_constants.get_kopi_home`` semantics: env var wins,
-    else ``~/.kopi``. A local copy avoids an import cycle with the
-    middleware which lives below ``kopi_cli``.
+    Uses ``kopi_constants.get_kopi_home()`` (a leaf module — no import
+    cycle) so profile overrides and the native-Windows ``%LOCALAPPDATA%``
+    fallback are honored.
     """
-    home = os.environ.get("KOPI_HOME") or str(Path.home() / ".kopi")
-    return Path(home) / "logs" / "dashboard-auth.log"
+    from kopi_constants import get_kopi_home
+
+    return get_kopi_home() / "logs" / "dashboard-auth.log"
 
 
 def audit_log(event: AuditEvent, **fields: Any) -> None:

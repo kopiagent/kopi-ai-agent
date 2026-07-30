@@ -62,11 +62,9 @@ except ImportError:
 
 def _get_sessions_dir() -> Path:
     """Return the sessions directory using KOPI_HOME."""
-    try:
-        from kopi_constants import get_kopi_home
-        return get_kopi_home() / "sessions"
-    except ImportError:
-        return Path(os.environ.get("KOPI_HOME", Path.home() / ".kopi")) / "sessions"
+    from kopi_constants import get_kopi_home
+
+    return get_kopi_home() / "sessions"
 
 
 def _get_session_db():
@@ -194,13 +192,9 @@ def _load_sessions_index_from_json() -> dict:
 
 def _load_channel_directory() -> dict:
     """Load the cached channel directory for available targets."""
-    try:
-        from kopi_constants import get_kopi_home
-        directory_file = get_kopi_home() / "channel_directory.json"
-    except ImportError:
-        directory_file = Path(
-            os.environ.get("KOPI_HOME", Path.home() / ".kopi")
-        ) / "channel_directory.json"
+    from kopi_constants import get_kopi_home
+
+    directory_file = get_kopi_home() / "channel_directory.json"
 
     if not directory_file.exists():
         return {}
@@ -450,11 +444,9 @@ class EventBridge:
         eliminating the old dual-file (sessions.json + state.db) race that
         could drop brand-new conversations (#8925).
         """
-        try:
-            from kopi_constants import get_kopi_home
-            db_file = get_kopi_home() / "state.db"
-        except ImportError:
-            db_file = Path(os.environ.get("KOPI_HOME", Path.home() / ".kopi")) / "state.db"
+        from kopi_constants import get_kopi_home
+
+        db_file = get_kopi_home() / "state.db"
 
         try:
             db_mtime = db_file.stat().st_mtime if db_file.exists() else 0.0
