@@ -16,10 +16,11 @@ Inbound:
 
 Outbound:
     ``send`` / ``send_typing`` are loopback POSTs to the sidecar's control
-    endpoints, authenticated with a shared bearer token.  Outbound media
-    (images, voice notes, video, documents) goes through spectrum-ts'
-    ``attachment()`` / ``voice()`` content builders via the sidecar's
-    ``/send-attachment`` endpoint.
+    endpoints, authenticated with a shared bearer token. URL-only messages can
+    route through spectrum-ts' ``richlink()`` builder via ``/send-richlink``.
+    Outbound media (images, voice notes, video, documents) goes through
+    spectrum-ts' ``attachment()`` / ``voice()`` content builders via the
+    sidecar's ``/send-attachment`` endpoint.
 """
 from __future__ import annotations
 
@@ -38,6 +39,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     # Type checkers see ``httpx`` as the always-imported module, so every use
@@ -205,6 +207,12 @@ _PHOTON_RETRYABLE_PATTERNS = (
     "upstream_unavailable",
 )
 
+# iMessage may emit the Open Graph preview art for a rich link as one or more
+# image attachments immediately after the URL/richlink message. Suppress those
+# artifacts so Kopi sees the link once, not a follow-up "(attachment)" prompt.
+_RICHLINK_PREVIEW_SUPPRESS_SECONDS = 30.0
+_RICHLINK_PREVIEW_ATTACHMENT_SUFFIX = ".pluginpayloadattachment"
+
 # Minimum seconds between typing-indicator calls for the same chat.
 # iMessage is a personal channel — suppressing rapid repeats reduces
 # upstream gRPC pressure during Photon overflow events.
@@ -301,6 +309,44 @@ def sidecar_deps_installed() -> bool:
     what "installed" means.
     """
     return (_SIDECAR_DIR / "node_modules" / "spectrum-ts").exists()
+
+
+def _coerce_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _first_set(*values: Any) -> Any:
+    """Return the first value that is not None.
+
+    Unlike ``a or b``, this preserves an explicit falsy value (e.g. ``0`` or
+    ``""``) so config can intentionally set a zero/empty without it silently
+    falling through to a later source or a default.
+    """
+    for v in values:
+        if v is not None:
+            return v
+    return None
+
+
+def _is_timeout_error(exc: BaseException) -> bool:
+    """True when *exc* indicates the request timed out (call hung)."""
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+        return True
+    if HTTPX_AVAILABLE:
+        timeout_exc = getattr(httpx, "TimeoutException", None)
+        if timeout_exc is not None and isinstance(exc, timeout_exc):
+            return True
+    return "timeout" in type(exc).__name__.lower()
 
 
 def check_requirements() -> bool:
@@ -471,8 +517,116 @@ def _markdown_enabled() -> bool:
     }
 
 
+def _url_only_candidate(text: str) -> Optional[str]:
+    candidate = (text or "").strip()
+    if not re.fullmatch(r"https?://\S+", candidate, flags=re.IGNORECASE):
+        return None
+    try:
+        parsed = urlparse(candidate)
+    except ValueError:
+        return None
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return None
+    return candidate
+
+
+def _richlink_candidate(text: str) -> Optional[str]:
+    """Return a URL that should be sent via spectrum-ts ``richlink()``.
+
+    Keep this intentionally narrow: only exact http(s) URL messages become
+    rich links. Prose containing URLs and Markdown links stay on the normal
+    markdown/text path so Kopi does not drop labels or rewrite intent.
+    """
+    if not _markdown_enabled():
+        return None
+    return _url_only_candidate(text)
+
+
+def _format_richlink_content(content: Dict[str, Any]) -> str:
+    url = str(content.get("url") or "").strip()
+    title = str(content.get("title") or "").strip()
+    summary = str(content.get("summary") or "").strip()
+    parts: List[str] = []
+    if title:
+        parts.append(title)
+    if summary and summary != title:
+        parts.append(summary)
+    if url:
+        parts.append(url)
+    return "\n".join(parts) if parts else "[Photon rich link received with no URL]"
+
+
+def _richlink_url_from_content(content: Dict[str, Any]) -> Optional[str]:
+    ctype = content.get("type")
+    if ctype == "text":
+        return _url_only_candidate(content.get("text") or "")
+    if ctype == "richlink":
+        return _url_only_candidate(content.get("url") or "")
+    if ctype == "group":
+        for item in content.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            item_content = item.get("content") or {}
+            if isinstance(item_content, dict):
+                url = _richlink_url_from_content(item_content)
+                if url:
+                    return url
+    return None
+
+
+def _is_richlink_preview_attachment(payload: Dict[str, Any]) -> bool:
+    if payload.get("type") != "attachment":
+        return False
+    name = str(payload.get("name") or "").lower()
+    attachment_id = str(payload.get("id") or "").lower()
+    is_preview_payload = (
+        name.endswith(_RICHLINK_PREVIEW_ATTACHMENT_SUFFIX)
+        or attachment_id.endswith(_RICHLINK_PREVIEW_ATTACHMENT_SUFFIX)
+        or _RICHLINK_PREVIEW_ATTACHMENT_SUFFIX in name
+        or _RICHLINK_PREVIEW_ATTACHMENT_SUFFIX in attachment_id
+    )
+    # Live iMessage rich-link preview art can arrive with this marker but an
+    # opaque document MIME such as application/octet-stream. The marker is the
+    # reliable signal; the recent-link window guards real attachments.
+    return is_preview_payload
+
+
+def _richlink_preview_label(content: Dict[str, Any]) -> str:
+    if content.get("type") == "attachment":
+        return str(content.get("name") or content.get("id") or "(unnamed)")
+    if content.get("type") == "group":
+        labels = []
+        for item in content.get("items") or []:
+            item_content = item.get("content") if isinstance(item, dict) else None
+            if isinstance(item_content, dict):
+                labels.append(
+                    str(item_content.get("name") or item_content.get("id") or "(unnamed)")
+                )
+        return ", ".join(labels) or "(group)"
+    return "(unknown)"
+
+
+def _is_richlink_preview_content(content: Dict[str, Any]) -> bool:
+    if _is_richlink_preview_attachment(content):
+        return True
+    if content.get("type") != "group":
+        return False
+    items = content.get("items") or []
+    if not items:
+        return False
+    for item in items:
+        if not isinstance(item, dict):
+            return False
+        item_content = item.get("content") or {}
+        if not isinstance(item_content, dict):
+            return False
+        if not _is_richlink_preview_attachment(item_content):
+            return False
+    return True
+
 # ---------------------------------------------------------------------------
 # Adapter
+
 
 class PhotonAdapter(BasePlatformAdapter):
     """Bidirectional bridge to Photon Spectrum via the Node spectrum-ts sidecar.
@@ -522,6 +676,48 @@ class PhotonAdapter(BasePlatformAdapter):
         ).lower() not in ("0", "false", "no")
         self._node_bin = os.getenv("PHOTON_NODE_BIN") or shutil.which("node") or "node"
 
+        # Presence watchdog. spectrum-ts only reconnects when its inbound
+        # iterator throws or ends; a half-open ("zombie") gRPC socket makes the
+        # iterator hang forever (no error, no end), so inbound silently dies
+        # until the sidecar is restarted. The sidecar owns primary zombie
+        # detection (stream-staleness + upstream probe -> degraded -> exit 75;
+        # surfaced here via /healthz in _monitor_sidecar_health). This adapter-
+        # side watchdog is a conservative second layer that only respawns the
+        # sidecar when the sidecar's own HTTP loop stops responding (probe
+        # HTTP call hangs) — an "inconclusive" probe (sidecar answered but
+        # could not prove upstream liveness) NEVER counts toward a respawn:
+        # the network may simply be down, and restarting cannot fix that.
+        # Thresholds are deliberately conservative (10 min interval) — shared
+        # lines can be legitimately quiet for hours, so we never restart on
+        # silence alone.
+        # Behavioural settings -> config.yaml (extra), bridged to env.
+        # Use _first_set (not ``or``) so an explicit 0 is honored — ``0 or X``
+        # would silently fall through to the default and you could never
+        # disable the watchdog with probe_interval_seconds: 0.
+        self._probe_interval = _coerce_float(
+            _first_set(
+                extra.get("probe_interval_seconds"),
+                os.getenv("PHOTON_PROBE_INTERVAL_SECONDS"),
+            ),
+            600.0,
+        )
+        self._probe_timeout = _coerce_float(
+            _first_set(
+                extra.get("probe_timeout_seconds"),
+                os.getenv("PHOTON_PROBE_TIMEOUT_SECONDS"),
+            ),
+            10.0,
+        )
+        self._probe_max_failures = _coerce_int(
+            _first_set(
+                extra.get("probe_max_failures"),
+                os.getenv("PHOTON_PROBE_MAX_FAILURES"),
+            ),
+            3,
+        )
+        # A non-positive interval disables the watchdog entirely (escape hatch).
+        self._probe_enabled = self._probe_interval > 0
+
         # With markdown on, format_message preserves fences and the sidecar's
         # markdown() builder renders them (or degrades them readably).
         self.supports_code_blocks = _markdown_enabled()
@@ -534,6 +730,15 @@ class PhotonAdapter(BasePlatformAdapter):
         self._inbound_running = False
         self._http_client: Optional["httpx.AsyncClient"] = None
         self._sidecar_health_interval = 15.0
+        # Presence-watchdog runtime state.
+        self._watchdog_task: Optional[asyncio.Task] = None
+        self._watchdog_running = False
+        self._probe_failures = 0
+        # Monotonic timestamp of the last real upstream activity (inbound
+        # message or a successful probe). The watchdog skips its own probe when
+        # natural traffic already proved the channel live within the interval.
+        self._last_upstream_activity = 0.0
+        self._respawn_lock: Optional[asyncio.Lock] = None
         # Lightweight in-memory dedup. The gRPC stream is at-least-once, so we
         # may see the same messageId more than once (e.g. after a reconnect).
         self._seen_messages: Dict[str, float] = {}
@@ -545,6 +750,10 @@ class PhotonAdapter(BasePlatformAdapter):
         # react action default to "the message that triggered me" without
         # requiring the model to thread message ids through tool calls.
         self._last_inbound_by_chat: Dict[str, str] = {}
+        # Latest inbound URL/richlink per chat. iMessage can send rich-link
+        # preview artwork as separate image attachments immediately after the
+        # URL bubble; this lets us coalesce those artifacts.
+        self._recent_richlinks_by_chat: Dict[str, float] = {}
         # Last time we sent a typing indicator per chat, for cooldown gating.
         self._typing_last_sent: Dict[str, float] = {}
 
@@ -676,6 +885,16 @@ class PhotonAdapter(BasePlatformAdapter):
             self._monitor_sidecar_health()
         )
 
+        # Start the presence watchdog (detects a half-open/zombie gRPC stream
+        # the SDK can't see and respawns the sidecar to recover inbound).
+        self._last_upstream_activity = time.monotonic()
+        if self._probe_enabled and self._autostart_sidecar:
+            self._respawn_lock = asyncio.Lock()
+            self._watchdog_running = True
+            self._watchdog_task = asyncio.get_event_loop().create_task(
+                self._presence_watchdog()
+            )
+
         self._mark_connected()
         logger.info(
             "[photon] connected — sidecar on %s:%d, streaming inbound over gRPC",
@@ -685,6 +904,9 @@ class PhotonAdapter(BasePlatformAdapter):
 
     async def disconnect(self) -> None:
         self._inbound_running = False
+        # Stop the watchdog first so it can't trigger a respawn while we tear
+        # the sidecar down.
+        await self._stop_watchdog()
         if self._sidecar_health_task is not None:
             task = self._sidecar_health_task
             self._sidecar_health_task = None
@@ -824,7 +1046,26 @@ class PhotonAdapter(BasePlatformAdapter):
                 continue
 
             stream = data.get("stream") if isinstance(data, dict) else None
-            if not isinstance(stream, dict) or stream.get("ok") is not False:
+            if not isinstance(stream, dict):
+                continue
+
+            # Surface the sidecar's zombie-stream staleness state early: a
+            # suspected half-open stream (silence past threshold + probe-proven
+            # connectivity) is worth a loud log line even before the sidecar's
+            # degraded->exit-75 path fires.
+            staleness = stream.get("staleness")
+            if (
+                isinstance(staleness, dict)
+                and staleness.get("zombieSuspected") is True
+            ):
+                logger.warning(
+                    "[photon] sidecar reports suspected zombie stream"
+                    " (silentForMs=%s, lastProbeOutcome=%s)",
+                    staleness.get("silentForMs"),
+                    staleness.get("lastProbeOutcome"),
+                )
+
+            if stream.get("ok") is not False:
                 continue
 
             state = str(stream.get("state") or "unknown")
@@ -845,6 +1086,12 @@ class PhotonAdapter(BasePlatformAdapter):
             break
 
     async def _on_inbound_line(self, line: str) -> None:
+        # Any line on the inbound stream — message OR heartbeat — proves the
+        # upstream gRPC channel is live, so reset the watchdog's failure count
+        # and activity clock. (Heartbeats arrive as blank lines, already
+        # filtered before this method, but a real message is the strongest
+        # liveness signal we have.)
+        self._note_upstream_activity()
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
@@ -1040,16 +1287,59 @@ class PhotonAdapter(BasePlatformAdapter):
                 prev[1].cancel()
                 logger.debug("[photon] attachment arrived — cancelling U+FFFC timeout")
 
+        # Preview art for an immediately preceding URL/richlink should not
+        # become a second user prompt. Suppress before recording it as the
+        # latest reactable inbound or decoding/caching image bytes.
+        if self._is_recent_richlink_preview(space_id, content):
+            logger.info(
+                "[photon] suppressing rich-link preview attachment: %s",
+                _richlink_preview_label(content),
+            )
+            return
         # Anything past here is a real (reactable) message — remember it as
         # the chat's latest inbound so `add_reaction` can target it when the
         # caller doesn't pass an explicit message id. Recorded before the
         # mention gate: a reaction to a non-wake-word group message is valid.
         self._record_last_inbound(space_id, event.get("messageId"))
+        if ctype == "poll_option":
+            # A native poll vote. A *selection* carries the chosen option text
+            # straight to the agent as if the user had typed it — the gateway's
+            # pending-clarify text-intercept then resolves the open clarify and
+            # unblocks the agent. A *deselection* (selected=false) is dropped:
+            # there's no answer to record, and forwarding "" would mis-resolve.
+            if content.get("selected") is False:
+                logger.debug("[photon] ignoring poll deselection")
+                return
+            choice = (content.get("title") or "").strip()
+            if not choice:
+                logger.debug("[photon] ignoring poll vote with empty title")
+                return
+            source = self.build_source(
+                chat_id=space_id,
+                chat_name=space_id,
+                chat_type=chat_type,
+                user_id=sender_id,
+                user_name=sender_id or None,
+            )
+            await self.handle_message(
+                MessageEvent(
+                    text=choice,
+                    message_type=MessageType.TEXT,
+                    source=source,
+                    message_id=event.get("messageId"),
+                    raw_message=event,
+                    timestamp=timestamp,
+                )
+            )
+            return
         if ctype == "text":
             text = content.get("text") or ""
             mtype = MessageType.TEXT
         elif ctype in {"attachment", "voice"}:
             text, mtype, media_urls, media_types = _normalize_binary_payload(content)
+        elif ctype == "richlink":
+            text = _format_richlink_content(content)
+            mtype = MessageType.TEXT
         elif ctype == "group":
             text_parts: List[str] = []
             mtype = MessageType.TEXT
@@ -1064,6 +1354,9 @@ class PhotonAdapter(BasePlatformAdapter):
                     item_text = item_content.get("text") or ""
                     if item_text:
                         text_parts.append(item_text)
+                    continue
+                if item_type == "richlink":
+                    text_parts.append(_format_richlink_content(item_content))
                     continue
                 if item_type in {"attachment", "voice"}:
                     marker, item_mtype, item_urls, item_types = _normalize_binary_payload(
@@ -1099,6 +1392,8 @@ class PhotonAdapter(BasePlatformAdapter):
                 )
                 return
             text = self._clean_mention_text(text)
+
+        self._record_recent_richlink(space_id, _richlink_url_from_content(content) or text)
 
         source = self.build_source(
             chat_id=space_id,
@@ -1443,6 +1738,151 @@ class PhotonAdapter(BasePlatformAdapter):
                     self._sidecar_supervisor_task.cancel()
                 self._sidecar_supervisor_task = None
 
+    # -- Presence watchdog -------------------------------------------------
+
+    def _note_upstream_activity(self) -> None:
+        """Record proof the upstream gRPC channel is live, and clear failures.
+
+        Called on every inbound line and after every successful probe.
+        """
+        self._last_upstream_activity = time.monotonic()
+        self._probe_failures = 0
+
+    async def _probe_once(self) -> str:
+        """Drive one liveness probe via the sidecar's ``/probe``.
+
+        Returns a strict tri-state verdict:
+
+        - ``"alive"``        — the sidecar completed a real upstream gRPC
+          round-trip (HTTP 200). Only this counts as proof of liveness.
+        - ``"hung"``         — the probe HTTP call itself timed out: the
+          sidecar's event loop is unresponsive. Counts toward respawn.
+        - ``"inconclusive"`` — anything else (503 from the sidecar's strict
+          probe, connection refused, transport error). NEVER counts as alive
+          and NEVER counts toward a respawn: a rejected upstream probe may
+          just mean the network is down, and a dead sidecar process is the
+          supervisor's job, not ours.
+        """
+        client = self._http_client
+        if client is None:
+            return "inconclusive"
+        url = f"http://{self._sidecar_bind}:{self._sidecar_port}/probe"
+        try:
+            resp = await client.post(
+                url,
+                headers={"X-Kopi-Sidecar-Token": self._sidecar_token},
+                timeout=self._probe_timeout,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            if _is_timeout_error(e):
+                logger.debug("[photon] probe HTTP call hung: %s", e)
+                return "hung"
+            logger.debug("[photon] probe transport error (inconclusive): %s", e)
+            return "inconclusive"
+        return "alive" if resp.status_code == 200 else "inconclusive"
+
+    async def _respawn_sidecar(self, reason: str) -> None:
+        """Tear down and restart the sidecar to recover a dead gRPC stream.
+
+        A fresh ``Spectrum()`` re-subscribes the inbound stream and
+        re-registers presence with Photon cloud. The inbound loop's existing
+        reconnect logic re-opens the loopback NDJSON stream automatically once
+        the new sidecar's ``/inbound`` is up. Guarded by a lock so overlapping
+        triggers (watchdog + a manual call) can't double-spawn.
+        """
+        lock = self._respawn_lock
+        if lock is None:
+            lock = self._respawn_lock = asyncio.Lock()
+        if lock.locked():
+            logger.info("[photon] respawn already in progress; skipping")
+            return
+        async with lock:
+            logger.warning(
+                "[photon] presence watchdog: %s — respawning sidecar", reason
+            )
+            try:
+                await self._stop_sidecar()
+            except Exception:
+                logger.exception("[photon] error stopping sidecar during respawn")
+            try:
+                await self._start_sidecar()
+            except Exception:
+                logger.exception(
+                    "[photon] failed to respawn sidecar; watchdog will retry"
+                )
+                return
+            # Fresh sidecar -> fresh stream. Reset the activity clock so we give
+            # it a full interval before probing again, and clear failures.
+            self._note_upstream_activity()
+            logger.info("[photon] presence watchdog: sidecar respawned, gRPC stream renewed")
+
+    async def _presence_watchdog(self) -> None:
+        """Periodically confirm the sidecar (and its stream) is responsive.
+
+        The sidecar owns primary zombie-stream detection (silence tracking +
+        upstream probe -> degraded /healthz -> exit 75). This loop is the
+        adapter's conservative second layer: it probes on a long interval,
+        skips the probe when natural inbound traffic already proved liveness,
+        and only counts a *hung* probe (the sidecar HTTP call itself timing
+        out) toward a respawn. Inconclusive probes — the sidecar answered but
+        couldn't prove upstream liveness — reset nothing and trigger nothing:
+        the network may just be down, and restarting can't fix that. After
+        ``_probe_max_failures`` consecutive hung probes we respawn the sidecar
+        to force a fresh stream.
+        """
+        # Stagger the first probe so a fleet of restarts doesn't synchronize,
+        # and so a freshly-started sidecar isn't probed before it's warm.
+        await asyncio.sleep(self._probe_interval)
+        while self._watchdog_running:
+            try:
+                # Skip our own probe if inbound traffic already proved the
+                # channel live within the last interval (cheaper, and avoids
+                # piling synthetic reads on a busy line).
+                idle = time.monotonic() - self._last_upstream_activity
+                if idle < self._probe_interval:
+                    await asyncio.sleep(self._probe_interval - idle)
+                    continue
+
+                verdict = await self._probe_once()
+                if verdict == "alive":
+                    self._note_upstream_activity()
+                elif verdict == "hung":
+                    # Only a hung sidecar HTTP loop counts toward respawn —
+                    # strict success-only-on-probe-OK semantics mean an
+                    # inconclusive probe is never evidence in either direction.
+                    self._probe_failures += 1
+                    logger.warning(
+                        "[photon] presence probe hung (%d/%d)",
+                        self._probe_failures, self._probe_max_failures,
+                    )
+                    if self._probe_failures >= self._probe_max_failures:
+                        await self._respawn_sidecar(
+                            f"{self._probe_failures} consecutive hung probes"
+                        )
+                else:
+                    logger.debug(
+                        "[photon] presence probe inconclusive; taking no action"
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("[photon] presence watchdog iteration failed")
+            await asyncio.sleep(self._probe_interval)
+
+    async def _stop_watchdog(self) -> None:
+        self._watchdog_running = False
+        if self._watchdog_task is not None:
+            self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+            self._watchdog_task = None
+
     # -- Outbound ----------------------------------------------------------
 
     async def send(
@@ -1453,6 +1893,52 @@ class PhotonAdapter(BasePlatformAdapter):
         metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         return await self._sidecar_send(chat_id, self.format_message(content))
+
+    # -- Clarify (native iMessage poll) ------------------------------------
+    #
+    # iMessage has a native poll bubble; spectrum-ts exposes it via the
+    # `poll()` content builder. A multiple-choice clarify renders as that poll
+    # and the user taps a choice instead of typing a number — the vote streams
+    # back inbound as a `poll_option` event, which `_dispatch_inbound`
+    # translates into a plain-text message carrying the chosen option. We flip
+    # the clarify into text-capture mode (exactly like the base text fallback)
+    # so the gateway's pending-clarify intercept resolves it with that choice.
+    # Open-ended clarifies (no choices) keep the plain-text path.
+
+    async def send_clarify(
+        self,
+        chat_id: str,
+        question: str,
+        choices: Optional[list],
+        clarify_id: str,
+        session_key: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> SendResult:
+        if not choices:
+            # No choices → open-ended. Base behaviour (plain text; the next
+            # message resolves it) is exactly right.
+            return await super().send_clarify(
+                chat_id, question, choices, clarify_id, session_key, metadata
+            )
+        # The poll vote comes back as a normal text message, so enable
+        # text-capture and let the gateway intercept resolve the clarify.
+        from tools.clarify_gateway import mark_awaiting_text
+
+        mark_awaiting_text(clarify_id)
+        result = await self._sidecar_send_poll(chat_id, question, list(choices))
+        if not result.success:
+            # Native poll failed (old sidecar without /send-poll, or a send
+            # error) — fall back to the numbered-text clarify so the user can
+            # still answer. The base impl also calls mark_awaiting_text (a
+            # second call is harmless).
+            logger.warning(
+                "[photon] poll clarify failed (%s); falling back to text list",
+                result.error,
+            )
+            return await super().send_clarify(
+                chat_id, question, choices, clarify_id, session_key, metadata
+            )
+        return result
 
     # -- Outbound media (parity with the BlueBubbles iMessage channel) -----
     #
@@ -1547,6 +2033,40 @@ class PhotonAdapter(BasePlatformAdapter):
             chat_id, animation_url, caption, reply_to, metadata,
         )
 
+    async def send_poll(
+        self,
+        chat_id: str,
+        title: str,
+        options: list[str],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> SendResult:
+        """Send a native iMessage poll through Photon Spectrum.
+
+        Thin public wrapper over :meth:`_sidecar_send_poll`, the single
+        implementation of the sidecar's ``/send-poll`` primitive (also used
+        by the poll-backed clarify path).
+        """
+        return await self._sidecar_send_poll(chat_id, title, list(options or []))
+
+    async def send_effect(
+        self,
+        chat_id: str,
+        text: str,
+        effect: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> SendResult:
+        """Send text with a native iMessage bubble or screen effect."""
+        if not text.strip() or not effect.strip():
+            return SendResult(success=False, error="text and effect are required")
+        try:
+            data = await self._sidecar_call(
+                "/send-effect",
+                {"spaceId": chat_id, "text": text.strip(), "effect": effect.strip()},
+            )
+        except Exception as e:
+            return SendResult(success=False, error=str(e))
+        return SendResult(success=True, message_id=data.get("messageId"))
+
     async def send_typing(self, chat_id: str, metadata=None) -> None:
         now = time.time()
         if now - self._typing_last_sent.get(chat_id, 0.0) < _TYPING_COOLDOWN_SECONDS:
@@ -1615,6 +2135,32 @@ class PhotonAdapter(BasePlatformAdapter):
                 : len(last) - self._LAST_INBOUND_CHATS_MAX
             ]:
                 del last[old]
+
+    def _record_recent_richlink(self, chat_id: str, text: str) -> None:
+        if not chat_id or not _url_only_candidate(text):
+            return
+        key = self._normalize_chat_key(chat_id)
+        recent = self._recent_richlinks_by_chat
+        if key in recent:
+            del recent[key]  # refresh insertion order
+        recent[key] = time.time()
+        if len(recent) > self._LAST_INBOUND_CHATS_MAX:
+            for old in list(recent.keys())[
+                : len(recent) - self._LAST_INBOUND_CHATS_MAX
+            ]:
+                del recent[old]
+
+    def _is_recent_richlink_preview(self, chat_id: str, content: Dict[str, Any]) -> bool:
+        if not chat_id or not _is_richlink_preview_content(content):
+            return False
+        key = self._normalize_chat_key(chat_id)
+        last = self._recent_richlinks_by_chat.get(key)
+        if last is None:
+            return False
+        if time.time() - last > _RICHLINK_PREVIEW_SUPPRESS_SECONDS:
+            self._recent_richlinks_by_chat.pop(key, None)
+            return False
+        return True
 
     def _reactions_enabled(self) -> bool:
         return os.getenv("PHOTON_REACTIONS", "false").strip().lower() in {
@@ -1846,23 +2392,52 @@ class PhotonAdapter(BasePlatformAdapter):
                     "[photon] Failed to deliver response after %d retries: %s",
                     max_retries, error_str,
                 )
-                return result
+                # Fall through to the plain-text fallback below. For URL-only
+                # responses this bypasses ``richlink()`` so a rich-link-specific
+                # outage or sidecar skew does not strand an otherwise sendable URL.
 
         logger.warning(
             "[photon] Send failed: %s - retrying plain-text message",
             error_str,
         )
-        fallback_result = await self.send(
-            chat_id=chat_id,
-            content=text[: self.MAX_MESSAGE_LENGTH],
-            reply_to=reply_to,
-            metadata=metadata,
+        fallback_result = await self._sidecar_send(
+            chat_id,
+            text[: self.MAX_MESSAGE_LENGTH],
+            richlink=False,
+            markdown=False,
         )
         if not fallback_result.success:
             logger.error("[photon] Plain-text retry also failed: %s", fallback_result.error)
         return fallback_result
 
-    async def _sidecar_send(self, space_id: str, text: str) -> SendResult:
+    async def _sidecar_send_richlink(self, space_id: str, url: str) -> SendResult:
+        try:
+            data = await self._sidecar_call(
+                "/send-richlink", {"spaceId": space_id, "url": url}
+            )
+        except Exception as e:
+            return SendResult(success=False, error=str(e))
+        self._record_sent_message(data.get("messageId"))
+        return SendResult(success=True, message_id=data.get("messageId"))
+
+    async def _sidecar_send(
+        self,
+        space_id: str,
+        text: str,
+        *,
+        richlink: bool = True,
+        markdown: bool = True,
+    ) -> SendResult:
+        rich_url = _richlink_candidate(text) if richlink else None
+        if rich_url:
+            rich_result = await self._sidecar_send_richlink(space_id, rich_url)
+            if rich_result.success:
+                return rich_result
+            logger.warning(
+                "[photon] rich-link send failed, falling back to plain text: %s",
+                rich_result.error,
+            )
+            markdown = False
         if len(text) > self.MAX_MESSAGE_LENGTH:
             logger.warning(
                 "[photon] truncating outbound from %d to %d chars",
@@ -1872,7 +2447,7 @@ class PhotonAdapter(BasePlatformAdapter):
         body: Dict[str, Any] = {"spaceId": space_id, "text": text}
         # Omit the key when disabled so an older sidecar (pre-`format`)
         # keeps accepting the body during a half-upgraded restart.
-        if _markdown_enabled():
+        if markdown and _markdown_enabled():
             body["format"] = "markdown"
         try:
             data = await self._sidecar_call("/send", body)
@@ -1886,6 +2461,32 @@ class PhotonAdapter(BasePlatformAdapter):
                 },
                 retryable=e.retryable,
             )
+        except Exception as e:
+            return SendResult(success=False, error=str(e))
+        self._record_sent_message(data.get("messageId"))
+        return SendResult(success=True, message_id=data.get("messageId"))
+
+    async def _sidecar_send_poll(
+        self, space_id: str, title: str, options: list,
+    ) -> SendResult:
+        """POST a poll to the sidecar's ``/send-poll`` endpoint.
+
+        Renders a native iMessage poll. ``options`` are choice strings; the
+        sidecar's ``poll()`` builder degrades to a numbered text list on
+        platforms without native polls.
+        """
+        opts = [str(o).strip() for o in (options or []) if str(o).strip()]
+        if not title or not title.strip():
+            return SendResult(success=False, error="poll title is required")
+        if len(opts) < 2:
+            return SendResult(success=False, error="poll needs at least two options")
+        body: Dict[str, Any] = {
+            "spaceId": space_id,
+            "title": title.strip()[: self.MAX_MESSAGE_LENGTH],
+            "options": opts,
+        }
+        try:
+            data = await self._sidecar_call("/send-poll", body)
         except Exception as e:
             return SendResult(success=False, error=str(e))
         self._record_sent_message(data.get("messageId"))
@@ -2145,21 +2746,37 @@ async def _standalone_send(
         async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
             # 1. Text body first (if any), so it leads the conversation.
             if message:
-                send_body: Dict[str, Any] = {
-                    "spaceId": chat_id,
-                    "text": message[:_MAX_MESSAGE_LENGTH],
-                }
-                if _markdown_enabled():
-                    send_body["format"] = "markdown"
-                resp = await client.post(
-                    f"{base}/send", json=send_body, headers=headers,
-                )
-                if resp.status_code != 200:
-                    return _standalone_error(resp)
-                data = resp.json() or {}
-                if not data.get("ok"):
-                    return _standalone_error(resp)
-                last_message_id = data.get("messageId")
+                rich_url = _richlink_candidate(message)
+                if rich_url:
+                    resp = await client.post(
+                        f"{base}/send-richlink",
+                        json={"spaceId": chat_id, "url": rich_url},
+                        headers=headers,
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json() or {}
+                        if data.get("ok"):
+                            last_message_id = data.get("messageId")
+                        else:
+                            rich_url = None
+                    else:
+                        rich_url = None
+                if not rich_url:
+                    send_body: Dict[str, Any] = {
+                        "spaceId": chat_id,
+                        "text": message[:_MAX_MESSAGE_LENGTH],
+                    }
+                    if _markdown_enabled() and not _richlink_candidate(message):
+                        send_body["format"] = "markdown"
+                    resp = await client.post(
+                        f"{base}/send", json=send_body, headers=headers,
+                    )
+                    if resp.status_code != 200:
+                        return _standalone_error(resp)
+                    data = resp.json() or {}
+                    if not data.get("ok"):
+                        return _standalone_error(resp)
+                    last_message_id = data.get("messageId")
 
             # 2. Each attachment as a separate /send-attachment call.
             #    media_files is List[Tuple[path, is_voice]] (see
