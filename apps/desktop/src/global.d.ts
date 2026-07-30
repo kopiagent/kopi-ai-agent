@@ -134,7 +134,9 @@ declare global {
       /** Watch a directory for entry churn (disk-plugin door); same watcher
        *  registry + onPreviewFileChanged channel as watchPreviewFile. Optional:
        *  older Electron shells predate it and fall back to the readdir poll. */
-      watchDirectory?: (dir: string) => Promise<KopiPreviewWatch>
+      // Resolves null when the directory doesn't exist yet (the normal state
+      // for the plugin door on a fresh profile) — callers keep polling.
+      watchDirectory?: (dir: string) => Promise<KopiPreviewWatch | null>
       stopPreviewFileWatch: (id: string) => Promise<boolean>
       setActiveWork?: (payload: KopiActiveWork) => void
       setTitleBarTheme?: (payload: KopiTitleBarTheme) => void

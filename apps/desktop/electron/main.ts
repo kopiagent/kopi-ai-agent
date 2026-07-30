@@ -4939,7 +4939,18 @@ function closePreviewWatchers() {
 function watchDirectory(rawDir) {
   const watchDir = path.resolve(String(rawDir || ''))
 
-  if (!fs.existsSync(watchDir) || !fs.statSync(watchDir).isDirectory()) {
+  // KOPI: "doesn't exist yet" is the NORMAL state for the plugin door on a
+  // fresh profile, and the renderer retries this call on every poll tick to
+  // upgrade once the dir lands. Throwing makes ipcMain.handle log
+  // "Error occurred in handler for 'kopi:watchDirectory'" every ~5s forever,
+  // so return null (caller reads it as "not watching", keeps polling) and
+  // reserve the throw for a path that exists but isn't a directory — a real
+  // misconfiguration worth surfacing.
+  if (!fs.existsSync(watchDir)) {
+    return null
+  }
+
+  if (!fs.statSync(watchDir).isDirectory()) {
     throw new Error(`Not a directory: ${watchDir}`)
   }
 
