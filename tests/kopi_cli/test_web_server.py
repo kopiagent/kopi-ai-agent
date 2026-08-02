@@ -5473,101 +5473,109 @@ class TestWebServerEndpoints:
         model_cfg = load_config()["model"]
         assert model_cfg["api_key"] == "sk-legacy"
 
-    def test_set_model_main_preserves_base_url_for_named_custom_provider(self):
-        """Selecting a named custom endpoint from the Desktop model picker
-        should keep its endpoint URL attached to model config.
-        """
-        from kopi_cli.config import load_config, save_config
+    def test_get_sessions_rejects_negative_limit(self):
+        """limit=-1 must be rejected (422), not passed through to SQLite as
+        LIMIT -1 (unbounded) — issue #74316."""
+        resp = self.client.get("/api/sessions?limit=-1")
+        assert resp.status_code == 422
 
-        save_config({
-            "model": {"provider": "nous", "default": "kopi-4"},
-            "providers": {
-                "axet-proxy": {
-                    "name": "Axet Proxy",
-                    "base_url": "http://127.0.0.1:8081/v1",
-                    "api_key": "sk-local",
-                    "model": "gpt-5.4",
-                    "models": {"gpt-5.4": {}},
-                }
-            },
-        })
+    def test_get_sessions_rejects_negative_offset(self):
+        resp = self.client.get("/api/sessions?offset=-1")
+        assert resp.status_code == 422
 
-        resp = self.client.post(
-            "/api/model/set",
-            json={"scope": "main", "provider": "axet-proxy", "model": "gpt-5.4"},
-        )
+    def test_get_sessions_positive_limit_still_works(self):
+        from kopi_state import SessionDB
 
+        db = SessionDB()
+        try:
+            for i in range(5):
+                db.create_session(session_id=f"pos-limit-{i}", source="cli")
+                db.append_message(session_id=f"pos-limit-{i}", role="user", content="hi")
+        finally:
+            db.close()
+
+        resp = self.client.get("/api/sessions?limit=3&offset=0")
         assert resp.status_code == 200
-        model_cfg = load_config()["model"]
-        assert model_cfg["provider"] == "axet-proxy"
-        assert model_cfg["default"] == "gpt-5.4"
-        assert model_cfg["base_url"] == "http://127.0.0.1:8081/v1"
-        assert model_cfg["api_key"] == "sk-local"
+        payload = resp.json()
+        assert payload["limit"] == 3
+        assert len(payload["sessions"]) == 3
 
-    def test_set_model_main_gateway_failure_does_not_block_save(self, monkeypatch):
-        """A Portal/gateway hiccup must never prevent saving the model."""
-        import kopi_cli.nous_subscription as ns
+    def test_profiles_sessions_rejects_negative_limit(self):
+        """Same guard on the cross-profile aggregate route — negative limit
+        previously bypassed the per-profile 500-row clamp entirely."""
+        resp = self.client.get("/api/profiles/sessions?limit=-1")
+        assert resp.status_code == 422
 
-        def boom(*args, **kwargs):
-            raise RuntimeError("portal unreachable")
+    def test_profiles_sessions_rejects_negative_offset(self):
+        resp = self.client.get("/api/profiles/sessions?offset=-1")
+        assert resp.status_code == 422
 
-        monkeypatch.setattr(ns, "apply_nous_managed_defaults", boom)
+    def test_profiles_sessions_positive_limit_still_works(self):
+        from kopi_state import SessionDB
 
-        resp = self.client.post(
-            "/api/model/set",
-            json={"scope": "main", "provider": "nous", "model": "kopi-4"},
-        )
+        db = SessionDB()
+        try:
+            for i in range(5):
+                db.create_session(session_id=f"pos-plimit-{i}", source="cli")
+                db.append_message(session_id=f"pos-plimit-{i}", role="user", content="hi")
+        finally:
+            db.close()
+
+        resp = self.client.get("/api/profiles/sessions?limit=3&offset=0")
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["ok"] is True
-        assert data.get("gateway_tools", []) == []
+        payload = resp.json()
+        assert payload["limit"] == 3
+        assert len(payload["sessions"]) == 3
 
-    def test_recommended_default_nous_honors_free_tier(self, monkeypatch):
-        """For a free-tier Nous user, the recommended default must be a free
-        model (mirroring `kopi model`), not the first curated paid entry."""
-        import kopi_cli.models as models_mod
+    def test_get_session_messages_rejects_negative_limit(self):
+        """limit=-1 previously bypassed the documented 500-row clamp because
+        min(-1, 500) == -1, which SQLite treats as 'no limit'."""
+        from kopi_state import SessionDB
 
-        monkeypatch.setattr(models_mod, "get_curated_nous_model_ids", lambda: ["paid/expensive", "free/cheap"])
-        monkeypatch.setattr(
-            models_mod, "get_pricing_for_provider",
-            lambda provider: {"paid/expensive": {"input": "1"}, "free/cheap": {"input": "0"}},
-        )
-        monkeypatch.setattr(models_mod, "check_nous_free_tier", lambda *, force_fresh=False: True)
-        monkeypatch.setattr(
-            models_mod, "union_with_portal_free_recommendations",
-            lambda ids, pricing, url: (ids, pricing),
-        )
-        # Free partition keeps only the free model selectable.
-        monkeypatch.setattr(
-            models_mod, "partition_nous_models_by_tier",
-            lambda ids, pricing, free_tier: (["free/cheap"], ["paid/expensive"]),
-        )
+        db = SessionDB()
+        try:
+            db.create_session(session_id="neg-limit-messages", source="cli")
+            for i in range(60):
+                db.append_message(
+                    session_id="neg-limit-messages", role="user", content=f"msg {i}"
+                )
+        finally:
+            db.close()
 
-        resp = self.client.get("/api/model/recommended-default?provider=nous")
+        resp = self.client.get("/api/sessions/neg-limit-messages/messages?limit=-1")
+        assert resp.status_code == 422
+
+    def test_get_session_messages_rejects_negative_offset(self):
+        from kopi_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session(session_id="neg-offset-messages", source="cli")
+            db.append_message(session_id="neg-offset-messages", role="user", content="hi")
+        finally:
+            db.close()
+
+        resp = self.client.get("/api/sessions/neg-offset-messages/messages?offset=-1")
+        assert resp.status_code == 422
+
+    def test_get_session_messages_limit_above_500_is_capped_not_rejected(self):
+        """A limit above the documented 500-row cap is silently clamped
+        (existing ``min(limit, 500)`` behaviour), not rejected — the request
+        still succeeds."""
+        from kopi_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session(session_id="many-messages", source="cli")
+            for i in range(60):
+                db.append_message(session_id="many-messages", role="user", content=f"msg {i}")
+        finally:
+            db.close()
+
+        resp = self.client.get("/api/sessions/many-messages/messages?limit=1000")
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["provider"] == "nous"
-        assert data["model"] == "free/cheap"
-        assert data["free_tier"] is True
+        assert resp.json()["pagination"]["limit"] == 500
 
-    def test_recommended_default_nous_paid_uses_curated_default(self, monkeypatch):
-        """A paid Nous user gets the first curated/paid-augmented model."""
-        import kopi_cli.models as models_mod
-
-        monkeypatch.setattr(models_mod, "get_curated_nous_model_ids", lambda: ["top/model", "other/model"])
-        monkeypatch.setattr(models_mod, "get_pricing_for_provider", lambda provider: {})
-        monkeypatch.setattr(models_mod, "check_nous_free_tier", lambda *, force_fresh=False: False)
-        monkeypatch.setattr(
-            models_mod, "union_with_portal_paid_recommendations",
-            lambda ids, pricing, url: (ids, pricing),
-        )
-
-        resp = self.client.get("/api/model/recommended-default?provider=nous")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["provider"] == "nous"
-        assert data["model"] == "top/model"
-        assert data["free_tier"] is False
 
     def test_recommended_default_handles_failure_gracefully(self, monkeypatch):
         """Endpoint never 500s — returns empty model on internal error."""

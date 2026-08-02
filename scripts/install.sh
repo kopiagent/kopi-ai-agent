@@ -1748,6 +1748,29 @@ EOF
     chmod +x "$command_link_dir/kopi"
     log_success "Installed kopi launcher → $command_link_display_dir/kopi"
 
+    # Also expose `kopi-ai-agent`. The `kopi-ai-agent` console script declared in
+    # pyproject.toml's [project.scripts] lives inside the venv, which is not on
+    # the login-shell PATH. Without this launcher users can't invoke the agent
+    # entrypoint directly from outside the venv. (#74819)
+    rm -f "$command_link_dir/kopi-ai-agent"
+    if [ "$USE_VENV" = true ]; then
+        cat > "$command_link_dir/kopi-ai-agent" <<EOF
+#!/usr/bin/env bash
+unset PYTHONPATH
+unset PYTHONHOME
+exec "$KOPI_BIN" "$INSTALL_DIR/run_agent.py" "\$@"
+EOF
+    else
+        cat > "$command_link_dir/kopi-ai-agent" <<EOF
+#!/usr/bin/env bash
+unset PYTHONPATH
+unset PYTHONHOME
+exec "$KOPI_BIN" run_agent.py "\$@"
+EOF
+    fi
+    chmod +x "$command_link_dir/kopi-ai-agent"
+    log_success "Installed kopi-ai-agent launcher → $command_link_display_dir/kopi-ai-agent"
+
     # Also expose `kopi-acp`. ACP hosts (Zed, JetBrains, Buzz) resolve the
     # agent by command name on the login-shell PATH, and the `kopi-acp`
     # console script lives inside the venv, which is not on that PATH. Without
