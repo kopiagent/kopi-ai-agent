@@ -362,6 +362,39 @@ class TestCacheDirectoryMounts:
 
         assert get_cache_directory_mounts() == []
 
+    def test_images_upload_dir_is_mounted(self, tmp_path, monkeypatch):
+        """The flat top-level ``images/`` upload dir is mounted (#69575).
+
+        Desktop / clipboard / PDF uploads land in ``KOPI_HOME/images``, not
+        under ``cache/``. Without this entry vision_analyze on a desktop upload
+        fails because the file is not reachable inside the sandbox.
+        """
+        kopi_home = tmp_path / ".kopi"
+        (kopi_home / "images").mkdir(parents=True)
+        monkeypatch.setenv("KOPI_HOME", str(kopi_home))
+
+        mounts = get_cache_directory_mounts()
+        by_container = {m["container_path"]: m["host_path"] for m in mounts}
+        assert "/root/.kopi/images" in by_container
+        assert by_container["/root/.kopi/images"] == str(kopi_home / "images")
+
+    def test_images_upload_file_maps_into_container(self, tmp_path, monkeypatch):
+        """A concrete upload under ``images/`` maps to its container path.
+
+        This is the reverse mapping vision uses to translate a container-visible
+        path back to the host mount; it must recognise the ``images/`` dir.
+        """
+        kopi_home = tmp_path / ".kopi"
+        (kopi_home / "images").mkdir(parents=True)
+        upload = kopi_home / "images" / "upload_20260722_181019_1.png"
+        upload.write_bytes(bytes.fromhex("89504e470d0a1a0a"))
+        monkeypatch.setenv("KOPI_HOME", str(kopi_home))
+
+        assert (
+            map_cache_path_to_container(str(upload))
+            == "/root/.kopi/images/upload_20260722_181019_1.png"
+        )
+
 
 class TestMapCachePathToContainer:
     """Tests for map_cache_path_to_container() — the backend-agnostic mapper."""
