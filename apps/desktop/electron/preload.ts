@@ -275,6 +275,14 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
 
     return () => ipcRenderer.removeListener('kopi:power-resume', listener)
   },
+  // AC ↔ battery transitions; renderers slow their backstop polls on battery.
+  getOnBattery: () => ipcRenderer.invoke('kopi:power-battery:get'),
+  onBatteryChanged: callback => {
+    const listener = (_event, onBattery) => callback(Boolean(onBattery))
+    ipcRenderer.on('kopi:power-battery', listener)
+
+    return () => ipcRenderer.removeListener('kopi:power-battery', listener)
+  },
   onBootProgress: callback => {
     const listener = (_event, payload) => callback(payload)
     ipcRenderer.on('kopi:boot-progress', listener)
