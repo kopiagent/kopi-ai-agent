@@ -93,6 +93,13 @@ jobs:
           node-version: 22
           cache: npm
 
+      # The runner ships npm 10, but .npmrc uses min-release-age-exclude, which
+      # only npm >= 12 honours — package.json's engines pins it and npm ci
+      # refuses with EBADENGINE otherwise. Same step the JS workflows carry.
+      - name: grab npm 12
+        run: |
+          npm i -g npm@12
+
       - uses: ./.github/actions/retry
         with:
           command: npm ci
