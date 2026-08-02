@@ -181,9 +181,14 @@ import {
   sandboxPreflight
 } from './update-relaunch'
 import { isOfficialSshRemote, OFFICIAL_REPO_HTTPS_URL } from './update-remote'
-import { resolveStagedUpdaterBinary, spawnUpdaterProcess } from './updater-process'
+import {
+  resolveStagedUpdaterBinary,
+  spawnUpdaterProcess,
+  stagedUpdaterSupportsPrewrittenMarker
+} from './updater-process'
 import { formatBlockerMessage, formatProbeFailedMessage, scanVenvBlockers } from './venv-blocker-scan'
 import { fetchMarketplaceThemes, searchMarketplaceThemes } from './vscode-marketplace'
+import { createWakeIndicatorWindowController } from './wake-indicator-window'
 import {
   computeWindowOptions,
   debounce,
@@ -3015,8 +3020,20 @@ async function applyUpdates(opts = {}) {
     // the venv. By writing the marker ourselves the renderer's
     // waitForUpdateToFinish() gate sees a live update and parks instead.
     // The updater overwrites this with its own PID later; same format.
-    if (Number.isInteger(child.pid)) {
+    //
+    // SKIPPED for pre-#74782 staged updaters: those have no self-PID
+    // exclusion, so they read this very marker as a foreign live owner and
+    // abort with "Another Kopi update is already running (PID <itself>)" —
+    // an unbreakable loop, because the update that would replace the stale
+    // binary is the one being refused. Losing the anti-respawn hardening is
+    // strictly better than never updating again, and the updater still writes
+    // its own marker moments later.
+    if (Number.isInteger(child.pid) && stagedUpdaterSupportsPrewrittenMarker(updater)) {
       writeUpdateMarker(KOPI_HOME, child.pid)
+    } else if (Number.isInteger(child.pid)) {
+      rememberLog(
+        `[updates] skipping marker pre-write: staged updater predates self-adopt (${updater}); it would refuse its own claim`
+      )
     }
 
     rememberLog(`[updates] launched updater: ${updater} ${updaterArgs.join(' ')}; exiting desktop to release venv shim`)
@@ -3103,9 +3120,15 @@ async function handOffWindowsBootstrapRecovery(reason) {
 
   // Same marker pre-write as applyUpdates — see comment there. The recovery
   // hand-off has the same window where the renderer can respawn a backend
-  // before the updater writes its own marker.
-  if (Number.isInteger(child.pid)) {
+  // before the updater writes its own marker, and the same stale-updater
+  // exclusion: a pre-#74782 binary would refuse its own pre-written claim and
+  // strand the very recovery meant to heal the install.
+  if (Number.isInteger(child.pid) && stagedUpdaterSupportsPrewrittenMarker(updater)) {
     writeUpdateMarker(KOPI_HOME, child.pid)
+  } else if (Number.isInteger(child.pid)) {
+    rememberLog(
+      `[bootstrap] skipping marker pre-write: staged updater predates self-adopt (${updater}); it would refuse its own claim`
+    )
   }
 
   rememberLog(
@@ -7008,6 +7031,7 @@ async function sanitizeDesktopConnectionConfig(config = readDesktopConnectionCon
     sshPort: (ssh || savedSsh)?.port || null,
     sshKeyPath: (ssh || savedSsh)?.keyPath || '',
     sshRemoteKopiPath: (ssh || savedSsh)?.remoteKopiPath || '',
+    sshRemoteProfile: (ssh || savedSsh)?.remoteProfile || '',
     // The env override only forces the global/primary connection; a per-profile
     // scope is never overridden by KOPI_DESKTOP_REMOTE_URL.
     envOverride
@@ -7140,7 +7164,8 @@ function buildSshBlock(input: any, existingBlock: any = {}) {
     user: input.sshUser ?? existingBlock.user,
     port: input.sshPort ?? existingBlock.port,
     keyPath: input.sshKeyPath ?? existingBlock.keyPath,
-    remoteKopiPath: input.sshRemoteKopiPath ?? existingBlock.remoteKopiPath
+    remoteKopiPath: input.sshRemoteKopiPath ?? existingBlock.remoteKopiPath,
+    remoteProfile: input.sshRemoteProfile ?? existingBlock.remoteProfile
   })
 
   if (!merged) {
@@ -7429,7 +7454,7 @@ async function bootstrapSshConnectionInner(profile, sshConfig, reuseToken, sourc
     const lifecycle = platform.os === 'Windows' ? connectWindowsRemote : remoteLifecycle.connect
     result = await lifecycle({
       ssh,
-      profile: connectionScopeKey(profile) || '',
+      profile: sshConfig.remoteProfile || connectionScopeKey(profile) || '',
       remoteKopiPath: sshConfig.remoteKopiPath || '',
       ownershipId: sshOwnershipKey(profile),
       reuseToken: reuseToken || '',
@@ -8867,6 +8892,17 @@ function createInstanceWindow() {
   return win
 }
 
+// A macOS-only ambient wake cue. It is deliberately a gateway-less helper
+// window: the active renderer owns voice state and sends only the visual phase.
+const wakeIndicatorController = createWakeIndicatorWindowController({
+  devServer: DEV_SERVER,
+  isMac: IS_MAC,
+  loadWindowUrl,
+  preloadPath: PRELOAD_PATH,
+  rendererIndex: resolveRendererIndex,
+  wireWindow: window => wireCommonWindowHandlers(window, zoomWiringForWindowKind('wakeIndicator'))
+})
+
 // The pet overlay: a single transparent, frameless, always-on-top window that
 // hosts ONLY the floating mascot. Shift-clicking the in-window pet "pops it out"
 // here so it can leave the app's bounds and stay visible while Kopi is
@@ -9327,6 +9363,7 @@ function createWindow() {
   const createdMainWindow = mainWindow
   mainWindow.on('closed', () => {
     closePetOverlay()
+    wakeIndicatorController.close()
 
     if (mainWindow === createdMainWindow) {
       mainWindow = null
@@ -9526,6 +9563,10 @@ ipcMain.handle('kopi:window:openInstance', async () => {
   createInstanceWindow()
 
   return { ok: true }
+})
+ipcMain.handle('kopi:wake-indicator:get', () => wakeIndicatorController.getState())
+ipcMain.on('kopi:wake-indicator:set', (_event, state) => {
+  wakeIndicatorController.setState(state)
 })
 
 // --- Text size (zoom) -------------------------------------------------------
@@ -11806,6 +11847,17 @@ app.whenReady().then(() => {
   // it without the renderer visiting Settings. A failed registration is logged
   // here and surfaced in Settings via the IPC state (never silent).
   applyQuickEntrySettings(readQuickEntrySettings())
+
+  if (IS_MAC) {
+    const reposition = () => wakeIndicatorController.reposition()
+
+    screen.on('display-added', reposition)
+
+    screen.on('display-metrics-changed', reposition)
+
+    screen.on('display-removed', reposition)
+  }
+
   createWindow()
 
   // Win/Linux cold start: the launching kopi:// URL is in our own argv.
@@ -11934,6 +11986,7 @@ app.on('before-quit', event => {
   // The always-on-top overlay isn't a "real" app window; close it so a stray
   // pet can't keep the process alive or float over a quit app.
   closePetOverlay()
+  wakeIndicatorController.close()
 
   // Same for the Quick Entry composer — and release its global accelerator so a
   // quitting Kopi never keeps another app's chord hostage.

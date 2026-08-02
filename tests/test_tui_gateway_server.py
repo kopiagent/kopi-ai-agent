@@ -2016,12 +2016,17 @@ def test_load_enabled_toolsets_rejects_disabled_mcp_env(monkeypatch, capsys):
     # universe); `project` is GUI-only, folded in by _load_enabled_toolsets.
     # Toolsets inside their first release (_RECENTLY_SHIPPED_TOOLSETS) are
     # back-filled onto saved lists that never offered them — allow those too.
+    # `obsidian` is in the baseline rather than that allowlist: it's a
+    # long-standing KOPI toolset (upstream has no equivalent), so it is always
+    # folded in. Adding it to _RECENTLY_SHIPPED_TOOLSETS instead would be wrong
+    # — that set means "shipping for the first time", and an entry left there
+    # past its release turns a back-fill into a stuck checkbox.
     from kopi_cli.tools_config import _RECENTLY_SHIPPED_TOOLSETS
 
     result = server._load_enabled_toolsets()
     assert result is not None
-    assert {"kanban", "memory", "project"} <= set(result)
-    assert set(result) - {"kanban", "memory", "project"} <= _RECENTLY_SHIPPED_TOOLSETS
+    assert {"kanban", "memory", "project", "obsidian"} <= set(result)
+    assert set(result) - {"kanban", "memory", "project", "obsidian"} <= _RECENTLY_SHIPPED_TOOLSETS
     err = capsys.readouterr().err
     assert "ignoring disabled MCP servers" in err
     assert "mcp-off" in err
@@ -2046,8 +2051,8 @@ def test_load_enabled_toolsets_falls_back_when_tui_env_invalid(monkeypatch, caps
 
     result = server._load_enabled_toolsets()
     assert result is not None
-    assert {"kanban", "memory", "project"} <= set(result)
-    assert set(result) - {"kanban", "memory", "project"} <= _RECENTLY_SHIPPED_TOOLSETS
+    assert {"kanban", "memory", "project", "obsidian"} <= set(result)
+    assert set(result) - {"kanban", "memory", "project", "obsidian"} <= _RECENTLY_SHIPPED_TOOLSETS
     assert "using configured CLI toolsets" in capsys.readouterr().err
 
 

@@ -339,6 +339,7 @@ export interface KopiConfig {
   }
   terminal?: {
     cwd?: string
+    font_family?: string
   }
   stt?: {
     enabled?: boolean

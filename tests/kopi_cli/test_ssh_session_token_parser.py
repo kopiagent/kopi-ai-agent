@@ -32,11 +32,80 @@ def test_serve_help_advertises_secure_ssh_bootstrap_flags(capsys):
 
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="POSIX fixture uses mode bits; Windows read_token requires protected DACLs",
+)
+def test_token_file_is_read_and_unlinked_through_private_directory(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    kopi_home = home / ".kopi"
+    token_dir = kopi_home / "desktop-ssh" / ("a" * 32)
+    token_dir.mkdir(parents=True, mode=0o700)
+    token_path = token_dir / "0123456789abcdef.token"
+    token_path.write_text("b" * 64)
+    token_path.chmod(0o600)
+    override = set_kopi_home_override(kopi_home)
+    try:
+        assert _read_ssh_session_token_file(str(token_path)) == "b" * 64
+        assert not token_path.exists()
+    finally:
+        reset_kopi_home_override(override)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX desktop-ssh token path")
+def test_token_anchor_is_os_home_not_active_profile(tmp_path, monkeypatch):
+    """Regression for #69551: the Desktop client always writes the token under
+    ``$HOME/.kopi/desktop-ssh`` (a literal ``~/.kopi/desktop-ssh`` in
+    apps/desktop/electron/remote-lifecycle.ts, expanded against the account's
+    $HOME). A non-default sticky profile re-homes ``get_kopi_home()`` to
+    ``<root>/profiles/<name>``, and a Docker-style ``KOPI_HOME`` can point
+    elsewhere entirely — neither must move the validator off
+    ``$HOME/.kopi/desktop-ssh``, or the token is wrongly rejected."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    token_dir = home / ".kopi" / "desktop-ssh" / ("a" * 32)
+    token_dir.mkdir(parents=True, mode=0o700)
+    token_path = token_dir / "0123456789abcdef.token"
+
+    # A sticky profile and a custom (Docker) root both point get_kopi_home()
+    # away from $HOME/.kopi; the anchor must ignore both.
+    for elsewhere in (home / ".kopi" / "profiles" / "coder", tmp_path / "opt" / "data"):
+        token_path.write_text("b" * 64)
+        token_path.chmod(0o600)
+        override = set_kopi_home_override(elsewhere)
+        try:
+            assert _read_ssh_session_token_file(str(token_path)) == "b" * 64
+            assert not token_path.exists()
+        finally:
+            reset_kopi_home_override(override)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX desktop-ssh token path")
+def test_token_under_profile_desktop_ssh_is_rejected(tmp_path, monkeypatch):
+    """The client never writes under a profile-scoped desktop-ssh dir, so a token
+    placed there must be rejected even while that profile is active — proving the
+    anchor is the OS home, not the active profile (#69551)."""
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    profile_home = home / ".kopi" / "profiles" / "coder"
+    token_dir = profile_home / "desktop-ssh" / ("a" * 32)
+    token_dir.mkdir(parents=True, mode=0o700)
+    token_path = token_dir / "0123456789abcdef.token"
+    token_path.write_text("b" * 64)
+    token_path.chmod(0o600)
+    override = set_kopi_home_override(profile_home)
+    try:
+        with pytest.raises(SystemExit, match="desktop-ssh directory"):
+            _read_ssh_session_token_file(str(token_path))
+    finally:
+        reset_kopi_home_override(override)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX symlink contract")
 def test_token_file_rejects_symlink(tmp_path, monkeypatch):
     home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
     token_dir = home / ".kopi" / "desktop-ssh" / ("a" * 32)
     token_dir.mkdir(parents=True, mode=0o700)
     target = tmp_path / "token"
@@ -54,3 +123,27 @@ def test_token_file_rejects_symlink(tmp_path, monkeypatch):
         reset_kopi_home_override(override)
 
 
+def test_token_file_rejects_parent_escape(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    token_root = home / ".kopi" / "desktop-ssh"
+    token_root.mkdir(parents=True, mode=0o700)
+    escaped = token_root.parent / "0123456789abcdef.token"
+    escaped.write_text("b" * 64)
+    escaped.chmod(0o600)
+    override = set_kopi_home_override(home / ".kopi")
+    try:
+        with pytest.raises(SystemExit, match="invalid runtime path"):
+            _read_ssh_session_token_file(str(token_root / ".." / escaped.name))
+        assert escaped.exists()
+    finally:
+        reset_kopi_home_override(override)
+
+
+def test_windows_runtime_root_stays_at_machine_root_for_named_profile(tmp_path, monkeypatch):
+    from kopi_cli import windows_ssh_runtime
+
+    machine_root = tmp_path / "custom-kopi-root"
+    monkeypatch.setenv("KOPI_HOME", str(machine_root / "profiles" / "writer_2"))
+
+    assert windows_ssh_runtime._root() == machine_root / "desktop-ssh"

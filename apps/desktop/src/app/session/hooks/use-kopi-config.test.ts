@@ -2,6 +2,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { $terminalFontFamily, setTerminalFontFamilyFromConfig } from '@/app/right-sidebar/terminal/terminal-font'
 import { getKopiConfig } from '@/kopi'
 import { persistString } from '@/lib/storage'
 import {
@@ -47,6 +48,7 @@ describe('useKopiConfig refreshKopiConfig', () => {
     setCurrentModelSource('')
     setCurrentReasoningEffort('')
     setDefaultReasoningEffort('')
+    setTerminalFontFamilyFromConfig('')
     persistString(WORKSPACE_CWD_KEY, null)
   })
 
@@ -151,5 +153,41 @@ describe('useKopiConfig refreshKopiConfig', () => {
 
     expect($currentReasoningEffort.get()).toBe('low')
     expect($currentFastMode.get()).toBe(false)
+  })
+
+  it('loads the profile terminal font for already-mounted terminal surfaces', async () => {
+    mockConfig({ terminal: { font_family: 'MesloLGS NF' } })
+    const { result } = renderHook(() => useKopiConfig({ activeSessionIdRef: { current: null } }))
+
+    await act(async () => {
+      await result.current.refreshKopiConfig()
+    })
+
+    expect($terminalFontFamily.get()).toBe('MesloLGS NF')
+  })
+
+  it('does not let an older profile response restore its terminal font', async () => {
+    const profileB = deferred<Awaited<ReturnType<typeof getKopiConfig>>>()
+    const profileC = deferred<Awaited<ReturnType<typeof getKopiConfig>>>()
+    vi.mocked(getKopiConfig).mockReturnValueOnce(profileB.promise).mockReturnValueOnce(profileC.promise)
+    const { result } = renderHook(() => useKopiConfig({ activeSessionIdRef: { current: null } }))
+
+    let refreshB!: Promise<void>
+    let refreshC!: Promise<void>
+    act(() => {
+      refreshB = result.current.refreshKopiConfig(true)
+      refreshC = result.current.refreshKopiConfig(true)
+    })
+
+    profileC.resolve({ terminal: { font_family: 'Hack Nerd Font' } })
+    await act(async () => {
+      await refreshC
+    })
+    profileB.resolve({ terminal: { font_family: 'MesloLGS NF' } })
+    await act(async () => {
+      await refreshB
+    })
+
+    expect($terminalFontFamily.get()).toBe('Hack Nerd Font')
   })
 })
