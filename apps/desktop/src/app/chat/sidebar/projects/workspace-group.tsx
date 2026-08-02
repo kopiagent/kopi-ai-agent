@@ -2,8 +2,9 @@ import type * as React from 'react'
 import { useState } from 'react'
 
 import { Codicon } from '@/components/ui/codicon'
-import { useI18n } from '@/i18n'
 import type { SessionInfo } from '@/kopi'
+import { useI18n } from '@/i18n'
+import { displayPath } from '@/lib/display-path'
 import { setWorkspaceNodeOpen } from '@/store/layout'
 import { notifyError } from '@/store/notifications'
 import { newSessionInProfile } from '@/store/profile'
@@ -132,7 +133,7 @@ export function SidebarWorkspaceGroup({ group, renderRows, onNewSession, onRemov
           label={group.label}
           onToggle={toggleOpen}
           open={open}
-          title={group.path ?? undefined}
+          title={group.path ? displayPath(group.path) : undefined}
         />
       </WorkspaceContextMenu>
       {open && (
