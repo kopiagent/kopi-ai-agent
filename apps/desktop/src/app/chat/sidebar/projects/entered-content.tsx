@@ -13,8 +13,9 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import type { KopiGitWorktree } from '@/global'
-import { useI18n } from '@/i18n'
 import type { SessionInfo } from '@/kopi'
+import { useI18n } from '@/i18n'
+import { displayPath } from '@/lib/display-path'
 import { $dismissedWorktreeIds, dismissWorktree, setWorkspaceNodeOpen } from '@/store/layout'
 import { notifyError } from '@/store/notifications'
 import { removeWorktreePath } from '@/store/projects'
@@ -277,7 +278,7 @@ function RepoFlatSection({
         label={repo.label}
         onToggle={toggleOpen}
         open={open}
-        title={repo.path ?? undefined}
+        title={repo.path ? displayPath(repo.path) : undefined}
       />
       {open && <SidebarRowStack className="pl-2.5">{body}</SidebarRowStack>}
       {removeDialog}

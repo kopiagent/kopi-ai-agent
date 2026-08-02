@@ -764,13 +764,50 @@ def _serialized_length_for_budget(value: Any) -> int:
 # Responses sessions in particular carry ``codex_reasoning_items`` blobs of
 # ``encrypted_content`` that can dominate the serialized session (a measured
 # 214-turn session held ~115K tokens / 27% of its payload there — #55572).
+#
+# ``reasoning_details`` is handled separately (see
+# ``_reasoning_details_text_chars``): its signed/base64 envelope is excluded
+# from the budget, mirroring the preflight estimator's exclusion in
+# ``model_metadata._estimate_message_tokens_without_images`` (#73298).
 _REPLAY_BUDGET_KEYS = (
     "reasoning",
     "reasoning_content",
-    "reasoning_details",
     "codex_reasoning_items",
     "codex_message_items",
 )
+
+
+def _reasoning_details_text_chars(value: Any) -> int:
+    """Textual thinking chars inside a ``reasoning_details`` envelope.
+
+    ``reasoning_details`` carries provider thinking blocks: the actual
+    thinking TEXT plus opaque signed/base64 envelope blobs (Anthropic
+    ``signature``, redacted ``data``, encrypted payloads).  The envelope is
+    never billed at anything near chars/4 by the provider and — on every
+    transport except Codex Responses — is replayed for at most the newest
+    assistant turn, so charging it on every message inflated the tail-budget
+    walk and silently shrank the surviving tail (#73298, second site).
+
+    Count only the thinking text (the #51800 lesson: real reasoning text
+    MUST stay visible to the budget), skip everything else.
+    """
+    if not value:
+        return 0
+    if isinstance(value, str):
+        return len(value)
+    total = 0
+    if isinstance(value, dict):
+        value = [value]
+    if isinstance(value, list):
+        for part in value:
+            if isinstance(part, str):
+                total += len(part)
+            elif isinstance(part, dict):
+                for text_key in ("thinking", "text", "summary"):
+                    text = part.get(text_key)
+                    if isinstance(text, str):
+                        total += len(text)
+    return total
 
 
 def _estimate_msg_budget_tokens(msg: dict) -> int:
@@ -804,6 +841,17 @@ def _estimate_msg_budget_tokens(msg: dict) -> int:
             tokens += estimate_tokens_rough(str(tc))
     for key in _REPLAY_BUDGET_KEYS:
         tokens += _serialized_length_for_budget(msg.get(key)) // _CHARS_PER_TOKEN
+    # reasoning_details: charge only the thinking TEXT, never the signed /
+    # base64 envelope (#73298 second site; mirrors the preflight estimator's
+    # exclusion in model_metadata).  When the same thinking text already rides
+    # in ``reasoning``/``reasoning_content`` (measured byte-identical on
+    # Anthropic-wire sessions), skip it here entirely so the prose is not
+    # charged twice on top of the envelope exclusion.
+    if not (msg.get("reasoning") or msg.get("reasoning_content")):
+        tokens += (
+            _reasoning_details_text_chars(msg.get("reasoning_details"))
+            // _CHARS_PER_TOKEN
+        )
     return tokens
 
 
@@ -2166,6 +2214,10 @@ class ContextCompressor(ContextEngine):
         self._micro_compact_consecutive_failures: int = 0
         self._micro_compact_last_failure_cursor: int = -1
         self._micro_compact_defrag_threshold_tokens: int = 2000
+        # Set by _defrag_rolling_summary when it pops _DB_PERSISTED_MARKER
+        # from a live dict in place; consumed by finalize_turn to invalidate
+        # the agent's bounded flush-scan cursor (sibling of the #75170 site).
+        self._flush_scan_cursor_invalidated: bool = False
         self._micro_compact_passes: int = 0
         self._micro_compact_tokens_saved_total: int = 0
         # Cadence: run a pass every Nth completed turn. Each pass rewrites
@@ -5328,6 +5380,15 @@ This compaction should PRIORITISE preserving all information related to the focu
                 # Content changed after a possible flush — clear the persisted
                 # stamp so the DB sync/flush rewrites the row.
                 entry.pop(_DB_PERSISTED_MARKER, None)
+                # Sibling of the finalize_turn pop site (#75170): this pop
+                # also strips the marker from a LIVE dict in place, so the
+                # bounded flush-scan cursor would identity-skip the rewritten
+                # marker and the defragged summary would never reach state.db.
+                # The compressor holds no agent reference, so raise a flag the
+                # finalizer consumes to invalidate agent._db_flush_scan_prefix.
+                # (The pop sites at module scope — fresh copies in
+                # strip-marker helpers — break identity and need no flag.)
+                self._flush_scan_cursor_invalidated = True
                 break
         logger.info(
             "Micro-compaction defrag: rolling summary re-summarized "
