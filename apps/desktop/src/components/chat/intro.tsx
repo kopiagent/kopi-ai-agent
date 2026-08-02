@@ -207,13 +207,11 @@ export function Intro({ personality, seed }: IntroProps) {
         >
           <span>
             <span>
-              <span className="font-extrabold">KOPI</span>{' '}
-              <span className="font-light tracking-[0.14em]">AGENT</span>
+              <span className="font-extrabold">KOPI</span> <span className="font-light tracking-[0.14em]">AGENT</span>
             </span>
           </span>
           <span aria-hidden="true">
-            <span className="font-extrabold">KOPI</span>{' '}
-            <span className="font-light tracking-[0.14em]">AGENT</span>
+            <span className="font-extrabold">KOPI</span> <span className="font-light tracking-[0.14em]">AGENT</span>
           </span>
         </p>
 

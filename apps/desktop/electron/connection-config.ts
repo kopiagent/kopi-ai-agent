@@ -45,6 +45,9 @@ const RT_COOKIE_VARIANTS = ['__Host-kopi_session_rt', '__Secure-kopi_session_rt'
 // cookies above. `privy-token` is the access token (the required signal);
 // variants cover the secured-prefix forms and the older `privy-session` name.
 const PRIVY_SESSION_COOKIE_VARIANTS = ['__Host-privy-token', '__Secure-privy-token', 'privy-token', 'privy-session']
+// Keep this aligned with kopi_cli.profiles.validate_profile_name(). `default`
+// is the built-in root alias; these names cannot be created as profiles.
+const RESERVED_REMOTE_PROFILES = new Set(['kopi', 'test', 'tmp', 'root', 'sudo'])
 
 function normalizeRemoteBaseUrl(rawUrl) {
   let value = String(rawUrl || '').trim()
@@ -279,6 +282,16 @@ function normalizeSshConfig(entry) {
 
   if (remoteKopiPath) {
     out.remoteKopiPath = remoteKopiPath
+  }
+
+  // A Desktop profile can be a local routing label rather than the profile
+  // name used by the remote Kopi installation. Preserve an explicit mapping
+  // when it is a valid Kopi profile identifier; otherwise fall back to the
+  // historical same-name behavior in the caller.
+  const remoteProfile = String(entry.remoteProfile || '').trim()
+
+  if (/^[a-z0-9][a-z0-9_-]{0,63}$/.test(remoteProfile) && !RESERVED_REMOTE_PROFILES.has(remoteProfile)) {
+    out.remoteProfile = remoteProfile
   }
 
   return out

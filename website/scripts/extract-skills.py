@@ -226,9 +226,15 @@ def _source_url(source: str, identifier: str, extra: dict) -> str:
         return ""
 
     if src == "clawhub":
-        # identifier is a bare slug (the "clawhub/" prefix is added at install time)
+        # identifier is a bare slug (the "clawhub/" prefix is added at install
+        # time). ClawHub detail pages live under the publisher's handle
+        # (/<owner>/skills/<slug>), so without the owner we cannot build a
+        # working link — return "" rather than a URL that 404s.
         slug = identifier[len("clawhub/"):] if identifier.startswith("clawhub/") else identifier
-        return f"https://clawhub.ai/skills/{slug}"
+        owner = extra.get("owner")
+        if not (isinstance(owner, str) and owner.strip()):
+            return ""
+        return f"https://clawhub.ai/{owner.strip()}/skills/{slug}"
 
     if src in {"skills.sh", "skills-sh"}:
         # "skills-sh/owner/repo/skill" -> the skills.sh detail page

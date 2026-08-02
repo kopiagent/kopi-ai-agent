@@ -8,6 +8,16 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
   openSessionWindow: (sessionId, opts) => ipcRenderer.invoke('kopi:window:openSession', sessionId, opts),
   openWindow: () => ipcRenderer.invoke('kopi:window:openInstance'),
   claimAmbientCue: key => ipcRenderer.invoke('kopi:ambient:claim', key),
+  wakeIndicator: {
+    getState: () => ipcRenderer.invoke('kopi:wake-indicator:get'),
+    setState: state => ipcRenderer.send('kopi:wake-indicator:set', state),
+    onState: callback => {
+      const listener = (_event, state) => callback(state)
+      ipcRenderer.on('kopi:wake-indicator:state', listener)
+
+      return () => ipcRenderer.removeListener('kopi:wake-indicator:state', listener)
+    }
+  },
   petOverlay: {
     // Main renderer → main process: window lifecycle + drag. `request` is
     // `{ bounds, screen }`; resolves with the screen bounds it actually used.

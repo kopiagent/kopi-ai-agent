@@ -8,6 +8,7 @@ function sshConfigFingerprint(scope, config) {
     config.port,
     config.keyPath,
     config.remoteKopiPath,
+    config.remoteProfile,
     config.effectiveConfigFingerprint
   ]
 

@@ -12,8 +12,8 @@ import {
 } from '@/components/ui/dialog'
 import { Field, FieldHint } from '@/components/ui/field'
 import { SanitizedInput } from '@/components/ui/sanitized-input'
-import { renameProfile } from '@/kopi'
 import { useI18n } from '@/i18n'
+import { renameProfile } from '@/kopi'
 import { AlertTriangle } from '@/lib/icons'
 import { slug } from '@/lib/sanitize'
 
