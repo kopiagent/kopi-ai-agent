@@ -10,7 +10,6 @@
   makeWrapper,
   callPackage,
   python312,
-  nodejs_26,
   electron,
   ripgrep,
   git,
@@ -39,7 +38,6 @@
   extraDependencyGroups ? [ ],
 }:
 let
-  nodejs = nodejs_26;
   mkKopiVenv =
     extraDependencyGroups:
     callPackage ./python.nix {
@@ -51,7 +49,7 @@ let
   kopiVenv = (mkKopiVenv extraDependencyGroups).venv;
 
   kopiNpmLib = callPackage ./lib.nix {
-    inherit npm-lockfile-fix nodejs;
+    inherit npm-lockfile-fix;
   };
 
   kopiTui = callPackage ./tui.nix {
@@ -97,7 +95,7 @@ let
   };
 
   runtimeDeps = [
-    nodejs
+    kopiNpmLib.nodejs
     ripgrep
     git
     openssh
@@ -195,7 +193,7 @@ stdenv.mkDerivation (finalAttrs: {
           --set KOPI_WEB_DIST $out/share/kopi-ai-agent/web_dist \
           --set KOPI_TUI_DIR $out/ui-tui \
           --set KOPI_PYTHON ${kopiVenv}/bin/python3 \
-          --set KOPI_NODE ${lib.getExe nodejs}${
+          --set KOPI_NODE ${lib.getExe kopiNpmLib.nodejs}${
             # Fold the line continuation INTO the optionalString: a bare
             # `\` on the line above an empty expansion would dangle onto a
             # blank line, ending the makeWrapper command early and running

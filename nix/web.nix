@@ -1,21 +1,13 @@
 # nix/web.nix — Kopi Web Dashboard (Vite/React) frontend build
-{ pkgs, kopiNpmLib, ... }:
-let
-  # @kopi/shared ships as a file: workspace dep of web, so its source
-  # must be in the filtered src tree too.
-  npm = kopiNpmLib.mkNpmPassthru {
-    dirs = [
-      "web"
-      "apps/shared"
-    ];
-  };
+{ kopiNpmLib, ... }:
+kopiNpmLib.buildNpmPackage {
+  dirs = [
+    "web"
 
-  packageJson = builtins.fromJSON (builtins.readFile (npm.src + "/web/package.json"));
-  version = packageJson.version;
-in
-pkgs.buildNpmPackage (npm // {
-  pname = "kopi-web";
-  inherit version;
+    # @kopi/shared ships as a file: workspace dep of web, so its source
+    # must be in the filtered src tree too.
+    "apps/shared"
+  ];
 
   doCheck = false;
 
@@ -38,4 +30,4 @@ pkgs.buildNpmPackage (npm // {
     cp -r web/dist $out
     runHook postInstall
   '';
-})
+}
