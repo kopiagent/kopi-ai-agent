@@ -180,6 +180,63 @@ def _agent_is_subagent(agent: Any) -> bool:
         return any(r.get("agent") is agent for r in _active_subagents.values())
 
 
+# ---- Office FX: transient one-shot effects -------------------------------
+# A second, fire-and-forget stream layered on top of the durable office state
+# snapshot. Each agent record carries a bounded ``fx`` ring; the dashboard
+# watcher diffs it by ``seq`` and broadcasts an ``office.fx`` event so the
+# renderer can play a one-shot animation (tool spark, hand-off, error shake…).
+# Losing one drops a sparkle, never desyncs state.
+# See docs/design/office-fx-transient-effects.md.
+_FX_RING = 8            # keep only the most recent N effects per agent
+_FX_TTL_S = 5.0         # drop entries older than this on append
+_fx_seq = 0             # monotonic per-process; client dedups by (agent, seq)
+
+
+def _append_fx_locked(record: Dict[str, Any], kind: str, *, target=None, data=None) -> None:
+    """Append one transient effect to ``record['fx']``.
+
+    Caller MUST hold ``_active_subagents_lock`` (this bumps the shared seq).
+    The ring is trimmed to the most recent entries and TTL-pruned so a late
+    reader never replays ancient effects.
+    """
+    global _fx_seq
+    _fx_seq += 1
+    now = time.time()
+    entry: Dict[str, Any] = {"seq": _fx_seq, "ts": now, "kind": kind}
+    if target is not None:
+        entry["target"] = target
+    if data is not None:
+        entry["data"] = data
+    ring = [e for e in record.get("fx", []) if now - e.get("ts", 0) <= _FX_TTL_S]
+    ring.append(entry)
+    record["fx"] = ring[-_FX_RING:]
+
+
+def office_fx(agent: Any, kind: str, *, target=None, data=None) -> None:
+    """Emit a transient office effect for ``agent`` (fire-and-forget).
+
+    Resolves the same record ``note_tool_activity`` uses (a live subagent or a
+    root/main session); no-op if the agent has no active office record. Adding
+    a new effect later is just one call here + one case in the renderer.
+    Best-effort: never raises, never blocks.
+    """
+    try:
+        with _active_subagents_lock:
+            rec = None
+            for r in _active_subagents.values():
+                if r.get("agent") is agent:
+                    rec = r
+                    break
+            if rec is None:
+                rec = _main_activities.get(id(agent))
+            if rec is None:
+                return
+            _append_fx_locked(rec, kind, target=target, data=data)
+        _write_office_snapshot()
+    except Exception:
+        pass
+
+
 def mark_main_turn_start(agent: Any, goal: str = "") -> None:
     """Put the ROOT/main session on the pixel-office stage for this turn.
 
@@ -259,6 +316,9 @@ def _note_status(agent: Any, status: str, tool_name: Optional[str] = None) -> No
             if tool_name is not None:
                 matched["tool"] = tool_name
                 matched["tool_count"] = matched.get("tool_count", 0) + 1
+                # Transient FX: a discrete tool-call spark. Recovers fast calls
+                # the ~600ms snapshot poll would otherwise coalesce away.
+                _append_fx_locked(matched, "tool_call", data={"tool": tool_name})
             else:
                 matched.pop("tool", None)
             matched["ts"] = time.time()
@@ -374,8 +434,17 @@ def _register_subagent(record: Dict[str, Any]) -> None:
     sid = record.get("subagent_id")
     if not sid:
         return
+    parent_id = record.get("parent_id")
     with _active_subagents_lock:
         _active_subagents[sid] = record
+        # Transient FX: hand-off — the parent NPC delegates to this new child.
+        if parent_id:
+            parent_rec = _active_subagents.get(parent_id) or next(
+                (r for r in _main_activities.values() if r.get("subagent_id") == parent_id),
+                None,
+            )
+            if parent_rec is not None:
+                _append_fx_locked(parent_rec, "handoff", target=sid)
     _write_office_snapshot()
 
 

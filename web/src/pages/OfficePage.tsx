@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, buildWsUrl, type OfficeAgent } from "@/lib/api";
+import { api, buildWsUrl, type OfficeAgent, type OfficeFx } from "@/lib/api";
 
 /**
  * Pixel Office — a concrete visualization of the multi-agent process.
@@ -270,6 +270,21 @@ function pathToExit(from: { x: number; y: number }) {
   return raw.filter((p, i) => i === 0 || Math.hypot(p.x - raw[i - 1].x, p.y - raw[i - 1].y) > 2);
 }
 
+// ---- transient effects (office.fx) -----------------------------------------
+// A one-shot animation attached to an NPC. Playtime-only (never persisted);
+// the render loop draws it and prunes it after FX_DURATION_MS[kind]. Adding a
+// new effect = one backend `office_fx(...)` call + one case in drawNpcEffects.
+interface OfficeEffect {
+  kind: string;
+  startAt: number; // performance.now() when it began playing
+  data?: OfficeFx["data"];
+  target?: string; // for relational effects (handoff → target NPC)
+}
+const FX_DURATION_MS: Record<string, number> = {
+  tool_call: 620, handoff: 750, error: 760, retry: 720, done: 820, speak: 1700, emote: 1300,
+};
+const fxDur = (kind: string) => FX_DURATION_MS[kind] ?? 800;
+
 // ---- NPC model -------------------------------------------------------------
 interface Npc {
   id: string;
@@ -277,6 +292,7 @@ interface Npc {
   status: string;
   tool: string;
   parentId: string | null;
+  effects: OfficeEffect[];
   skin: number;
   station: StationType;
   seatKey: string;      // "station:index"
@@ -339,6 +355,8 @@ export default function OfficePage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const npcsRef = useRef<Map<string, Npc>>(new Map());
   const emptyRef = useRef(true);
+  // office.fx dedup: agent id -> highest seq already played (reconnect re-sends).
+  const seenFxRef = useRef<Map<string, number>>(new Map());
 
   // ---- theme: persisted pick, applied to the live palette/skin bindings ----
   const [themeId, setThemeId] = useState<string>(() => {
@@ -411,6 +429,7 @@ export default function OfficePage() {
             bob: (skinFor(a.subagent_id) * 17) % 100,
             pendingStation: null, pendingSince: 0,
             stationSince: now,
+            effects: [],
           });
         }
       });
@@ -422,6 +441,22 @@ export default function OfficePage() {
           npc.tx = ENTRANCE.x; npc.ty = ENTRANCE.y; // walk out through the aisle
         }
       });
+    };
+
+    // Attach transient effects to their NPCs. Deduped by (agent, seq) so a
+    // reconnect re-send never double-plays. A missing fx just skips an
+    // animation — durable state still comes from office.state.
+    const playFx = (list: OfficeFx[]) => {
+      const now = performance.now();
+      for (const fx of list || []) {
+        const seen = seenFxRef.current.get(fx.agent) ?? 0;
+        if (fx.seq <= seen) continue;
+        seenFxRef.current.set(fx.agent, fx.seq);
+        const npc = npcsRef.current.get(fx.agent);
+        if (!npc || npc.gone) continue;
+        npc.effects.push({ kind: fx.kind, startAt: now, data: fx.data, target: fx.target });
+        if (npc.effects.length > 6) npc.effects.splice(0, npc.effects.length - 6);
+      }
     };
 
     const seed = async () => {
@@ -439,6 +474,8 @@ export default function OfficePage() {
             const frame = JSON.parse(ev.data);
             if (frame?.method === "event" && frame.params?.type === "office.state")
               applyAgents(frame.params.payload?.agents ?? []);
+            else if (frame?.method === "event" && frame.params?.type === "office.fx")
+              playFx(frame.params.payload?.fx ?? []);
           } catch { /* ignore */ }
         });
         ws.addEventListener("close", () => { if (!stopped) reconnectTimer = setTimeout(connect, 2000); });
@@ -760,6 +797,77 @@ export default function OfficePage() {
       }
     };
 
+    // Draw one NPC's active transient effects (office.fx). Each `case` is a
+    // one-shot animation keyed off progress p∈[0,1]; new kinds slot in here.
+    const drawNpcEffects = (n: Npc, now: number) => {
+      for (const e of n.effects) {
+        const dur = fxDur(e.kind);
+        const p = Math.min(1, (now - e.startAt) / dur); // 0→1
+        const fade = p < 0.8 ? 1 : Math.max(0, (1 - p) / 0.2);
+        switch (e.kind) {
+          case "tool_call": { // spark above the head — a discrete tool invocation
+            ctx.globalAlpha = 1 - p;
+            const cy = n.y - 20 - p * 4, r = 2 + p * 3;
+            rect(n.x, cy - r, 1, 2, "#ffe08a");
+            rect(n.x, cy + r - 1, 1, 2, "#ffe08a");
+            rect(n.x - r, cy, 2, 1, "#ffe08a");
+            rect(n.x + r - 1, cy, 2, 1, "#ffe08a");
+            ctx.globalAlpha = 1;
+            break;
+          }
+          case "handoff": { // a ticket flies from this NPC to its child NPC
+            const tgt = e.target ? npcsRef.current.get(e.target) : undefined;
+            const fx = n.x, fy = n.y - 10;
+            const tx = tgt ? tgt.x : n.x + 24, ty = tgt ? tgt.y - 10 : n.y - 10;
+            const px = fx + (tx - fx) * p;
+            const py = fy + (ty - fy) * p - Math.sin(p * Math.PI) * 8;
+            rect(px - 2, py - 2, 4, 5, C.cream);
+            rect(px - 2, py - 2, 4, 1, C.sub);
+            break;
+          }
+          case "error": { // "!" bubble (the shake is applied to the body below)
+            ctx.globalAlpha = fade;
+            rect(n.x + 4, n.y - 23, 9, 9, "#ffdede");
+            rect(n.x + 4, n.y - 23, 9, 1, C.berry);
+            pixelText("!", n.x + 8, n.y - 16, 8, C.berry);
+            ctx.globalAlpha = 1;
+            break;
+          }
+          case "retry": { // amber "…" — waiting on a retry/backoff
+            ctx.globalAlpha = fade;
+            rect(n.x + 4, n.y - 21, 10, 8, "#fff2d6");
+            pixelText("…", n.x + 9, n.y - 15, 7, "#b0863f");
+            ctx.globalAlpha = 1;
+            break;
+          }
+          case "done": { // green ✓ that rises and fades
+            ctx.globalAlpha = 1 - p;
+            pixelText("✓", n.x, n.y - 18 - p * 8, 9, "#4ea36a");
+            ctx.globalAlpha = 1;
+            break;
+          }
+          case "speak": {
+            const txt = (e.data?.text ?? "").slice(0, 16);
+            const wpx = Math.max(16, txt.length * 4 + 8);
+            ctx.globalAlpha = fade;
+            rect(n.x - wpx / 2, n.y - 25, wpx, 11, "#fff7dc");
+            rect(n.x - wpx / 2, n.y - 14, wpx, 1, C.sub);
+            pixelText(txt, n.x, n.y - 17, 6, C.text);
+            ctx.globalAlpha = 1;
+            break;
+          }
+          case "emote": {
+            ctx.globalAlpha = fade;
+            pixelText(e.data?.emoji ?? "✨", n.x, n.y - 20 - p * 4, 10, C.text);
+            ctx.globalAlpha = 1;
+            break;
+          }
+          default:
+            break; // unknown kind → ignore (forward-compatible)
+        }
+      }
+    };
+
     const render = (t: number) => {
       const w = canvas.clientWidth, h = canvas.clientHeight;
       const scale = Math.max(1, Math.min(w / VW, h / VH));
@@ -837,8 +945,13 @@ export default function OfficePage() {
           n.path.shift();
         }
         if (n.gone && (n.path.length === 0 || now >= n.removeAt)) { toDelete.push(n.id); return; }
+        // prune expired transient effects, then shake the body if an error fx
+        // is still active.
+        if (n.effects.length) n.effects = n.effects.filter((e) => now - e.startAt < fxDur(e.kind));
+        const errFx = n.effects.find((e) => e.kind === "error");
+        const shake = errFx ? Math.round(Math.sin((now - errFx.startAt) / 28) * 2) : 0;
         const atSeat = !moving && !n.gone;
-        drawChar(n.x, n.y, SKINS[n.skin % SKINS.length], t, moving, atSeat ? actionFor(n.status) : "", n.bob, n.facing);
+        drawChar(n.x + shake, n.y, SKINS[n.skin % SKINS.length], t, moving, atSeat ? actionFor(n.status) : "", n.bob, n.facing);
         // seated: status icon + goal tag + tool/verb foot label.
         // walking: keep the goal tag so the NPC stays identifiable in transit.
         if (atSeat) {
@@ -848,6 +961,7 @@ export default function OfficePage() {
         } else if (!n.gone) {
           drawGoalChip(n.x, n.y, n.goal);
         }
+        if (n.effects.length) drawNpcEffects(n, now);
       });
       toDelete.forEach((id) => npcs.delete(id));
 

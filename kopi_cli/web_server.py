@@ -3034,14 +3034,46 @@ async def _office_watcher(app: "FastAPI") -> None:
     OfficePage clients update instantly instead of polling. Best-effort loop.
     """
     last_sig = None
+    last_fx_seq: dict = {}  # subagent_id -> max fx seq already broadcast
     while True:
         try:
             await asyncio.sleep(0.6)
             event_channels, _ = _get_event_state(app)
             if not event_channels.get("office"):
                 last_sig = None  # reset so first subscriber gets a fresh push
+                last_fx_seq = {}
                 continue
             agents = _read_office_agents()
+
+            # --- transient FX (office.fx): independent of the state signature,
+            # so hand-offs (which don't change any displayed state field) still
+            # push, and coalesced tool sparks all replay. See
+            # docs/design/office-fx-transient-effects.md.
+            new_fx = []
+            current_ids = set()
+            for a in agents:
+                aid = a.get("subagent_id")
+                current_ids.add(aid)
+                seen = last_fx_seq.get(aid, 0)
+                mx = seen
+                for e in (a.get("fx") or []):
+                    seq = e.get("seq", 0)
+                    if seq > seen:
+                        new_fx.append({**e, "agent": aid})
+                    if seq > mx:
+                        mx = seq
+                if mx > seen:
+                    last_fx_seq[aid] = mx
+            # prune tracking for agents that have left
+            last_fx_seq = {k: v for k, v in last_fx_seq.items() if k in current_ids}
+            if new_fx:
+                new_fx.sort(key=lambda e: e.get("seq", 0))
+                await _broadcast_event(app, "office", json.dumps({
+                    "method": "event",
+                    "params": {"type": "office.fx", "payload": {"v": 1, "fx": new_fx}},
+                }, ensure_ascii=False))
+
+            # --- durable state (office.state): change-gated snapshot.
             sig = json.dumps(sorted(
                 (
                     a.get("subagent_id"),
