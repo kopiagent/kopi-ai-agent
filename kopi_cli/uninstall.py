@@ -101,8 +101,10 @@ def remove_wrapper_script():
     wrapper_paths = [
         Path.home() / ".local" / "bin" / "kopi",
         Path.home() / ".local" / "bin" / "kopi-acp",
+        Path.home() / ".local" / "bin" / "kopi-ai-agent",
         Path("/usr/local/bin/kopi"),
         Path("/usr/local/bin/kopi-acp"),
+        Path("/usr/local/bin/kopi-ai-agent"),
     ]
     
     removed = []

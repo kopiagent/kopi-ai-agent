@@ -283,16 +283,23 @@ def test_pause_windows_gateways_for_update_stops_profile_and_unmapped_pids(
 # ---------------------------------------------------------------------------
 
 
-def _fake_psutil_tree(tree, venv_exe, worker_exe):
+def _fake_psutil_tree(tree, venv_exe, worker_exe, dead=None):
     """Build a psutil stand-in where ``tree`` maps worker pid -> parent pid.
 
     Parents whose pid is even are venv-side (``venv_exe``); odd parents are
-    unrelated ancestors (``worker_exe``) that must NOT be returned.
+    unrelated ancestors (``worker_exe``) that must NOT be returned. Pids in
+    ``dead`` (a live reference — later additions count) are uninspectable:
+    construction raises, exactly like psutil.NoSuchProcess for an exited
+    process.
     """
+
+    dead_set = dead if dead is not None else set()
 
     class FakeProc:
         def __init__(self, pid):
             self.pid = pid
+            if pid in dead_set:
+                raise ValueError(f"process {pid} has exited")
             if pid not in tree and pid not in tree.values():
                 raise ValueError(f"no such pid {pid}")
 
@@ -375,13 +382,26 @@ def test_pause_kill_set_covers_venv_guard_abort_set(
         gateway_mod, "find_profile_gateway_processes", lambda **_k: [profile_proc]
     )
     monkeypatch.setattr(gateway_mod, "_get_restart_drain_timeout", lambda: 0.1)
-    # Graceful drain succeeds: the worker exits, leaving zero survivors. This is
+    # Graceful drain succeeds: the worker exits, leaving zero survivors — and
+    # an exited worker is UNINSPECTABLE afterwards, exactly like the real
+    # process table. Resolving the launcher after this point is impossible,
+    # so the pause must snapshot launcher ancestors before draining. This is
     # precisely the case that used to leave the launcher alive and abort.
+    drained_dead: set[int] = set()
+
+    def _drain_marks_workers_dead(pids, *, timeout):
+        drained_dead.update(int(p) for p in pids)
+        return set()
+
     monkeypatch.setattr(
-        cli_main, "_wait_for_windows_update_gateway_exit", lambda pids, *, timeout: set()
+        cli_main,
+        "_wait_for_windows_update_gateway_exit",
+        _drain_marks_workers_dead,
     )
 
-    fake = _fake_psutil_tree({worker_pid: launcher_pid}, venv_exe, worker_exe)
+    fake = _fake_psutil_tree(
+        {worker_pid: launcher_pid}, venv_exe, worker_exe, dead=drained_dead
+    )
     monkeypatch.setitem(sys.modules, "psutil", fake)
 
     terminated = []
@@ -398,6 +418,95 @@ def test_pause_kill_set_covers_venv_guard_abort_set(
     assert guard_would_abort_on.issubset(set(terminated)), (
         f"pause stopped {sorted(terminated)} but the venv guard aborts on "
         f"{sorted(guard_would_abort_on)} — disjoint sets abort the update"
+    )
+
+
+# ---------------------------------------------------------------------------
+# _leftover_pausable_gateway_pids (the guard-level gateway fallback)
+#
+# The pause stops every gateway discovery finds, but the venv-holder guard
+# sees the process table as it is NOW. A supervisor (Scheduled Task, login
+# watchdog) can respawn a gateway inside the pause→guard window, and some
+# spawn paths never register in discovery at all. Those holders are exactly
+# what the pause machinery exists to stop — the guard nominates them for a
+# stop-and-recheck instead of dead-ending, and refuses the moment any
+# non-gateway holder is present.
+# ---------------------------------------------------------------------------
+
+
+GATEWAY_ARGV = [
+    r"C:\x\venv\Scripts\python.exe",
+    "-m",
+    "kopi_cli.main",
+    "gateway",
+    "run",
+]
+
+
+def _fake_psutil_cmdlines(argv_by_pid):
+    """psutil stand-in serving live argv per pid; unknown pids raise."""
+
+    class FakeProc:
+        def __init__(self, pid):
+            if pid not in argv_by_pid:
+                raise ValueError(f"no such pid {pid}")
+            self._argv = argv_by_pid[pid]
+
+        def cmdline(self):
+            return self._argv
+
+    return types.SimpleNamespace(Process=FakeProc)
+
+
+def test_leftover_holders_that_are_all_gateways_are_nominated(monkeypatch):
+    """Respawned/unmapped gateway holders get stopped, not dead-ended on."""
+    monkeypatch.setitem(
+        sys.modules,
+        "psutil",
+        _fake_psutil_cmdlines({300: GATEWAY_ARGV, 301: GATEWAY_ARGV}),
+    )
+    matches = [
+        (300, "python.exe", "truncated..."),
+        (301, "python.exe", "truncated..."),
+    ]
+
+    assert cli_main._leftover_pausable_gateway_pids(matches) == [300, 301]
+
+
+def test_one_non_gateway_holder_keeps_the_hard_refusal(monkeypatch):
+    """A REPL/backend holder means the guard must abort exactly as before."""
+    monkeypatch.setitem(
+        sys.modules,
+        "psutil",
+        _fake_psutil_cmdlines(
+            {300: GATEWAY_ARGV, 400: [r"C:\x\venv\Scripts\python.exe", "-i"]}
+        ),
+    )
+    matches = [(300, "python.exe", "..."), (400, "python.exe", "...")]
+
+    assert cli_main._leftover_pausable_gateway_pids(matches) is None
+
+
+def test_unreadable_argv_falls_back_to_the_captured_prefix(monkeypatch):
+    """psutil failure degrades to the scan's captured cmdline, not a crash.
+
+    The captured prefix decides: a gateway invocation still qualifies, and
+    anything else still refuses.
+    """
+    monkeypatch.setitem(sys.modules, "psutil", _fake_psutil_cmdlines({}))
+    gateway_prefix = r"venv\Scripts\python.exe -m kopi_cli.main gateway run"
+
+    assert cli_main._leftover_pausable_gateway_pids(
+        [(300, "python.exe", gateway_prefix)]
+    ) == [300]
+    assert (
+        cli_main._leftover_pausable_gateway_pids(
+            [
+                (300, "python.exe", gateway_prefix),
+                (400, "python.exe", "python.exe -i"),
+            ]
+        )
+        is None
     )
 
 
