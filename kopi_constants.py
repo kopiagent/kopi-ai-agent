@@ -18,6 +18,14 @@ _KOPI_HOME_OVERRIDE: ContextVar[str | object] = ContextVar(
     "_KOPI_HOME_OVERRIDE", default=_UNSET
 )
 
+# ── TUI busy-indicator styles ─────────────────────────────────────────
+# Single source of truth shared by the CLI /indicator command, the TUI
+# gateway config handler, and the /help command registry. Keep in sync
+# with ``INDICATOR_STYLES`` / ``DEFAULT_INDICATOR_STYLE`` in
+# ``ui-tui/src/app/interfaces.ts`` on the frontend side.
+INDICATOR_STYLES: tuple[str, ...] = ("ascii", "emoji", "kaomoji", "unicode")
+DEFAULT_INDICATOR_STYLE: str = "kaomoji"
+
 
 def set_kopi_home_override(path: str | Path | None) -> Token:
     """Set a context-local Kopi home override and return its reset token.
