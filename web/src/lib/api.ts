@@ -325,6 +325,17 @@ export interface OfficeStateResponse {
   count: number;
   ts: number;
 }
+/** One transient office effect (office.fx channel — see
+ *  docs/design/office-fx-transient-effects.md). Fire-and-forget: a dropped fx
+ *  just skips an animation, it never desyncs the durable office.state view. */
+export interface OfficeFx {
+  seq: number;
+  ts: number;
+  kind: string;
+  agent: string;
+  target?: string;
+  data?: { tool?: string; text?: string; emoji?: string; message?: string };
+}
 
 function appendQueryParam(url: string, key: string, value?: string): string {
   if (!value) return url;
