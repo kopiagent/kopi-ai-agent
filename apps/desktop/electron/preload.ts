@@ -212,6 +212,12 @@ contextBridge.exposeInMainWorld('kopiDesktop', {
 
     return () => ipcRenderer.removeListener('kopi:close-preview-requested', listener)
   },
+  onOpenFolderRequested: callback => {
+    const listener = () => callback()
+    ipcRenderer.on('kopi:open-folder-requested', listener)
+
+    return () => ipcRenderer.removeListener('kopi:open-folder-requested', listener)
+  },
   onOpenUpdatesRequested: callback => {
     const listener = () => callback()
     ipcRenderer.on('kopi:open-updates', listener)

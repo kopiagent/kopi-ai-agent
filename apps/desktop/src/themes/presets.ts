@@ -11,116 +11,17 @@ import type { DesktopTheme, DesktopThemeTypography } from './types'
 // Covers macOS, Windows, Linux, plus the `emoji` generic for anything else.
 export const EMOJI_FALLBACK = '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", emoji'
 
-// Apple-first system stacks. macOS renders SF Pro / SF Mono — the same faces
-// Apple ships across its own UI — and the trailing entries only ever apply on
-// platforms where those aren't installed (Segoe on Windows, the generic
-// families elsewhere). Ordering matters: putting the Apple faces first is what
-// makes the app look native on macOS instead of falling into a webfont.
 const SYSTEM_SANS =
-  '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", ' +
-  '"Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif, ' +
+  '"Segoe WPC", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif, ' +
   EMOJI_FALLBACK
 
-const SYSTEM_MONO =
-  'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, "Cascadia Code", Consolas, monospace, ' + EMOJI_FALLBACK
+const SYSTEM_MONO = 'Menlo, Monaco, "SF Mono", "Courier Prime", monospace, ' + EMOJI_FALLBACK
 
 export const DEFAULT_TYPOGRAPHY: DesktopThemeTypography = { fontSans: SYSTEM_SANS, fontMono: SYSTEM_MONO }
 
 const NOUS_BLUE = '#0053FD'
 const PSYCHE_BLUE = '#1540B1'
 const PSYCHE_WARM = '#FFE6CB'
-
-// kopiaiagent.com marketing palette — the coffee identity. Ported from the
-// site's daisyUI `[data-theme=kopi]` block (OKLCH there, converted to hex
-// here so every desktop surface can consume it):
-//   --p  oklch(58.84% .124 52.5)   -> #b5652d  roasted-bean primary
-//   --b1 oklch(97.35% .014 88.7)   -> #faf6ec  cream canvas
-//   --b2 oklch(92.20% .040 86.1)   -> #f1e4c8  latte
-//   --b3 oklch(87.85% .043 82.5)   -> #e5d5b8  crema border
-//   --bc oklch(20.00% .015 47.9)   -> #1c1410  espresso text
-//   --n  oklch(30.02% .031 58.1)   -> #3a2a1e  dark roast
-//   --a  oklch(48.28% .068 174.8)  -> #2e6b5c  the logo's green accent
-const KOPI_COFFEE = '#b5652d'
-const KOPI_CREAM = '#faf6ec'
-const KOPI_LATTE = '#f1e4c8'
-const KOPI_CREMA = '#e5d5b8'
-const KOPI_ESPRESSO = '#1c1410'
-const KOPI_DARK_ROAST = '#3a2a1e'
-const KOPI_GREEN = '#2e6b5c'
-
-const kopiTint = (pct: number) => `color-mix(in srgb, ${KOPI_COFFEE} ${pct}%, ${KOPI_CREAM})`
-const kopiTintTransparent = (pct: number) => `color-mix(in srgb, ${KOPI_COFFEE} ${pct}%, transparent)`
-
-/**
- * Kopi — matches the kopiaiagent.com marketing site: blue #2563eb primary,
- * amber #f59e0b accents, slate neutrals, Inter + JetBrains Mono.
- */
-export const kopiTheme: DesktopTheme = {
-  name: 'kopi',
-  label: 'Kopi',
-  description: 'kopiaiagent.com look — roasted coffee on cream',
-  colors: {
-    background: KOPI_CREAM,
-    foreground: KOPI_ESPRESSO,
-    card: '#fffdf7',
-    cardForeground: KOPI_ESPRESSO,
-    muted: KOPI_LATTE,
-    mutedForeground: '#6f5b49',
-    popover: '#fffdf7',
-    popoverForeground: KOPI_ESPRESSO,
-    primary: KOPI_COFFEE,
-    primaryForeground: KOPI_CREAM,
-    secondary: kopiTint(7),
-    secondaryForeground: KOPI_DARK_ROAST,
-    accent: `color-mix(in srgb, ${KOPI_GREEN} 12%, ${KOPI_CREAM})`,
-    accentForeground: KOPI_GREEN,
-    border: KOPI_CREMA,
-    input: kopiTintTransparent(30),
-    ring: KOPI_COFFEE,
-    midground: KOPI_COFFEE,
-    composerRing: KOPI_COFFEE,
-    destructive: '#b3261e',
-    destructiveForeground: KOPI_CREAM,
-    sidebarBackground: KOPI_LATTE,
-    sidebarBorder: KOPI_CREMA,
-    userBubble: kopiTint(6),
-    userBubbleBorder: kopiTintTransparent(24)
-  },
-  darkColors: {
-    background: '#17110d',
-    foreground: '#efe3d2',
-    card: '#241a13',
-    cardForeground: '#efe3d2',
-    muted: '#241a13',
-    mutedForeground: '#a08d79',
-    popover: '#241a13',
-    popoverForeground: '#efe3d2',
-    primary: '#d98a4f',
-    primaryForeground: '#1c1410',
-    secondary: KOPI_DARK_ROAST,
-    secondaryForeground: '#e5d5b8',
-    accent: '#1f3f37',
-    accentForeground: '#7fbfab',
-    border: '#3a2a1e',
-    input: '#241a13',
-    ring: '#d98a4f',
-    midground: '#d98a4f',
-    composerRing: '#d98a4f',
-    destructive: '#e5534b',
-    destructiveForeground: '#fdf3f2',
-    sidebarBackground: '#120d09',
-    sidebarBorder: '#2b2019',
-    userBubble: '#2e2118',
-    userBubbleBorder: '#8a5a34'
-  },
-  // Apple typography: the OS faces (SF Pro / SF Mono), no webfont. Dropping
-  // the Google Fonts fetch also removes a third-party request on every launch
-  // and a flash of fallback text before Inter arrives.
-  typography: {
-    fontSans: SYSTEM_SANS,
-    fontMono: SYSTEM_MONO
-  }
-}
 
 const nousTint = (pct: number) => `color-mix(in srgb, ${NOUS_BLUE} ${pct}%, #FFFFFF)`
 const nousTintTransparent = (pct: number) => `color-mix(in srgb, ${NOUS_BLUE} ${pct}%, transparent)`
@@ -190,7 +91,7 @@ export const nousTheme: DesktopTheme = {
   },
   typography: {
     fontSans: SYSTEM_SANS,
-    fontMono: `"Courier Prime", ${SYSTEM_MONO}`,
+    fontMono: SYSTEM_MONO,
     fontUrl: 'https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap'
   }
 }
@@ -376,7 +277,6 @@ export const slateTheme: DesktopTheme = {
 }
 
 export const BUILTIN_THEMES: Record<string, DesktopTheme> = {
-  kopi: kopiTheme,
   nous: nousTheme,
   midnight: midnightTheme,
   ember: emberTheme,
@@ -388,4 +288,4 @@ export const BUILTIN_THEMES: Record<string, DesktopTheme> = {
 export const BUILTIN_THEME_LIST = Object.values(BUILTIN_THEMES)
 
 /** Skin used when nothing is persisted or the persisted name is retired. */
-export const DEFAULT_SKIN_NAME = 'kopi'
+export const DEFAULT_SKIN_NAME = 'nous'
