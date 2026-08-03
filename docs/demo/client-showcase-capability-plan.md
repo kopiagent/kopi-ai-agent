@@ -31,7 +31,8 @@
 
 ## 二、已经做掉的两件(在分支上,可直接看)
 
-这两件是我在你喊停之前做完并验证过的。**要不要留,你定** —— 不留我 revert 掉。
+这两件是我在你喊停之前做完并验证过的。~~要不要留,你定~~ → **已决定保留**并提交
+(后续实测又各修掉一个真 bug:caption 的 drawtext 缺失、办公室渲染冻屏,见第八节)。
 
 ### 2.1 动画办公室:让 agent 真的会说话
 
@@ -274,28 +275,29 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
 
 调研之后顺序变了 —— 域名从最后提到了前面,因为它现在是接一个官方 MCP 而不是从零写:
 
-| 顺序 | 条目 | 理由 |
-|---|---|---|
-| 1 | 交易所(ccxt + Alpaca MCP) | 现成方案最成熟,效果最惊艳 |
-| 2 | 域名 + 建站(Cloudflare MCP) | 官方 MCP,工作量比原估小一个量级 |
-| 3 | PDF 双交付 | 工作量小,但字体那步别省 |
-| 4 | cron blueprint | 最小 |
-| 5 | Instagram | 要自己写,且卡账号凭据 |
-| 6 | Zoho | 要自己写,且要先定 Books/CRM |
+| 顺序 | 条目 | 理由 | 状态 |
+| --- | --- | --- | --- |
+| 1 | 交易所(ccxt + Alpaca MCP) | 现成方案最成熟,效果最惊艳 | ✅ 完成 |
+| 2 | 域名 + 建站(Cloudflare MCP) | 官方 MCP,工作量比原估小一个量级 | ⬜ 下一个 |
+| 3 | PDF 双交付 | 工作量小,但字体那步别省 | ✅ 完成 |
+| 4 | cron blueprint | 最小 | ⬜ 未动 |
+| 5 | Instagram | 要自己写,且卡账号凭据 | ✅ 代码完成,等凭据 |
+| 6 | Zoho | 要自己写,且要先定 Books/CRM | ⬜ 等定 Books/CRM |
 
 ---
 
-## 七、要你拍板的六件事
+## 七、要你拍板的六件事(→ 2026-08-03 状态)
 
-1. **分支上已做的两件留不留**(动画办公室 + 视频剪辑)?
-2. **是否接受引入三个外部依赖**:ccxt(pip)、Alpaca 官方 MCP、Cloudflare 官方 MCP。
-   按仓库自己的 MCP 目录政策,进 `optional-mcps/` 要走 PR + 钉死版本 + 发布满两周。
-3. **是否认同 Instagram / Zoho 自己写**(不用第三方 MCP)—— 我的理由是不该把长期
-   access token 交给来路不明的 npm 包,但这会多花时间,你可以推翻。
-4. **凭据**:Meta 应用、Cloudflare、Zoho、Alpaca paper、Binance/OKX testnet ——
-   哪些能给到?拿不到的我就做成"到最后一步停下等人工"。
-5. **Zoho 是 Books 还是 CRM**;三家会计软件都要还是挑一家做深。
-6. **交易所是否接受"默认拒绝主网下单"的硬闸**;买域名是否接受现场真花钱。
+1. ~~分支上已做的两件留不留~~ → **已留**,用户开工指令后已提交(见第八节)。
+2. **是否接受引入三个外部依赖** → ccxt + Alpaca MCP **已引入**(用户让继续实现,
+   视为默认接受);Cloudflare MCP 待第 4 条动工时正式确认。
+3. ~~Instagram / Zoho 自己写~~ → **按自己写执行**,Instagram skill 已完成。
+4. **凭据** → 已给:Binance testnet ✅、Alpaca paper ✅、kopi proxy key ✅;
+   暂缓:OKX(用户定);仍缺:**Meta 应用**(Instagram 真实发布)、
+   **FAL/XAI key**(视频生成)、**Cloudflare**(第 4 条)、Zoho。
+5. **Zoho 是 Books 还是 CRM** → ⬜ 仍未定,不定无法开工。
+6. 交易所硬闸 → **已实现**(默认拒绝主网,双重开启才放行);
+   买域名现场真花钱 → ⬜ 待确认(第 4 条动工前要答案)。
 
 确认后我按 CLAUDE.md 的门禁逐条实现:每条单独跑全量 + 开 PR + 等 CI 全绿再合。
 
@@ -339,11 +341,19 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
   **B. kopi-proxy 加视频上游**(异步 job 路由 + 计费落库,是 proxy 仓库的独立项目,
   排在演示之后)。
 
-#### 第 1/4 条 · 动画办公室 —— ✅ 代码层完成,真实链路验证通过
+#### 第 1/4 条 · 动画办公室 —— ✅ 三层验证全部完成(单测 + 数据链路 + 浏览器实拍)
 
-- 7 个单测全过;另做了一次不 mock 的落盘验证:交办→完成后,快照文件里父 agent 的
+- 7 个单测全过;不 mock 的落盘验证:交办→完成后,快照文件里父 agent 的
   fx 序列为 `handoff → speak(交办内容) → done → speak(结果摘要)`,与设计一致。
-- 剩余:浏览器内动画目检(演示彩排时顺手确认即可)。
+- 浏览器目检(dev 构建 + 模拟委托流量):**speak 气泡实拍到**
+  ("成片 45 秒,已导出 final.mp4"、失败链路"bucket 不存在"),双 NPC 同框、
+  状态站位(白板/咖啡机)正常切换。
+- **顺带修掉一个用户实际撞上的前端 bug(冻屏)**:快照记录缺 `status` 字段时
+  `drawLabel` 对 `bottom.length` 崩溃,而渲染循环把 `requestAnimationFrame` 放在
+  帧末尾 —— 一帧异常整个画面永久冻结,只能刷新。修复三层:数据入口给
+  goal/status 兜底、绘制函数空值防御、渲染循环 `try/finally` 保证永不断帧。
+  web workspace check(144 测试 + typecheck + lint)全过。快照是跨进程文件喂入,
+  本就该按不可信输入处理 —— 这不是演示专属问题。
 
 #### 第 2 条 · Instagram —— ✅ 代码完成,卡 Meta 凭据
 
@@ -369,5 +379,17 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
 
 - kopi CLI 的 `KOPI_API_KEY` 失效问题已解决(经 `/v1/auto-provision/ready` 领新 key,
   10M tokens;用户提供的两个 key 在服务端不存在,第三个是复制截断)。
-- 提交状态:动画办公室 + 视频剪辑 + 本文档已在 `feat/demo-capabilities` 提交
-  (`c5ada659`);crypto_exchange 一批与 caption 修复**尚未提交**,等用户测试确认。
+- 凭据配置:Binance testnet + Alpaca paper key 已入 `~/.kopi/.env` 并真机验证;
+  `kopi mcp install alpaca` 已装(manifest 同步到了安装目录,发版后自带);
+  Instagram skill 与 deliver_pdf 也已同步到 `~/.kopi/skills/` 供本机测试。
+- 开发机备注:仓库 web UI 自动构建要求 npm ≥ 12(本机全局是 10,dashboard 会
+  拒绝构建)—— 用 `npx -y npm@12 install --workspace web && npm run build -w web`
+  手动构建后,dashboard 的内容哈希 stamp 需重写(`_write_web_ui_build_stamp`)
+  才会跳过自动构建。
+- 提交状态(全部在 `feat/demo-capabilities`,工作区干净):
+  `c5ada659` 动画办公室 FX + video_edit + 本文档 →
+  `d8effe8c` crypto_exchange + Alpaca MCP → `9eb551f4` caption 修复 →
+  `a9dcd77c` 办公室冻屏修复 → `12053559` 文档/锁文件 →
+  `25ab2894` Instagram skill → `4195cd89` PDF 双交付。
+  **开 PR 前还欠一次完整 Python 全量的 `100% complete` 留证**(上次后台跑被
+  输出截断,失败文件均为已知噪音,需按 CLAUDE.md 重跑归档)。
