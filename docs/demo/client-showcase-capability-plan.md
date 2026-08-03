@@ -1,7 +1,9 @@
 # 客户演示能力盘点与实施方案
 
-> 分支:`feat/demo-capabilities` · 2026-08-03 · **17 个 commit,未推送/未开 PR**
+> 分支:`feat/demo-capabilities` · 2026-08-03 · **21 个 commit,未推送/未开 PR**
 > 9 条需求 7 条完成;剩余清单见第九节。
+> 插曲:Windows 图标修复已单独走 PR #29/#30 进 main 并随 **v1.22.9** 发布
+> (三端产物齐);该 3 个 commit 在本分支重复存在,rebase 时会自动变空丢弃。
 >
 > 前提(已定):外部账号走**混合策略** —— 社媒和域名用真号,会计与交易走官方 sandbox/paper;
 > 交付**只做 agent 能力,不做演示脚本**,录屏由你自己操作;第 1 条的素材站先用一个公开站跑通。
@@ -408,6 +410,31 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
 - **Telegram 通道凭据已配**:bot @Kopi_Agent_test_Bot(getMe 验证通过),
   gateway 启动即自动上线 —— "Telegram 问账"链路可用 Xero/QBO 立即演示。
 
+#### 第 5 条延伸 · 三家系统角色模拟跑数(2026-08-03,真实 API)
+
+以"财务经理/销售主管"角色对三家系统做了日/月/年节奏的真实查询:
+
+- **Xero(Demo Company Global)**:待发 DRAFT 应收 2 张($550×2)、多笔未对账
+  银行流水;P&L 收入 $722,973 / 毛利 $477,197;资产负债表应收 $9,194.51。
+- **QBO(Sandbox US 53c1)**:53 客户;**未收款发票 63 张**(Balance>0 查询);
+  年度 P&L 收入 $1.98M / 费用 $2.77M / 净利 -$1.34M(sandbox 原生数据,
+  演示时可让 agent 指出费用异常)。
+- **Zoho CRM(KOPI AI Pte. Ltd.)**:线索 10 条按状态分布;管线 $700K/10 单
+  按阶段汇总(Qualification $250K 领先)。
+- 踩点记录:Xero list 类工具必须传 `page`;aged-receivables 必须传 contactId;
+  Zoho COQL 聚合+group by 不可靠 → 全量拉取本地聚合是 agent 的正确姿势。
+- **Zoho Books 造数未完成**:组织是新的且现 token 只读,等用户点带写权限的
+  授权链接(接码服务仍在 8123 监听)后造 12 个月经营数据并补跑财务视角。
+
+#### 插曲 · Windows 图标修复 + v1.22.9 发版(2026-08-03)
+
+- 发现:`icon.ico` 被 v16 同步换回上游 Hermes 动漫吉祥物(png/icns 未受影响)。
+- 修复:恢复 KOPI 品牌 + 新增方形咖啡杯 app mark(矢量重绘,16/24/32 帧去蒸汽);
+  1024 主图入库 `assets/icon-mark.png`;CLAUDE.md 增补"二进制品牌资产"检查规则。
+- 流程:独立分支 cherry-pick → 全量(25350 过,100% complete,噪音与 main 基线
+  一致)→ desktop 完整 check(真实 DMG)→ PR #29 全绿 squash 合入 →
+  PR #30 bump 1.22.9 → tag → **三端 6 个产物发布成功**。
+
 #### 其他
 
 - kopi CLI 的 `KOPI_API_KEY` 失效问题已解决(经 `/v1/auto-provision/ready` 领新 key,
@@ -454,10 +481,14 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
 
 ### D. 合入 main 前的流程债(CLAUDE.md 门禁)
 
-1. 完整 Python 全量重跑,留 `100% complete` Summary 证据
-   (上次后台跑被管道截断,只有失败清单;失败均在已知噪音集内,需正式归档)。
-2. 受影响 JS/TS workspace 的 `check`(web 已过 144 测试;desktop 未动过则免)。
-3. 开 PR → `All required checks pass` → squash/rebase 合入(分支从未推送)。
-4. 发版按"纯版本号 bump"豁免流程走。
+1. ~~完整 Python 全量重跑留证~~ → **已完成两次**:功能分支 25402 过/31 败、
+   图标分支 25350 过/32 败,均 `100% complete`;全部失败与 origin/main 干净
+   工作树逐一对照一致(7 个非显式名单文件在 main 基线复现同样失败)→ 零回归。
+2. ~~workspace check~~ → web(144 测试)与 apps/desktop(UI 3287 + 平台 930 +
+   真实 DMG)均已全绿。
+3. 剩:推 `feat/demo-capabilities` → PR → `All required checks pass` →
+   **rebase 合入**(多 commit 保结构;其中 3 个图标 commit 已随 #29 squash
+   进 main,rebase 时变空丢弃即可)。
+4. 合入后如需发版,按"纯版本号 bump"豁免流程(v1.22.9 已按此发过一轮)。
 
 可选尾巴:OKX(用户暂缓)、WhatsApp 桥(演示用 Telegram 即可)。
