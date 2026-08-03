@@ -395,8 +395,15 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
   子命令;默认只读 scope;`exchange` 把 refresh token 直写 .env 不过 stdout;
   处理了 Zoho 数据中心分区(ZOHO_DC 同时决定 accounts 和 API 主机)和
   token 铸造限频(磁盘缓存 0600)。10 个测试全过。
-  **待真实接线**:需要用户在 api-console.zoho.com 建 Server-based 应用
-  (回调 `http://localhost:8123/callback`)并给 client id/secret + DC。
+  **接线进展(2026-08-03)**:凭据已配(DC=com),OAuth 走通,refresh token 已落
+  `.env`(接码服务复用 8123)。Books 只读 scope 已验证生效,但**组织列表为空**;
+  CRM 调用报 `invalid oauth scope` —— 判定为**账号侧产品未开通**(Books 没建组织、
+  CRM 未启用),非代码问题。待用户在 books.zoho.com 建组织 + 启用 crm.zoho.com
+  后复测(可能需重跑一次授权)。
+  顺带修了一个真问题:uv 管理的 Python 无系统 CA store,urllib 全部 HTTPS 失败 ——
+  zoho/instagram 两个脚本已加 certifi 回退(commit 见台账)。
+- **Telegram 通道凭据已配**:bot @Kopi_Agent_test_Bot(getMe 验证通过),
+  gateway 启动即自动上线 —— "Telegram 问账"链路可用 Xero/QBO 立即演示。
 
 #### 其他
 
