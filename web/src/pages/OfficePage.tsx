@@ -390,11 +390,14 @@ export default function OfficePage() {
         const existing = npcsRef.current.get(a.subagent_id);
         if (existing) {
           const wasLeaving = existing.gone;
-          existing.goal = a.goal;
+          // Records come from per-process snapshot files; a writer that
+          // omits a field must not degrade an NPC we already know (the
+          // creation path below defaults the same way).
+          existing.goal = a.goal || existing.goal;
           existing.tool = a.tool || "";
           existing.gone = false;
           existing.removeAt = 0;
-          existing.status = a.status;
+          existing.status = a.status || existing.status;
           if (wasLeaving) {
             // came back while walking out → head straight to the new seat
             walkTo(npcsRef.current, existing, station);
@@ -727,7 +730,7 @@ export default function OfficePage() {
     // Goal name tag above the head — drawn seated AND while walking, so an
     // NPC in transit is never anonymous.
     const drawGoalChip = (x: number, y: number, top: string) => {
-      const g = compactLabel(top);
+      const g = compactLabel(top || "");
       const labelW = Math.min(42, Math.max(24, Array.from(g).length * 5));
       rect(x - labelW / 2 - 1, y - 42, labelW + 2, 12, "#6e3f29");
       rect(x - labelW / 2, y - 43, labelW, 12, "#fff4cc");
@@ -737,7 +740,11 @@ export default function OfficePage() {
     };
     const drawLabel = (x: number, y: number, top: string, bottom: string) => {
       drawGoalChip(x, y, top);
-      const footTrunc = bottom.length > 22 ? bottom.slice(0, 21) + "…" : bottom;
+      // `bottom` can be undefined when a snapshot record carries no status
+      // (cross-process file feed — treat as untrusted). Never let one bad
+      // record throw inside the render loop.
+      const foot = bottom || "";
+      const footTrunc = foot.length > 22 ? foot.slice(0, 21) + "…" : foot;
       const footW = Math.min(70, Math.max(30, footTrunc.length * 4));
       rect(x - footW / 2, y + 17, footW, 8, "rgba(255,244,204,0.82)");
       ctx.fillStyle = C.sub; ctx.fillText(footTrunc, x, y + 23);
@@ -870,7 +877,18 @@ export default function OfficePage() {
       }
     };
 
+    // One bad frame must never kill the animation permanently: `render`
+    // reschedules itself at the end, so an uncaught throw would silently
+    // stop the loop (NPCs freeze until a manual refresh). Draw inside
+    // try/finally — skip the broken frame, keep the loop alive.
     const render = (t: number) => {
+      try {
+        renderFrame(t);
+      } finally {
+        raf = requestAnimationFrame(render);
+      }
+    };
+    const renderFrame = (t: number) => {
       const w = canvas.clientWidth, h = canvas.clientHeight;
       const scale = Math.max(1, Math.min(w / VW, h / VH));
       const ox = (w - VW * scale) / 2, oy = (h - VH * scale) / 2;
@@ -984,7 +1002,6 @@ export default function OfficePage() {
         ctx.fillStyle = C.sub; ctx.font = "8px monospace"; ctx.textAlign = "center";
         ctx.fillText("no agents running - spawn workers with delegate_task", VW / 2, VH - 21);
       }
-      raf = requestAnimationFrame(render);
     };
     raf = requestAnimationFrame(render);
     return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); ro?.disconnect(); };
