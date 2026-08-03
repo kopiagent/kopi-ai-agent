@@ -1,6 +1,7 @@
 # 客户演示能力盘点与实施方案
 
-> 分支:`feat/demo-capabilities` · 2026-08-03 · **待确认,尚未合并**
+> 分支:`feat/demo-capabilities` · 2026-08-03 · **17 个 commit,未推送/未开 PR**
+> 9 条需求 7 条完成;剩余清单见第九节。
 >
 > 前提(已定):外部账号走**混合策略** —— 社媒和域名用真号,会计与交易走官方 sandbox/paper;
 > 交付**只做 agent 能力,不做演示脚本**,录屏由你自己操作;第 1 条的素材站先用一个公开站跑通。
@@ -427,3 +428,36 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
   `86d2bf99` certifi SSL 回退 → `0cd79619` COQL 文档修正(+ 各次 docs)。
   **开 PR 前还欠一次完整 Python 全量的 `100% complete` 留证**(上次后台跑被
   输出截断,失败文件均为已知噪音,需按 CLAUDE.md 重跑归档)。
+
+---
+
+## 九、剩余待办(2026-08-03 盘点)
+
+### A. 未动工的功能
+
+| 项 | 卡点 | 工作量 |
+| --- | --- | --- |
+| 第 4 条 · Cloudflare 域名+建站 | 等拍板:现场真花钱买域名?+ Cloudflare 凭据 | 小(官方 MCP + 串 temporary-deploy) |
+| 第 8 条 · cron blueprint(新闻摘要/竞品监控) | 无,零依赖 | 最小 |
+
+### B. 代码完成,等凭据激活
+
+- **视频生成**(第 1 条另一半):等 FAL / XAI key。没有它,第 1 条只能演示剪辑半段。
+- **Instagram 真实发布**:等 Meta 应用(Business/Creator + 长期 token);
+  拿不到就用已实现的 `--no-publish` 人工点发布模式。
+
+### C. 第 9 条建议项(未动)
+
+- **成本与用量看板**:AnalyticsPage + session cost 底料在,未拼装。
+- **失败与人工接管演示**:底座已全部验证(office 的 error/retry 特效),
+  只差演示编排 —— 基本就绪。
+
+### D. 合入 main 前的流程债(CLAUDE.md 门禁)
+
+1. 完整 Python 全量重跑,留 `100% complete` Summary 证据
+   (上次后台跑被管道截断,只有失败清单;失败均在已知噪音集内,需正式归档)。
+2. 受影响 JS/TS workspace 的 `check`(web 已过 144 测试;desktop 未动过则免)。
+3. 开 PR → `All required checks pass` → squash/rebase 合入(分支从未推送)。
+4. 发版按"纯版本号 bump"豁免流程走。
+
+可选尾巴:OKX(用户暂缓)、WhatsApp 桥(演示用 Telegram 即可)。
