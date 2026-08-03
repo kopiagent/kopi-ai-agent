@@ -165,6 +165,19 @@ TOOLSETS = {
         "includes": []
     },
 
+    "trading": {
+        "description": (
+            "Crypto exchange trading through ccxt's unified API (Binance, "
+            "OKX): quotes, orders, balances, positions. Sandbox/testnet by "
+            "default — mainnet is refused in code unless the operator "
+            "exports KOPI_EXCHANGE_ALLOW_MAINNET=true AND the call passes "
+            "live=true. US equities trade via the official Alpaca MCP "
+            "instead (`kopi mcp install alpaca`)."
+        ),
+        "tools": ["crypto_exchange"],
+        "includes": []
+    },
+
     "bfl": {
         "description": (
             "Black Forest Labs FLUX 3 video generation through the Nous tool "

@@ -189,6 +189,13 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
     # ─── Image generation backends ─────────────────────────────────────────
     "image.fal": ("fal-client==0.13.1",),
 
+    # ─── Trading (crypto exchanges) ────────────────────────────────────────
+    # ccxt's unified API covers Binance/OKX (sandbox via set_sandbox_mode).
+    # Tracks the `trading` extra in pyproject.toml — bump both together, and
+    # read the version-ceiling comment there before bumping (4.5.65+ pins
+    # transitive deps exactly and conflicts with our core pins).
+    "trading.ccxt": ("ccxt==4.5.64",),
+
     # ─── Memory providers ──────────────────────────────────────────────────
     "memory.honcho": ("honcho-ai==2.2.0",),
     "memory.hindsight": ("hindsight-client==0.6.1",),

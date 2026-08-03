@@ -1,0 +1,62 @@
+# Nous-approved MCP catalog entry.
+# Presence in this directory = approval. Merged via PR review.
+manifest_version: 1
+
+name: alpaca
+description: Trade US stocks, options, and crypto on Alpaca — paper trading by default.
+source: https://github.com/alpacahq/alpaca-mcp-server
+
+# alpacahq/alpaca-mcp-server is Alpaca's FIRST-PARTY MCP server (v2 is a
+# FastMCP rewrite built from their OpenAPI specs). We take the official
+# server rather than wrapping the SDK ourselves so tool coverage tracks
+# Alpaca's API changes without us chasing them.
+transport:
+  type: stdio
+  command: "uvx"
+  # Pinned per catalog dependency policy: exact version, release at least
+  # 2 weeks old at pin time. 2.1.1 released 2026-06-24. The catalog never
+  # auto-updates; bumping the pin is a PR to this manifest.
+  args:
+    - "alpaca-mcp-server==2.1.1"
+  version: "2.1.1"
+  env:
+    # Paper trading is forced ON at the catalog level. The same keys and
+    # tools drive real-money trading when this is "false", so flipping it
+    # is a deliberate manual edit of the installed server config — not an
+    # install-time prompt someone can breeze through.
+    ALPACA_PAPER_TRADE: "true"
+    # Server-side toolset filter (comma-separated). The full server exposes
+    # 65 tools across account/trading/watchlists/assets/stock-data/
+    # crypto-data/options-data toolsets; uncomment to trim schema tokens:
+    # ALPACA_TOOLSETS: "account,trading,stock-data,crypto-data"
+
+auth:
+  type: api_key
+  env:
+    - name: ALPACA_API_KEY
+      prompt: "Alpaca PAPER API key (https://app.alpaca.markets → Paper Trading → API Keys)"
+      required: true
+      secret: true
+    - name: ALPACA_SECRET_KEY
+      prompt: "Alpaca PAPER API secret"
+      required: true
+      secret: true
+
+post_install: |
+  This entry runs Alpaca's official MCP server pinned at 2.1.1, with
+  ALPACA_PAPER_TRADE=true forced in the manifest — orders hit the paper
+  (simulated) account, never real money.
+
+  Use PAPER keys: app.alpaca.markets → switch to "Paper Trading" → API Keys.
+  Paper accounts are free and come with simulated buying power.
+
+  The server exposes ~65 tools. If that crowds your tool picker, either
+  prune at install time (kopi mcp configure alpaca) or set the server-side
+  filter in this manifest's transport.env, e.g.:
+    ALPACA_TOOLSETS: "account,trading,stock-data,crypto-data"
+
+  Going LIVE (real money) is deliberately not a prompt: it requires editing
+  the installed server config to ALPACA_PAPER_TRADE=false AND swapping in
+  live-account keys. Don't do this on a demo machine.
+
+  Requires uv (uvx) on PATH; the package needs Python 3.10+.

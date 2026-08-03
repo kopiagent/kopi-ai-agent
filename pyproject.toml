@@ -155,6 +155,13 @@ firecrawl = ["firecrawl-py==4.17.0"]
 parallel-web = ["parallel-web==0.4.2"]
 # Image generation backends
 fal = ["fal-client==0.13.1"]
+# Crypto exchange trading (crypto_exchange tool) — lazy-installed via
+# tools/lazy_deps.py feature `trading.ccxt`; bump both together.
+# 4.5.64 is the newest release declaring dependency RANGES; 4.5.65+ pin
+# every transitive dep exactly (certifi==2026.6.17, setuptools==82.0.1),
+# which is unresolvable against our core certifi and dev setuptools pins.
+# Before bumping past 4.5.64, check ccxt's requires_dist first.
+trading = ["ccxt==4.5.64"]
 # Edge TTS — default TTS provider but still optional (users can pick
 # ElevenLabs / OpenAI / MiniMax instead).
 edge-tts = ["edge-tts==7.2.7"]
