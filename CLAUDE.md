@@ -283,6 +283,11 @@ node -e "require('./package-lock.json')"                      # 每批必跑的�
    grep -n '"homepage"\|"appId"\|"maintainer"\|"author"' package.json apps/desktop/package.json
    ```
 
+   **二进制品牌资产 grep 更扫不到**(v16 batch6 咬过):同步把
+   `apps/desktop/assets/icon.ico` 换回了上游 Hermes 动漫吉祥物,而 icon.png/.icns
+   还是 KOPI 的 —— Windows 安装包带着别家 logo 出厂。每次同步后用 Pillow 开一眼
+   三个 icon 文件;ico 重生成:`Image.open("icon.png").save("icon.ico", sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])`。
+
 5. **`install.sh`** = 上游 staged Hermes 协议改名 + 一处 kopi 注入
    (config 阶段的 `provision_kopi_proxy_key`)。被重写就重做改名 + 重新注入。
 6. **13 个 `tests/test_install_sh_*.py` 必须保持 `pytestmark = skip`**
