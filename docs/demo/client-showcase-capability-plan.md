@@ -17,8 +17,8 @@
 |---|---|---|---|
 | 1 | 研究网站 → 生成 2-3 段视频 → 剪辑拼接 | 生成有,**剪辑没有** | ✅ 已做 |
 | 1/4 | 动画办公室、agent 互相传指令/说话 | 协议全通,**大半效果没人触发** | ✅ 已做 |
-| 2 | 发布到 Instagram / X | X 有,**Instagram 没有** | 中 · 自己写 |
-| 3 | 专业 PPT/Word + 同时给 PDF | 四个 skill 都在,**双交付没强制** | 小 · 坑在字体 |
+| 2 | 发布到 Instagram / X | X 有,**Instagram 没有** | ✅ 已做(卡凭据,见第八节) |
+| 3 | 专业 PPT/Word + 同时给 PDF | 四个 skill 都在,**双交付没强制** | ✅ 已做(见第八节) |
 | 4 | root 终端权限 | 本来就有 | 无 |
 | 4 | 自动买域名 + 接到新站 | 完全没有 | 小 · 接官方 MCP |
 | 5 | Telegram/WhatsApp 接 Zoho/Xero/QuickBooks | Xero+QB 有,**Zoho 没有** | 中 · 自己写 |
@@ -344,6 +344,26 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
 - 7 个单测全过;另做了一次不 mock 的落盘验证:交办→完成后,快照文件里父 agent 的
   fx 序列为 `handoff → speak(交办内容) → done → speak(结果摘要)`,与设计一致。
 - 剩余:浏览器内动画目检(演示彩排时顺手确认即可)。
+
+#### 第 2 条 · Instagram —— ✅ 代码完成,卡 Meta 凭据
+
+- 自写 skill(`skills/social-media/instagram/`,理由见 3.4):纯标准库脚本走官方
+  Graph API 容器协议(建容器→轮询→发布),image/reel/carousel + whoami/quota/status,
+  `--no-publish` 即"备好人工点发布"模式。9 个测试(urllib 层伪造),token 不泄漏有专测。
+- 待用户提供:Business/Creator 账号 + Meta 应用 + 长期 token(SKILL.md 有步骤)。
+
+#### 第 3 条 · PPT/Word + PDF 双交付 —— ✅ 完成并真机验证
+
+- 现状核实:soffice 包装器和 PDF 渲染 QA 本来就在(powerpoint/docx/xlsx 三个 skill),
+  真正缺的是"强制双交付"和"字体不变形的把关"。
+- 新增 `scripts/deliver_pdf.py`(powerpoint + docx 各一份,有测试锁两份不漂移):
+  转换后读取 PDF **实际内嵌字体**,把每个源字体判为 kept / metric-safe
+  (Calibri→Carlito 等同宽度替换,版式不动)/ **risky**(不同宽度替换,会重排)。
+  比"检查字体装没装"更真实 —— 验证的是转换实际发生了什么。
+- SKILL.md(powerpoint + docx)新增 MANDATORY 双交付章节:交付必须两份文件,
+  verdict 是 check_layout 时必须换安全字体或装字体重转,禁止静默交付重排的 PDF。
+- 真机 e2e:合成 docx(Calibri + 不存在字体)→ LibreOffice 转换 →
+  Calibri 判 metric-safe、假字体判 risky 并给修复指引。8 个测试全过。
 
 #### 其他
 

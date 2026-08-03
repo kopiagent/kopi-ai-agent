@@ -188,6 +188,33 @@ Choose colors that match your topic — don't default to generic blue. Use these
 - **Don't default to cream/beige backgrounds** — when no background is specified, use white (`FFFFFF`) or the user's brand palette; avoid warm-neutral defaults like `F5F5DC`, `FAF0E6`, `FAEBD7`, `FFF8E1`
 - **Don't ship text that overflows its shape** — if text doesn't fit, reduce font size, split across slides, or enlarge the container; never leave content cut off or spilling past bounds
 
+## Dual delivery — PDF alongside the deck (MANDATORY)
+
+Every finished deck handed to the user ships as **two files: the `.pptx`
+AND a PDF**, produced by the bundled converter — not by an ad-hoc
+`soffice` call:
+
+```bash
+python scripts/deliver_pdf.py output.pptx
+```
+
+The script converts AND verifies the fonts survived: it reads the fonts
+actually embedded in the produced PDF and classifies every requested
+font as kept / metric-safe substitution (Calibri→Carlito etc. — same
+widths, layout preserved) / **risky** (different metrics — the PDF may
+not match the deck). On `"verdict": "check_layout"`:
+
+1. Prefer fixing the source: switch the offending text to a font from
+   the safe list in Typography above, then re-run.
+2. Or install the missing font on this machine, then re-run.
+3. **Never silently ship a PDF that reflowed.** If the user explicitly
+   wants the exotic font kept, tell them the PDF was rendered with a
+   substitute and may differ from the deck.
+
+This is the guard against the classic "the PDF looks different" bug:
+LibreOffice substitutes any font it can't find, and pagination follows
+the substitute's metrics.
+
 ## QA (Required)
 
 Your first render usually has a few real issues — overlaps, overflow, misalignment. Find and fix those, re-render only the slides you changed, and stop.

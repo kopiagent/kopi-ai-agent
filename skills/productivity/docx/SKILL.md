@@ -122,6 +122,27 @@ The script writes `comments.xml`, `commentsExtended.xml`, `commentsIds.xml`, `co
 1. `python scripts/office/validate.py out.docx --original in.docx` — schema, relationship, and content-type checks; every failure names its fix.
 2. Render to PDF → images (see "Verify the output") and inspect each page with `vision_analyze` — look for broken tables, missing images, spacing artifacts, leftover placeholder text.
 
+## Dual delivery — PDF alongside the document (MANDATORY)
+
+Every finished document handed to the user ships as **two files: the
+`.docx` AND a PDF**, produced by the bundled converter — not by an
+ad-hoc `soffice` call:
+
+```bash
+python scripts/deliver_pdf.py output.docx
+```
+
+The script converts AND verifies the fonts survived: it reads the fonts
+embedded in the produced PDF and classifies every requested font as
+kept / metric-safe substitution (Calibri→Carlito, Times New Roman→
+Liberation Serif — same widths, layout preserved) / **risky**
+(different metrics — pagination in the PDF may not match the document).
+On `"verdict": "check_layout"`: switch the document to fonts installed
+on this machine (safe everywhere: Arial, Calibri, Cambria, Times New
+Roman, Courier New) or install the missing font, then re-run. **Never
+silently ship a PDF that reflowed** — if the user insists on the exotic
+font, say explicitly that the PDF used a substitute.
+
 ## Related skills
 
 `pdf` (PDF work), `xlsx` (spreadsheets), `powerpoint` (decks), `ocr-and-documents` (scanned input extraction).
