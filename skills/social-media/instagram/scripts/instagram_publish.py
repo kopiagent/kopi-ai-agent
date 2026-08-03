@@ -62,6 +62,22 @@ def _api_version() -> str:
     return os.environ.get("INSTAGRAM_GRAPH_API_VERSION", "").strip() or "v23.0"
 
 
+def _ssl_context():
+    """Default SSL context, falling back to certifi's CA bundle — uv-managed
+    Pythons often ship with no system CA store and fail every HTTPS call."""
+    import ssl
+
+    context = ssl.create_default_context()
+    if context.cert_store_stats().get("x509_ca", 0) == 0:
+        try:
+            import certifi
+
+            context.load_verify_locations(cafile=certifi.where())
+        except ImportError:
+            pass
+    return context
+
+
 def _call(method: str, path: str, params: dict) -> dict:
     """One Graph API call. The token travels as a param (Graph convention)
     and is never printed — error output redacts the query string."""
@@ -74,7 +90,7 @@ def _call(method: str, path: str, params: dict) -> dict:
     else:
         request = urllib.request.Request(url, data=query.encode(), method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=60) as resp:
+        with urllib.request.urlopen(request, timeout=60, context=_ssl_context()) as resp:
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
         body = exc.read().decode(errors="replace")

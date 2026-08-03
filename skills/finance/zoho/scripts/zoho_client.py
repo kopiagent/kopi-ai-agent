@@ -89,10 +89,31 @@ def _env(name: str) -> str:
     return value
 
 
+def _ssl_context():
+    """Default SSL context, falling back to certifi's CA bundle.
+
+    uv-managed/standalone Pythons often ship with NO system CA store, so
+    ``create_default_context()`` alone fails every HTTPS call with
+    CERTIFICATE_VERIFY_FAILED. certifi is a core dependency of the agent;
+    plain ``python3`` without it keeps the system default behavior.
+    """
+    import ssl
+
+    context = ssl.create_default_context()
+    if context.cert_store_stats().get("x509_ca", 0) == 0:
+        try:
+            import certifi
+
+            context.load_verify_locations(cafile=certifi.where())
+        except ImportError:
+            pass
+    return context
+
+
 def _http(method: str, url: str, *, data: bytes | None = None, headers: dict | None = None) -> dict:
     request = urllib.request.Request(url, data=data, method=method, headers=headers or {})
     try:
-        with urllib.request.urlopen(request, timeout=60) as resp:
+        with urllib.request.urlopen(request, timeout=60, context=_ssl_context()) as resp:
             body = resp.read().decode()
     except urllib.error.HTTPError as exc:
         body = exc.read().decode(errors="replace")

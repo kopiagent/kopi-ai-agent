@@ -53,7 +53,7 @@ class FakeZoho:
     def __init__(self):
         self.calls = []  # (method, host, path, params)
 
-    def __call__(self, request, timeout=0):
+    def __call__(self, request, timeout=0, context=None):
         url = urlparse(request.full_url)
         body = (request.data or b"").decode()
         params = {k: v[0] for k, v in parse_qs(url.query + "&" + body).items()}

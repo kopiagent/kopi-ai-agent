@@ -56,7 +56,7 @@ class FakeGraph:
         self._statuses = list(statuses)
         self._containers = 0
 
-    def __call__(self, request, timeout=0):
+    def __call__(self, request, timeout=0, context=None):
         from urllib.parse import parse_qs, urlparse
 
         url = urlparse(request.full_url)
