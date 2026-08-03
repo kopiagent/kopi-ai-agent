@@ -21,7 +21,7 @@
 | 3 | 专业 PPT/Word + 同时给 PDF | 四个 skill 都在,**双交付没强制** | ✅ 已做(见第八节) |
 | 4 | root 终端权限 | 本来就有 | 无 |
 | 4 | 自动买域名 + 接到新站 | 完全没有 | 小 · 接官方 MCP |
-| 5 | Telegram/WhatsApp 接 Zoho/Xero/QuickBooks | Xero+QB 有,**Zoho 没有** | 中 · 自己写 |
+| 5 | Telegram/WhatsApp 接 Zoho/Xero/QuickBooks | Xero+QB 有,**Zoho 没有** | ✅ Xero+QBO 已通(Zoho 等拍板,见第八节) |
 | 6 | 快速做网站和仪表盘 | 有底座 | 小 |
 | 7 | 接 Binance/OKX/Alpaca 模拟盘交易 | 完全没有 | ✅ 已做(见第八节) |
 | 8 | 每日 cron 新闻/竞品分析 | cron 框架完整 | 小 |
@@ -374,6 +374,23 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
   verdict 是 check_layout 时必须换安全字体或装字体重转,禁止静默交付重排的 PDF。
 - 真机 e2e:合成 docx(Calibri + 不存在字体)→ LibreOffice 转换 →
   Calibri 判 metric-safe、假字体判 risky 并给修复指引。8 个测试全过。
+
+#### 第 5 条 · Telegram/WhatsApp 接会计 —— ✅ Xero + QBO 全通,Zoho 等拍板
+
+- 盘点发现的坑:xero/quickbooks 两个 skill 引用的 `kopi mcp install` 目录条目
+  在 7 月被移除过(`6fe666ea`,因浮动版本被 pin 强制测试拦下)—— skill 与
+  catalog 脱节。已从历史恢复并钉死版本:xero `0.0.17`(npm)、
+  quickbooks `0993518`(完整 SHA,上游无 release tag)。目录 18 测试全过。
+- **Xero 端到端验证**:Custom Connection(client_credentials,无浏览器授权),
+  51 工具,`list-organisation-details` 真实返回 **Demo Company (Global)**。
+- **QBO 端到端验证**:本地 8123 接码服务器抓取 OAuth 回调 → 换 refresh token
+  (101 天)→ `get_company_info` 真实返回 **Sandbox Company US 53c1**。
+  `QUICKBOOKS_DISABLE_WRITE=1` 只读闸已设,`QUICKBOOKS_ENVIRONMENT=sandbox`。
+- 通道侧本来就完整:Telegram 只差一个 `TELEGRAM_BOT_TOKEN`(@BotFather);
+  WhatsApp 要跑本地 Node 桥(扫码),比 Telegram 费事,演示建议 Telegram。
+- ⚠️ 本机网络备注:intuit/github 域名走 clash 时**必须走代理**(直连被
+  fake-IP 掐断),而本地回环必须 unset 代理 —— 两条规则方向相反,演示前检查。
+- Zoho 仍等拍板(Books 还是 CRM)。
 
 #### 其他
 
