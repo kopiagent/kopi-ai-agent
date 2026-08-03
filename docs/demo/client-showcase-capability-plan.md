@@ -23,7 +23,7 @@
 | 4 | 自动买域名 + 接到新站 | 完全没有 | 小 · 接官方 MCP |
 | 5 | Telegram/WhatsApp 接 Zoho/Xero/QuickBooks | Xero+QB 有,**Zoho 没有** | 中 · 自己写 |
 | 6 | 快速做网站和仪表盘 | 有底座 | 小 |
-| 7 | 接 Binance/OKX/Alpaca 模拟盘交易 | 完全没有 | 中 · ccxt + 官方 MCP |
+| 7 | 接 Binance/OKX/Alpaca 模拟盘交易 | 完全没有 | ✅ 已做(见第八节) |
 | 8 | 每日 cron 新闻/竞品分析 | cron 框架完整 | 小 |
 | 9 | 其他值得加的 | 见第五节 | — |
 
@@ -298,3 +298,56 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
 6. **交易所是否接受"默认拒绝主网下单"的硬闸**;买域名是否接受现场真花钱。
 
 确认后我按 CLAUDE.md 的门禁逐条实现:每条单独跑全量 + 开 PR + 等 CI 全绿再合。
+
+---
+
+## 八、实施进度记录(持续更新)
+
+### 2026-08-03
+
+#### 第 7 条 · 交易所模拟盘 —— ✅ 完成并真机验证
+
+- 加密货币:新工具 `crypto_exchange`(`tools/crypto_exchange_tool.py`),ccxt 统一 API,
+  binance + okx,7 个操作(ticker/balance/create_order/open_orders/order_status/cancel_order/positions)。
+  **硬闸已实现**:默认一律 `set_sandbox_mode(True)`;打主网必须双重开启
+  (`KOPI_EXCHANGE_ALLOW_MAINNET=true` 环境变量 **且** 调用传 `live:true`),缺一即在
+  创建 client 之前代码级拒绝。12 个单测锁住闸门行为。
+- ccxt 钉 **4.5.64** —— ⚠️ 4.5.65 起上游把全部传递依赖精确钉死(certifi/setuptools),
+  与我们核心钉版本无解冲突;升级前先看 ccxt 的 requires_dist(pyproject 里有 ceiling 注释)。
+- 美股:Alpaca **官方** MCP 进目录(`optional-mcps/alpaca/manifest.yaml`,
+  `alpaca-mcp-server==2.1.1`,manifest 强制 `ALPACA_PAPER_TRADE=true`)。
+- 真机验证:Binance testnet 完整回路(鉴权→限价单→查单→撤单,含价格带过滤器的
+  错误透传);Alpaca paper 经 MCP 握手 69 工具,`get_account_info` 返回真实 paper 账户。
+- 凭据:Binance testnet + Alpaca paper key 已配入 `~/.kopi/.env`;**OKX 暂缓**(用户定)。
+
+#### 第 1 条 · 视频剪辑 —— ✅ 五操作全部真机验证,并修掉一个真 bug
+
+- probe/concat/trim/add_audio 直接通过;**caption 在演示机上原本是坏的**:
+  Homebrew ffmpeg 8.x 不带 libfreetype,无 `drawtext` 滤镜。
+- 修复:运行时探测 drawtext;缺失时用 Pillow(已是核心依赖)渲染字幕 PNG +
+  内置 `overlay` 滤镜合成。字体按文字内容选择(含 CJK 时优先苹方/冬青黑/Noto CJK),
+  修掉了中文字幕豆腐块问题。中英文均抽帧目检通过。新增 5 个单测
+  (`tests/tools/test_video_edit_tool.py`)。
+
+#### 第 1 条 · 视频生成 —— ⚠️ 阻塞在 provider key,等拍板
+
+- 工具与三个插件(fal/xai/deepinfra)都在,但本机无任何 provider key
+  (`FAL_KEY` 在 .env 里是注释状态)。
+- 查证:kopiaiagent.com 网关 **没有视频模型**(71 个模型里只有 3 个图像模型;
+  上游 mimo/deepseek/openrouter/agnes 均不出视频)。
+- 两条路等定:**A. 配 FAL/XAI key**(现成插件,推荐,演示走这条);
+  **B. kopi-proxy 加视频上游**(异步 job 路由 + 计费落库,是 proxy 仓库的独立项目,
+  排在演示之后)。
+
+#### 第 1/4 条 · 动画办公室 —— ✅ 代码层完成,真实链路验证通过
+
+- 7 个单测全过;另做了一次不 mock 的落盘验证:交办→完成后,快照文件里父 agent 的
+  fx 序列为 `handoff → speak(交办内容) → done → speak(结果摘要)`,与设计一致。
+- 剩余:浏览器内动画目检(演示彩排时顺手确认即可)。
+
+#### 其他
+
+- kopi CLI 的 `KOPI_API_KEY` 失效问题已解决(经 `/v1/auto-provision/ready` 领新 key,
+  10M tokens;用户提供的两个 key 在服务端不存在,第三个是复制截断)。
+- 提交状态:动画办公室 + 视频剪辑 + 本文档已在 `feat/demo-capabilities` 提交
+  (`c5ada659`);crypto_exchange 一批与 caption 修复**尚未提交**,等用户测试确认。
