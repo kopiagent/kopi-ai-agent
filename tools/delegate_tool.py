@@ -191,6 +191,19 @@ _FX_RING = 8            # keep only the most recent N effects per agent
 _FX_TTL_S = 5.0         # drop entries older than this on append
 _fx_seq = 0             # monotonic per-process; client dedups by (agent, seq)
 
+# Speech bubbles are drawn in a pixel font inside a bubble whose width tracks
+# the text, so a long line would run off the office floor. Clip here rather
+# than in the renderer so the wire stays small too.
+_FX_SPEAK_CHARS = 28
+
+
+def _speak_text(value: Any) -> str:
+    """Squash ``value`` into one short line fit for a pixel speech bubble."""
+    text = " ".join(str(value or "").split())
+    if len(text) > _FX_SPEAK_CHARS:
+        text = text[: _FX_SPEAK_CHARS - 1] + "…"
+    return text
+
 
 def _append_fx_locked(record: Dict[str, Any], kind: str, *, target=None, data=None) -> None:
     """Append one transient effect to ``record['fx']``.
@@ -350,9 +363,12 @@ def note_waiting_activity(agent: Any) -> None:
     """Record that ``agent`` is blocked in a retry/rate-limit backoff wait.
 
     The office page parks waiting NPCs at the coffee machine, making stuck or
-    throttled agents visible at a glance.
+    throttled agents visible at a glance. The FX marks the *moment* it starts
+    backing off — the coffee-machine walk only shows that it is waiting now,
+    not that it just got throttled again.
     """
     _note_status(agent, "waiting")
+    office_fx(agent, "retry")
 
 
 def set_spawn_paused(paused: bool) -> bool:
@@ -445,12 +461,46 @@ def _register_subagent(record: Dict[str, Any]) -> None:
             )
             if parent_rec is not None:
                 _append_fx_locked(parent_rec, "handoff", target=sid)
+                # …and say what the ticket is for, so an observer can read the
+                # instruction being passed rather than just watch it fly.
+                spoken = _speak_text(record.get("goal"))
+                if spoken:
+                    _append_fx_locked(parent_rec, "speak", data={"text": spoken})
     _write_office_snapshot()
 
 
-def _unregister_subagent(subagent_id: str) -> None:
+def _unregister_subagent(
+    subagent_id: str, *, ok: bool = True, summary: Any = None
+) -> None:
+    """Retire a subagent, optionally stamping how the delegation ended.
+
+    The outcome FX lands on the **parent**, targeting the departing child. It
+    cannot ride the child itself: the watcher only broadcasts effects it finds
+    in a snapshot, and this call removes the child from the very next one, so
+    a ✓ written there would never reach a client. The parent is still on stage,
+    and "the delegated work came back" is what an observer is watching for
+    anyway. Callers that don't know the outcome get the neutral default.
+    """
     with _active_subagents_lock:
-        _active_subagents.pop(subagent_id, None)
+        record = _active_subagents.pop(subagent_id, None)
+        parent_id = (record or {}).get("parent_id")
+        parent_rec = None
+        if parent_id:
+            parent_rec = _active_subagents.get(parent_id) or next(
+                (
+                    r
+                    for r in _main_activities.values()
+                    if r.get("subagent_id") == parent_id
+                ),
+                None,
+            )
+        if parent_rec is not None:
+            _append_fx_locked(
+                parent_rec, "done" if ok else "error", target=subagent_id
+            )
+            spoken = _speak_text(summary)
+            if spoken:
+                _append_fx_locked(parent_rec, "speak", data={"text": spoken})
     _write_office_snapshot()
 
 
@@ -2353,6 +2403,11 @@ def _run_single_child(
 
     _heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
 
+    # How this delegation ended, for the office FX the finally block emits.
+    # Pessimistic default: an early raise should read as a failure, not a ✓.
+    _fx_ok = False
+    _fx_summary: Any = None
+
     # Register the live agent in the module-level registry so the TUI can
     # target it by subagent_id (kill, pause, status queries).  Unregistered
     # in the finally block, even when the child raises.  Test doubles that
@@ -2694,6 +2749,9 @@ def _run_single_child(
         if status == "failed":
             entry["error"] = result.get("error", "Subagent did not produce a response.")
 
+        _fx_ok = status != "failed"
+        _fx_summary = entry.get("error") if status == "failed" else summary
+
         # Cross-agent file-state reminder.  If this subagent wrote any
         # files the parent had already read, surface it so the parent
         # knows to re-read before editing — the scenario that motivated
@@ -2793,6 +2851,7 @@ def _run_single_child(
     except Exception as exc:
         duration = round(time.monotonic() - child_start, 2)
         logging.exception(f"[subagent-{task_index}] failed")
+        _fx_summary = str(exc)
         if child_progress_cb:
             try:
                 child_progress_cb(
@@ -2827,7 +2886,7 @@ def _run_single_child(
         # Drop the TUI-facing registry entry.  Safe to call even if the
         # child was never registered (e.g. ID missing on test doubles).
         if _subagent_id:
-            _unregister_subagent(_subagent_id)
+            _unregister_subagent(_subagent_id, ok=_fx_ok, summary=_fx_summary)
 
         if child_pool is not None and leased_cred_id is not None:
             try:

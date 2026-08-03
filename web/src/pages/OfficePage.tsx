@@ -847,7 +847,9 @@ export default function OfficePage() {
             break;
           }
           case "speak": {
-            const txt = (e.data?.text ?? "").slice(0, 16);
+            // Backend clips to _FX_SPEAK_CHARS; this is the belt-and-braces
+            // bound so a hand-rolled event can't run a bubble off the floor.
+            const txt = (e.data?.text ?? "").slice(0, 28);
             const wpx = Math.max(16, txt.length * 4 + 8);
             ctx.globalAlpha = fade;
             rect(n.x - wpx / 2, n.y - 25, wpx, 11, "#fff7dc");

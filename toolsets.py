@@ -151,10 +151,17 @@ TOOLSETS = {
             "Video generation tools. Single ``video_generate`` tool covers "
             "text-to-video (prompt only) and image-to-video (prompt + "
             "image_url), plus reference-to-video. Provider-specific edit/"
-            "extend workflows may appear as separate tools. Configure via "
+            "extend workflows may appear as separate tools. ``video_edit`` "
+            "assembles the results locally with ffmpeg — join, trim, caption, "
+            "score — and needs no provider. Configure via "
             "``kopi tools`` → Video Generation."
         ),
-        "tools": ["video_generate", "xai_video_edit", "xai_video_extend"],
+        "tools": [
+            "video_generate",
+            "video_edit",
+            "xai_video_edit",
+            "xai_video_extend",
+        ],
         "includes": []
     },
 

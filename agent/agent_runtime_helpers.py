@@ -1327,6 +1327,15 @@ def try_recover_primary_transport(
             f"rebuilt client, waiting {wait_time}s before one last primary attempt.",
             force=True,
         )
+        # Pixel-office (KOPI): park this NPC at the coffee machine for the
+        # backoff and flash a "…" so a throttled agent is visible rather than
+        # looking like it silently stalled. Best-effort; never affects retry.
+        try:
+            from tools.delegate_tool import note_waiting_activity
+
+            note_waiting_activity(agent)
+        except Exception:
+            pass
         time.sleep(wait_time)
         return True
     except Exception as e:
