@@ -307,7 +307,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(fn=cmd_crm)
 
     p = sub.add_parser("crm-query")
-    p.add_argument("query", help="COQL, e.g. select Deal_Name, Amount from Deals where Stage = 'Qualification'")
+    p.add_argument("query", help="COQL — a where clause is MANDATORY, e.g. select Deal_Name from Deals where Stage = 'Qualification' limit 20")
     p.set_defaults(fn=cmd_crm_query)
 
     p = sub.add_parser("get")

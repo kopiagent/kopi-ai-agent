@@ -79,6 +79,7 @@ python3 {skill_dir}/scripts/zoho_client.py crm Leads
 python3 {skill_dir}/scripts/zoho_client.py crm Deals --fields Deal_Name,Stage,Amount
 
 # CRM COQL for anything analytical
+# 注意:Zoho COQL 强制要求 where 子句;全表就用 "where id is not null"
 python3 {skill_dir}/scripts/zoho_client.py crm-query \
   "select Deal_Name, Amount from Deals where Stage = 'Negotiation' limit 20"
 
@@ -110,5 +111,6 @@ a loop.
 | `invalid_code` on exchange | auth code expired (~2 min) — re-run auth-url |
 | `INVALID_TOKEN` / 401 on API calls | refresh token revoked, or minted on a different DC |
 | CRM list returns `REQUIRED_PARAM_MISSING` | module needs `--fields` (defaults only cover Leads/Contacts/Accounts/Deals) |
+| COQL returns `missing clause` | COQL requires a `where` clause — add `where id is not null` for full scans |
 | Books call complains about organization | `ZOHO_BOOKS_ORG_ID` unset — run `orgs` |
 | `You have made too many requests` on token | token-mint rate limit — reuse the cache, don't delete it |
