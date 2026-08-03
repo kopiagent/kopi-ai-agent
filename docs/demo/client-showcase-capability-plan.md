@@ -21,7 +21,7 @@
 | 3 | 专业 PPT/Word + 同时给 PDF | 四个 skill 都在,**双交付没强制** | ✅ 已做(见第八节) |
 | 4 | root 终端权限 | 本来就有 | 无 |
 | 4 | 自动买域名 + 接到新站 | 完全没有 | 小 · 接官方 MCP |
-| 5 | Telegram/WhatsApp 接 Zoho/Xero/QuickBooks | Xero+QB 有,**Zoho 没有** | ✅ Xero+QBO 已通(Zoho 等拍板,见第八节) |
+| 5 | Telegram/WhatsApp 接 Zoho/Xero/QuickBooks | Xero+QB 有,**Zoho 没有** | ✅ 三家代码全齐(Zoho 等凭据接线,见第八节) |
 | 6 | 快速做网站和仪表盘 | 有底座 | 小 |
 | 7 | 接 Binance/OKX/Alpaca 模拟盘交易 | 完全没有 | ✅ 已做(见第八节) |
 | 8 | 每日 cron 新闻/竞品分析 | cron 框架完整 | 小 |
@@ -282,7 +282,7 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
 | 3 | PDF 双交付 | 工作量小,但字体那步别省 | ✅ 完成 |
 | 4 | cron blueprint | 最小 | ⬜ 未动 |
 | 5 | Instagram | 要自己写,且卡账号凭据 | ✅ 代码完成,等凭据 |
-| 6 | Zoho | 要自己写,且要先定 Books/CRM | ⬜ 等定 Books/CRM |
+| 6 | Zoho | 要自己写,且要先定 Books/CRM | ✅ Books+CRM 都做了,等凭据 |
 
 ---
 
@@ -295,7 +295,7 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
 4. **凭据** → 已给:Binance testnet ✅、Alpaca paper ✅、kopi proxy key ✅;
    暂缓:OKX(用户定);仍缺:**Meta 应用**(Instagram 真实发布)、
    **FAL/XAI key**(视频生成)、**Cloudflare**(第 4 条)、Zoho。
-5. **Zoho 是 Books 还是 CRM** → ⬜ 仍未定,不定无法开工。
+5. ~~Zoho 是 Books 还是 CRM~~ → **两个都要**(2026-08-03 拍板),skill 已实现。
 6. 交易所硬闸 → **已实现**(默认拒绝主网,双重开启才放行);
    买域名现场真花钱 → ⬜ 待确认(第 4 条动工前要答案)。
 
@@ -390,7 +390,13 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
   WhatsApp 要跑本地 Node 桥(扫码),比 Telegram 费事,演示建议 Telegram。
 - ⚠️ 本机网络备注:intuit/github 域名走 clash 时**必须走代理**(直连被
   fake-IP 掐断),而本地回环必须 unset 代理 —— 两条规则方向相反,演示前检查。
-- Zoho 仍等拍板(Books 还是 CRM)。
+- **Zoho 已拍板:Books 和 CRM 都要,已实现**(`skills/finance/zoho/`,commit `486971c6`):
+  一个 Zoho 应用 + 一次 OAuth 覆盖两个面;stdlib 客户端带 books/crm/COQL/orgs
+  子命令;默认只读 scope;`exchange` 把 refresh token 直写 .env 不过 stdout;
+  处理了 Zoho 数据中心分区(ZOHO_DC 同时决定 accounts 和 API 主机)和
+  token 铸造限频(磁盘缓存 0600)。10 个测试全过。
+  **待真实接线**:需要用户在 api-console.zoho.com 建 Server-based 应用
+  (回调 `http://localhost:8123/callback`)并给 client id/secret + DC。
 
 #### 其他
 
