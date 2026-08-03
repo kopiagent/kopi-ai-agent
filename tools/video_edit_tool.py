@@ -25,6 +25,11 @@ Design notes
 - **Operations, not a filtergraph DSL.** The model picks an ``operation`` and
   fills a handful of typed fields. Exposing raw ffmpeg arguments would be a
   command-injection surface and a support burden.
+- **Caption survives freetype-less ffmpeg builds.** ``drawtext`` needs
+  libfreetype, and common builds ship without it (Homebrew's ffmpeg 8.x
+  formula dropped it). When the filter is missing, the caption is rendered
+  to a PNG with Pillow (already a core dependency) and composited with the
+  ``overlay`` filter, which is built into every ffmpeg.
 """
 
 from __future__ import annotations
@@ -34,6 +39,7 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -380,6 +386,104 @@ def _escape_drawtext(value: str) -> str:
     return out
 
 
+# Per-process cache of `ffmpeg -filters` lookups; a binary's filter set
+# cannot change while we are running.
+_FILTER_SUPPORT: Dict[str, bool] = {}
+
+
+def _ffmpeg_has_filter(name: str) -> bool:
+    cached = _FILTER_SUPPORT.get(name)
+    if cached is not None:
+        return cached
+    ffmpeg = _find_binary("ffmpeg")
+    ok, listing = _run([ffmpeg, "-hide_banner", "-filters"], _PROBE_TIMEOUT_S)
+    supported = ok and any(
+        len(parts) > 1 and parts[1] == name
+        for parts in (line.split() for line in listing.splitlines())
+    )
+    _FILTER_SUPPORT[name] = supported
+    return supported
+
+
+# Fonts tried for the Pillow caption fallback, split by script coverage:
+# CJK captions must land on a CJK-capable font or they render as tofu boxes
+# (a font FILE existing says nothing about its glyph coverage, so selection
+# is by text content, not just path availability). Recent macOS no longer
+# exposes PingFang.ttc under /System/Library/Fonts — Hiragino Sans GB and
+# the Supplemental fonts are the reliable on-disk CJK faces there.
+_CJK_FONT_CANDIDATES = (
+    "/System/Library/Fonts/PingFang.ttc",                       # older macOS
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",               # macOS
+    "/System/Library/Fonts/STHeiti Medium.ttc",                 # macOS
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",     # macOS
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",   # Debian/Ubuntu
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",        # Fedora
+    "C:\\Windows\\Fonts\\msyh.ttc",                             # Windows
+)
+_LATIN_FONT_CANDIDATES = (
+    "/System/Library/Fonts/Helvetica.ttc",                      # macOS
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",     # Debian/Ubuntu
+    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",              # Fedora
+    "C:\\Windows\\Fonts\\arial.ttf",                            # Windows
+)
+
+
+def _text_needs_cjk(text: str) -> bool:
+    return any(
+        0x2E80 <= ord(ch) <= 0x9FFF      # CJK radicals … unified ideographs
+        or 0x3040 <= ord(ch) <= 0x30FF   # kana
+        or 0xAC00 <= ord(ch) <= 0xD7AF   # hangul
+        or 0xF900 <= ord(ch) <= 0xFAFF   # CJK compatibility ideographs
+        for ch in text
+    )
+
+
+def _load_caption_font(size: int, text: str) -> Any:
+    from PIL import ImageFont
+
+    if _text_needs_cjk(text):
+        candidates = _CJK_FONT_CANDIDATES + _LATIN_FONT_CANDIDATES
+    else:
+        candidates = _LATIN_FONT_CANDIDATES + _CJK_FONT_CANDIDATES
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            try:
+                return ImageFont.truetype(candidate, size)
+            except Exception:
+                continue
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:  # Pillow < 10.1 has no size kwarg
+        return ImageFont.load_default()
+
+
+def _render_caption_png(text: str, size: int) -> Tuple[Optional[str], Optional[str]]:
+    """Render ``text`` on a semi-transparent black box (matching the drawtext
+    styling) to a temp PNG. Returns (path, error)."""
+    try:
+        from PIL import Image, ImageDraw
+    except Exception as exc:
+        return None, (
+            "this ffmpeg build lacks the drawtext filter and the Pillow "
+            f"fallback is unavailable ({exc}); install an ffmpeg built with "
+            "libfreetype or `pip install Pillow`."
+        )
+    font = _load_caption_font(size, text)
+    probe = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
+    left, top, right, bottom = probe.textbbox((0, 0), text, font=font)
+    pad = 12  # mirrors boxborderw=12 on the drawtext path
+    image = Image.new(
+        "RGBA", (right - left + 2 * pad, bottom - top + 2 * pad), (0, 0, 0, 128)
+    )
+    ImageDraw.Draw(image).text(
+        (pad - left, pad - top), text, font=font, fill=(255, 255, 255, 255)
+    )
+    fd, path = tempfile.mkstemp(prefix="kopi-caption-", suffix=".png")
+    os.close(fd)
+    image.save(path)
+    return path, None
+
+
 def _handle_caption(args: Dict[str, Any]) -> str:
     inputs, err = _resolve_inputs(args.get("input_paths"))
     if err:
@@ -394,37 +498,65 @@ def _handle_caption(args: Dict[str, Any]) -> str:
         return tool_error(err)
 
     position = args.get("position") if isinstance(args.get("position"), str) else "bottom"
-    y_expr = {
-        "top": "h*0.08",
-        "middle": "(h-text_h)/2",
-        "bottom": "h*0.86",
-    }.get(position, "h*0.86")
-
     size = args.get("font_size")
     size = size if isinstance(size, int) and 8 <= size <= 200 else 48
 
-    drawtext = (
-        f"drawtext=text='{_escape_drawtext(text.strip())}'"
-        f":fontcolor=white:fontsize={size}"
-        f":box=1:boxcolor=black@0.5:boxborderw=12"
-        f":x=(w-text_w)/2:y={y_expr}"
-    )
+    caption_png: Optional[str] = None
+    if _ffmpeg_has_filter("drawtext"):
+        renderer = "drawtext"
+        y_expr = {
+            "top": "h*0.08",
+            "middle": "(h-text_h)/2",
+            "bottom": "h*0.86",
+        }.get(position, "h*0.86")
+        filter_args = [
+            "-vf",
+            (
+                f"drawtext=text='{_escape_drawtext(text.strip())}'"
+                f":fontcolor=white:fontsize={size}"
+                f":box=1:boxcolor=black@0.5:boxborderw=12"
+                f":x=(w-text_w)/2:y={y_expr}"
+            ),
+        ]
+        extra_inputs: List[str] = []
+    else:
+        renderer = "overlay_png"
+        caption_png, render_err = _render_caption_png(text.strip(), size)
+        if render_err:
+            return tool_error(render_err)
+        y_expr = {
+            "top": "main_h*0.08",
+            "middle": "(main_h-overlay_h)/2",
+            "bottom": "main_h*0.86",
+        }.get(position, "main_h*0.86")
+        extra_inputs = ["-i", caption_png]
+        filter_args = [
+            "-filter_complex",
+            f"[0:v][1:v]overlay=x=(main_w-overlay_w)/2:y={y_expr}",
+        ]
 
     command = [
-        _find_binary("ffmpeg"), "-y", "-i", inputs[0],
-        "-vf", drawtext,
+        _find_binary("ffmpeg"), "-y", "-i", inputs[0], *extra_inputs,
+        *filter_args,
         "-c:v", "libx264", "-preset", "medium", "-crf", "20",
         "-c:a", "copy",
         "-movflags", "+faststart",
         output,
     ]
 
-    ok, stderr = _run(command, _FFMPEG_TIMEOUT_S)
-    if not ok:
-        # `-c:a copy` fails on a clip with no audio stream; retry without it
-        # rather than making the caller probe first.
-        retry = [arg for arg in command if arg not in ("-c:a", "copy")]
-        ok, stderr = _run(retry, _FFMPEG_TIMEOUT_S)
+    try:
+        ok, stderr = _run(command, _FFMPEG_TIMEOUT_S)
+        if not ok:
+            # `-c:a copy` fails on a clip with no audio stream; retry without it
+            # rather than making the caller probe first.
+            retry = [arg for arg in command if arg not in ("-c:a", "copy")]
+            ok, stderr = _run(retry, _FFMPEG_TIMEOUT_S)
+    finally:
+        if caption_png:
+            try:
+                os.unlink(caption_png)
+            except OSError:
+                pass
     if not ok:
         return tool_error(f"ffmpeg caption failed: {stderr}", error_type="ffmpeg_failed")
 
@@ -434,6 +566,7 @@ def _handle_caption(args: Dict[str, Any]) -> str:
         output_path=output,
         text=text.strip(),
         position=position,
+        renderer=renderer,
         result=_summarize_probe(raw) if raw else None,
     )
 
