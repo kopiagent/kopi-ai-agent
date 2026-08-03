@@ -292,9 +292,10 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
 2. **是否接受引入三个外部依赖** → ccxt + Alpaca MCP **已引入**(用户让继续实现,
    视为默认接受);Cloudflare MCP 待第 4 条动工时正式确认。
 3. ~~Instagram / Zoho 自己写~~ → **按自己写执行**,Instagram skill 已完成。
-4. **凭据** → 已给:Binance testnet ✅、Alpaca paper ✅、kopi proxy key ✅;
-   暂缓:OKX(用户定);仍缺:**Meta 应用**(Instagram 真实发布)、
-   **FAL/XAI key**(视频生成)、**Cloudflare**(第 4 条)、Zoho。
+4. **凭据** → 已给:Binance testnet ✅、Alpaca paper ✅、kopi proxy key ✅、
+   Xero ✅、QBO ✅、Zoho ✅、Telegram bot ✅;暂缓:OKX(用户定);
+   仍缺:**Meta 应用**(Instagram 真实发布)、**FAL/XAI key**(视频生成)、
+   **Cloudflare**(第 4 条)。
 5. ~~Zoho 是 Books 还是 CRM~~ → **两个都要**(2026-08-03 拍板),skill 已实现。
 6. 交易所硬闸 → **已实现**(默认拒绝主网,双重开启才放行);
    买域名现场真花钱 → ⬜ 待确认(第 4 条动工前要答案)。
@@ -375,7 +376,7 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
 - 真机 e2e:合成 docx(Calibri + 不存在字体)→ LibreOffice 转换 →
   Calibri 判 metric-safe、假字体判 risky 并给修复指引。8 个测试全过。
 
-#### 第 5 条 · Telegram/WhatsApp 接会计 —— ✅ Xero + QBO 全通,Zoho 等拍板
+#### 第 5 条 · Telegram/WhatsApp 接会计 —— ✅ 全部完成(Xero + QBO + Zoho Books/CRM + TG bot)
 
 - 盘点发现的坑:xero/quickbooks 两个 skill 引用的 `kopi mcp install` 目录条目
   在 7 月被移除过(`6fe666ea`,因浮动版本被 pin 强制测试拦下)—— skill 与
@@ -421,6 +422,8 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
   `c5ada659` 动画办公室 FX + video_edit + 本文档 →
   `d8effe8c` crypto_exchange + Alpaca MCP → `9eb551f4` caption 修复 →
   `a9dcd77c` 办公室冻屏修复 → `12053559` 文档/锁文件 →
-  `25ab2894` Instagram skill → `4195cd89` PDF 双交付。
+  `25ab2894` Instagram skill → `4195cd89` PDF 双交付 →
+  `d199d210` xero/qbo manifest 恢复钉版 → `486971c6` zoho skill →
+  `86d2bf99` certifi SSL 回退 → `0cd79619` COQL 文档修正(+ 各次 docs)。
   **开 PR 前还欠一次完整 Python 全量的 `100% complete` 留证**(上次后台跑被
   输出截断,失败文件均为已知噪音,需按 CLAUDE.md 重跑归档)。
