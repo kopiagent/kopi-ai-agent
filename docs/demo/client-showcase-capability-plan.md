@@ -21,7 +21,7 @@
 | 3 | 专业 PPT/Word + 同时给 PDF | 四个 skill 都在,**双交付没强制** | ✅ 已做(见第八节) |
 | 4 | root 终端权限 | 本来就有 | 无 |
 | 4 | 自动买域名 + 接到新站 | 完全没有 | 小 · 接官方 MCP |
-| 5 | Telegram/WhatsApp 接 Zoho/Xero/QuickBooks | Xero+QB 有,**Zoho 没有** | ✅ 三家代码全齐(Zoho 等凭据接线,见第八节) |
+| 5 | Telegram/WhatsApp 接 Zoho/Xero/QuickBooks | Xero+QB 有,**Zoho 没有** | ✅ 三家全通 + TG bot 已配(见第八节) |
 | 6 | 快速做网站和仪表盘 | 有底座 | 小 |
 | 7 | 接 Binance/OKX/Alpaca 模拟盘交易 | 完全没有 | ✅ 已做(见第八节) |
 | 8 | 每日 cron 新闻/竞品分析 | cron 框架完整 | 小 |
@@ -282,7 +282,7 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
 | 3 | PDF 双交付 | 工作量小,但字体那步别省 | ✅ 完成 |
 | 4 | cron blueprint | 最小 | ⬜ 未动 |
 | 5 | Instagram | 要自己写,且卡账号凭据 | ✅ 代码完成,等凭据 |
-| 6 | Zoho | 要自己写,且要先定 Books/CRM | ✅ Books+CRM 都做了,等凭据 |
+| 6 | Zoho | 要自己写,且要先定 Books/CRM | ✅ 完成并真机验证 |
 
 ---
 
@@ -395,11 +395,12 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
   子命令;默认只读 scope;`exchange` 把 refresh token 直写 .env 不过 stdout;
   处理了 Zoho 数据中心分区(ZOHO_DC 同时决定 accounts 和 API 主机)和
   token 铸造限频(磁盘缓存 0600)。10 个测试全过。
-  **接线进展(2026-08-03)**:凭据已配(DC=com),OAuth 走通,refresh token 已落
-  `.env`(接码服务复用 8123)。Books 只读 scope 已验证生效,但**组织列表为空**;
-  CRM 调用报 `invalid oauth scope` —— 判定为**账号侧产品未开通**(Books 没建组织、
-  CRM 未启用),非代码问题。待用户在 books.zoho.com 建组织 + 启用 crm.zoho.com
-  后复测(可能需重跑一次授权)。
+  **接线完成(2026-08-03)**:DC=com;初次授权时账号未开通两个产品(Books 组织
+  空、CRM 报 invalid oauth scope),用户开通后**重铸 token 一次**(旧 refresh
+  token 不携带开通前不存在的产品权限 —— 这是个值得记住的 Zoho 行为)。
+  **全部真机验证**:Books 组织 kopi-test(SGD)、invoices/contacts 返回
+  code:0;CRM 组织 KOPI AI Pte. Ltd.、Leads 返回预置数据、COQL 查询通
+  (注意 COQL 强制 where 子句,SKILL.md 已记)。
   顺带修了一个真问题:uv 管理的 Python 无系统 CA store,urllib 全部 HTTPS 失败 ——
   zoho/instagram 两个脚本已加 certifi 回退(commit 见台账)。
 - **Telegram 通道凭据已配**:bot @Kopi_Agent_test_Bot(getMe 验证通过),
