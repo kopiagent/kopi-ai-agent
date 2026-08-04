@@ -423,8 +423,21 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
   按阶段汇总(Qualification $250K 领先)。
 - 踩点记录:Xero list 类工具必须传 `page`;aged-receivables 必须传 contactId;
   Zoho COQL 聚合+group by 不可靠 → 全量拉取本地聚合是 agent 的正确姿势。
-- **Zoho Books 造数未完成**:组织是新的且现 token 只读,等用户点带写权限的
-  授权链接(接码服务仍在 8123 监听)后造 12 个月经营数据并补跑财务视角。
+- **Zoho Books 造数已完成(2026-08-04)**:重铸带 `ZohoBooks.fullaccess.all`
+  的 token 后,`scratchpad/seed_books.py` 造入 12 个月经营史 —— 6 家客户
+  (4 月度 retainer + 2 季度项目制)、**56 张发票 / 49 笔收款 / 54 笔费用**,
+  零错误。费用按语义映射到真实科目(AWS→IT and Internet、房租→Rent Expense、
+  外包→Consultant、广告→Advertising),而不是全塞一个账。
+  故意留了演示用账龄尾巴:老月份收讫、上月一家半付、当月全开、
+  Jurong Logistics 最近数月逾期。
+- **造数后财务视角复跑**:年度 P&L 营业收入 **SGD 207,881.60** /
+  营业费用 89,357.80 / **净利 118,523.80**;应收状态 49 paid、5 sent
+  (SGD 18,248)、1 partially_paid(1,920)、**2 overdue(6,385.60,全部
+  来自 Jurong)**;月度开票额在 12.9K–23.6K 之间波动(项目制客户造成的季度峰);
+  客户排行 Marina Bay 70,291 领先。
+- ⚠️ 又一条本机网络规则:**accounts.zoho.com 必须走代理,www.zohoapis.com
+  必须直连** —— 且 urllib 在这个代理上 CONNECT 握手失败而 curl 正常,
+  造数脚本最终用 curl 换 token + urllib 直连打 API。
 
 #### 插曲 · Windows 图标修复 + v1.22.9 发版(2026-08-03)
 
