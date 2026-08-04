@@ -505,3 +505,43 @@ Telegram / WhatsApp 通道 `plugins/platforms/` 下都有,不用新做 ——
 4. 合入后如需发版,按"纯版本号 bump"豁免流程(v1.22.9 已按此发过一轮)。
 
 可选尾巴:OKX(用户暂缓)、WhatsApp 桥(演示用 Telegram 即可)。
+
+---
+
+## 十、凭据与可演示清单(2026-08-04 实测核对)
+
+核对方式:读 `~/.kopi/.env` 的**变量名**(不读值)+ `~/.kopi/config.yaml` 的
+`mcp_servers` 启用状态,不靠记忆。
+
+### 已配好、现在就能演示
+
+| 能力 | 凭据 | 数据现状 |
+| --- | --- | --- |
+| 模型推理(全部演示的前提) | `KOPI_API_KEY` ✅ | 10M tokens 配额 |
+| Telegram 通道 | `TELEGRAM_BOT_TOKEN` ✅ | @Kopi_Agent_test_Bot,gateway 起即上线 |
+| 加密货币模拟盘 | `BINANCE_API_KEY/SECRET` ✅ | testnet 虚拟资产,下单→撤单已验证 |
+| 美股纸交易 | `ALPACA_API_KEY/SECRET` ✅ + MCP `alpaca` 已装 | paper 账户 $100K,69 工具 |
+| Xero 会计 | `XERO_CLIENT_ID/SECRET` ✅ + MCP `xero` 已装 | Demo Company:P&L 收入 $722K、应收 $9,194 |
+| QuickBooks 会计 | 四个 `QUICKBOOKS_*` ✅ + MCP 已装(只读闸开) | Sandbox:53 客户、63 张未收发票 |
+| Zoho Books + CRM | `ZOHO_*` 五项 ✅(含写权限 token) | **自造 12 个月账**:营收 207,881.60、净利 118,523.80、2 张逾期 |
+| 视频剪辑 | 无需凭据(本地 ffmpeg) | 五操作真机验证 |
+| PPT/Word + PDF 双交付 | 无需凭据(本地 LibreOffice) | 字体审计已验证 |
+| 动画办公室 | 无需凭据 | 浏览器实拍验证 |
+| 终端 root 权限 | 本来就有 | — |
+
+### 仍缺、缺了就演示不了的
+
+| 缺什么 | 阻塞哪条演示 | 怎么拿 |
+| --- | --- | --- |
+| **`FAL_KEY`**(或 `XAI_API_KEY`) | 第 1 条前半段"生成 2-3 段视频" —— 现在只能演示剪辑 | fal.ai 注册取 key(网关无视频模型,见第八节) |
+| **`INSTAGRAM_ACCESS_TOKEN` + `INSTAGRAM_USER_ID`** | 第 2 条真实发布(代码已完成) | IG 转 Business/Creator + 绑 FB 主页 + Meta 应用长期 token |
+| **Cloudflare 凭据**(OAuth 或 API token) | 第 4 条买域名 + 自动接站(尚未动工) | Cloudflare 账号;另需拍板"是否接受现场真花钱" |
+| `OKX_API_KEY/SECRET/PASSWORD` | 可选:OKX 模拟盘(用户已暂缓) | OKX 网页 → 模拟交易 → API |
+| `WHATSAPP_ENABLED` + 本地 Node 桥 | 可选:WhatsApp 通道(演示用 Telegram 即可) | 跑桥 + 扫码 |
+
+### 结论
+
+**9 条需求里,7 条现在拿起来就能演**(交易所双腿、三家会计+CRM 真实数据、
+Telegram 问账、视频剪辑、PDF 双交付、动画办公室、终端权限)。
+**只有 2 条卡凭据**:视频生成(FAL key)、Instagram 真实发布(Meta 应用);
+**1 条卡凭据+拍板**:Cloudflare 域名建站。
