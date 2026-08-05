@@ -220,6 +220,11 @@ chown_kopi_tree() {
         echo "[stage2] Warning: chown $target failed (rootless container?) — continuing"
 }
 
+tree_has_non_kopi_owner() {
+    target="$1"
+    find "$target" \( ! -user kopi -o ! -group kopi \) -print -quit 2>/dev/null | grep -q .
+}
+
 needs_chown=false
 if [ "$(stat -c %u "$KOPI_HOME" 2>/dev/null)" != "$actual_kopi_uid" ]; then
     needs_chown=true
@@ -243,7 +248,7 @@ if [ "$needs_chown" = true ]; then
     # created and managed exclusively by kopi (see the s6-setuidgid mkdir
     # -p block below for the canonical list).
     for sub in cron sessions logs hooks memories skills skins plans workspace home profiles pairing platforms/pairing lazy-packages; do
-        if [ -e "$KOPI_HOME/$sub" ]; then
+        if [ -e "$KOPI_HOME/$sub" ] && tree_has_non_kopi_owner "$KOPI_HOME/$sub"; then
             chown_kopi_tree "$KOPI_HOME/$sub"
         fi
     done
@@ -273,17 +278,20 @@ fi
 # are invoked via `docker exec <container> kopi …` (which defaults
 # to root unless `-u` is passed), and that breaks the cont-init
 # reconciler (02-reconcile-profiles) which runs as kopi and walks
-# the profiles dir. Idempotent; skipped on rootless containers where
-# chown would fail.
-if [ -d "$KOPI_HOME/profiles" ]; then
+# the profiles dir. Skip the recursive walk when the tree is already
+# owned correctly so warm boots do not rescan huge profile caches.
+# Idempotent; skipped on rootless containers where chown would fail.
+if [ -d "$KOPI_HOME/profiles" ] && tree_has_non_kopi_owner "$KOPI_HOME/profiles"; then
     chown_kopi_tree "$KOPI_HOME/profiles"
 fi
 
 # Always reset ownership of $KOPI_HOME/cron on every boot for the same
 # docker-exec/root-write reason as profiles/. The cron scheduler state
 # (jobs.json) must stay readable by the unprivileged kopi runtime even
-# after root-context maintenance commands or scheduler writes.
-if [ -d "$KOPI_HOME/cron" ]; then
+# after root-context maintenance commands or scheduler writes. Skip the
+# recursive walk when the tree is already owned correctly (same warm-boot
+# gate as profiles/).
+if [ -d "$KOPI_HOME/cron" ] && tree_has_non_kopi_owner "$KOPI_HOME/cron"; then
     chown_kopi_tree "$KOPI_HOME/cron"
 fi
 
@@ -309,13 +317,14 @@ fi
 # silently leaving the approved user unauthorized (#10270). The targeted
 # data-volume chown above only runs when the top-level $KOPI_HOME is
 # mis-owned, so warm boots skip it — this block makes a container restart
-# self-heal. Tiny directory (a handful of small JSON files), so the cost
-# is negligible.
-if [ -d "$KOPI_HOME/platforms/pairing" ]; then
+# self-heal. Tiny directory (a handful of small JSON files), so even the
+# ownership pre-scan is negligible; gated for consistency with profiles/
+# and cron/.
+if [ -d "$KOPI_HOME/platforms/pairing" ] && tree_has_non_kopi_owner "$KOPI_HOME/platforms/pairing"; then
     chown_kopi_tree "$KOPI_HOME/platforms/pairing"
 fi
 # Legacy location (pre-consolidated layout).
-if [ -d "$KOPI_HOME/pairing" ]; then
+if [ -d "$KOPI_HOME/pairing" ] && tree_has_non_kopi_owner "$KOPI_HOME/pairing"; then
     chown_kopi_tree "$KOPI_HOME/pairing"
 fi
 
