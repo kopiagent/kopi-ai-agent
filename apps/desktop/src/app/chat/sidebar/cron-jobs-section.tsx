@@ -2,7 +2,6 @@ import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { usePaneVisible } from '@/components/pane-shell/pane-visibility'
-
 import { ActionsContextMenu, type MenuKit, renderActionItem } from '@/components/ui/actions-menu'
 import { Codicon } from '@/components/ui/codicon'
 import { DisclosureCaret } from '@/components/ui/disclosure-caret'
@@ -350,14 +349,20 @@ function CronJobSidebarRuns({ jobId, onOpenRun }: { jobId: string; onOpenRun: (s
           }
         })
 
-    // Initial load when visible
-    if (visible) {
-      void load()
+    // Hidden pane: skip the peek entirely — no initial load, no interval.
+    // `visible` is in the dep array, so becoming visible re-runs this effect
+    // and starts the load + timer fresh (same shape as the section clock).
+    if (!visible) {
+      return () => {
+        cancelled = true
+      }
     }
+
+    void load()
 
     const intervalId = window.setInterval(
       () => {
-        if (visible && document.visibilityState === 'visible') {
+        if (document.visibilityState === 'visible') {
           void load()
         }
       },

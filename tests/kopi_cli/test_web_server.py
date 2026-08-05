@@ -5794,6 +5794,76 @@ class TestWebServerEndpoints:
 
         assert seen["thread"] != event_loop_thread
 
+    def test_openviking_recall_fields_are_numeric_dashboard_controls(self):
+        resp = self.client.get("/api/memory/providers/openviking/config")
+
+        assert resp.status_code == 200
+        fields = self._provider_field_map(resp.json())
+        assert fields["recall_limit"]["kind"] == "integer"
+        assert fields["recall_limit"]["minimum"] == 1
+        assert fields["recall_limit"]["maximum"] == 100
+        assert fields["recall_score_threshold"]["kind"] == "number"
+        assert fields["recall_score_threshold"]["step"] == 0.01
+        assert fields["recall_resources"]["kind"] == "boolean"
+    def test_openviking_dashboard_persists_typed_recall_values(self):
+        from kopi_cli.config import load_config
+
+        resp = self.client.put(
+            "/api/memory/providers/openviking/config",
+            json={
+                "values": {
+                    "endpoint": "http://127.0.0.1:1933",
+                    "recall_limit": "12",
+                    "recall_score_threshold": "0.42",
+                    "recall_max_injected_chars": "8000",
+                    "profile_token_budget": "7000",
+                    "recall_timeout_seconds": "2.5",
+                    "recall_request_timeout_seconds": "1.5",
+                    "recall_full_read_limit": "5",
+                    "recall_prefer_abstract": True,
+                    "recall_resources": False,
+                }
+            },
+        )
+
+        assert resp.status_code == 200
+        config = load_config()["memory"]["openviking"]
+        assert config["recall_limit"] == 12
+        assert config["recall_score_threshold"] == 0.42
+        assert config["profile_token_budget"] == 7000
+        assert config["recall_prefer_abstract"] is True
+        assert config["recall_resources"] is False
+    def test_openviking_dashboard_rejects_out_of_range_recall_value(self):
+        resp = self.client.put(
+            "/api/memory/providers/openviking/config",
+            json={
+                "values": {
+                    "endpoint": "http://127.0.0.1:1933",
+                    "recall_limit": 101,
+                }
+            },
+        )
+
+        assert resp.status_code == 400
+        assert "must be at most 100" in resp.json()["detail"]
+    def test_openviking_dashboard_rejects_blocked_endpoint_before_saving(self):
+        from kopi_cli.config import load_config
+
+        resp = self.client.put(
+            "/api/memory/providers/openviking/config",
+            json={
+                "values": {
+                    "endpoint": "http://169.254.169.254/latest/meta-data/credential",
+                }
+            },
+        )
+
+        assert resp.status_code == 400
+        assert "blocked metadata address" in resp.json()["detail"]
+        assert "credential" not in resp.json()["detail"]
+        memory_config = load_config().get("memory", {})
+        assert "openviking" not in memory_config
+
 
 # ---------------------------------------------------------------------------
 # _build_schema_from_config tests
