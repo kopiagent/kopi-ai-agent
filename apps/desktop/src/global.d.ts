@@ -129,6 +129,12 @@ declare global {
       }
       readFileText: (filePath: string) => Promise<KopiReadFileTextResult>
       selectPaths: (options?: KopiSelectPathsOptions) => Promise<string[]>
+      /** Native save dialog; returns the chosen path or null on cancel. */
+      selectSavePath?: (options?: {
+        defaultPath?: string
+        filters?: Array<{ extensions: string[]; name: string }>
+        title?: string
+      }) => Promise<null | string>
       writeClipboard: (text: string) => Promise<boolean>
       readClipboard: () => Promise<string>
       saveImageFromUrl: (url: string) => Promise<boolean>
@@ -771,6 +777,8 @@ export interface KopiNotification {
   silent?: boolean
   kind?: string
   sessionId?: string
+  /** Dedupe discriminator for session-less notifications (e.g. plugin id). */
+  tag?: string
   actions?: { id: string; text: string }[]
 }
 
