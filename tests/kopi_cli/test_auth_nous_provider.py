@@ -13,6 +13,24 @@ import pytest
 from kopi_cli.auth import AuthError, get_provider_auth_state, resolve_nous_runtime_credentials
 
 
+@pytest.fixture(autouse=True)
+def _reset_resolve_token_memo(monkeypatch):
+    """Clear the 5s ``resolve_nous_access_token`` memo around every test.
+
+    ``auth._RESOLVE_TOKEN_CACHE`` collapses the startup burst of token reads
+    into one refresh. It is module-level and TTL-based, so two tests in this
+    file that run inside the same 5s window share the first one's token — the
+    second never reaches its monkeypatched ``_refresh_access_token`` and
+    asserts against a leaked value. Isolate it the way
+    ``test_resolve_token_memo`` and ``test_nous_portal_staging_allowlist`` do.
+    """
+    from kopi_cli import auth as auth_mod
+
+    monkeypatch.setattr(auth_mod, "_RESOLVE_TOKEN_CACHE", None)
+    yield
+    monkeypatch.setattr(auth_mod, "_RESOLVE_TOKEN_CACHE", None)
+
+
 # =============================================================================
 # _resolve_verify: CA bundle path validation
 # =============================================================================

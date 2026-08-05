@@ -923,6 +923,7 @@ class TestAgentExecution:
         assert captured["reasoning_config"] == {"enabled": True, "effort": "high"}
         assert captured["service_tier"] == "priority"
 
+    @pytest.mark.asyncio
     async def test_run_agent_sets_and_clears_process_ownership_markers(self, adapter):
         """#76188 review: this surface runs its own agent lifecycle outside
         TurnRunner, so it needs its own baseline snapshot/clear — verify the
@@ -1501,10 +1502,13 @@ class TestToolsetsEndpoint:
             return_value=True,
         ), patch(
             "toolsets.resolve_toolset",
+            # Lenient: the handler also resolves toolsets outside the two rows
+            # above — get_nous_subscription_features() probes image_gen /
+            # video_gen for managed-backend entitlement.
             side_effect=lambda name: {
                 "default": ["terminal", "read_file"],
                 "web": ["web_search"],
-            }[name],
+            }.get(name, []),
         ):
             app = _create_app(adapter)
             async with TestClient(TestServer(app)) as cli:
