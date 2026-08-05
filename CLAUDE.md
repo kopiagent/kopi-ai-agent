@@ -45,18 +45,39 @@
 > ⚠️ 最常犯的错:只跑了 `typecheck`/`lint` 就宣称"全绿"。**typecheck 不等于测试。**
 > 本会话已两次因此漏掉真实回归(v15 的 `Setup required` i18n 改名就是补跑 UI 测试才发现的)。
 
-**跑之前先 `unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy`** ——
-本机 clash 用 fake-IP DNS(198.18.0.0/16),不清代理会造出几十个假失败。
+**跑之前先清代理** —— 本机 clash 用 fake-IP DNS(198.18.0.0/16),不清会造出几十个假失败。
+
+🔴 **只 `unset` 环境变量在 macOS 上不够(v17)。** `urllib.request.getproxies()` 在 macOS 上
+会回落到 `getproxies_macosx_sysconf()` 读**系统代理设置**,clash 开着的时候即使 env 全空,
+Python 照样看到 `{'http': 'http://127.0.0.1:7897', ...}`。httpx / urllib 的 `trust_env`
+默认为真,于是连"测试自己起的 127.0.0.1 本地 server"都被代理劫持,回 502 Bad Gateway。
+
+v17 这一项独自制造了 **16 个文件**的假失败(honcho oauth 8、urllib_security 6、
+mcp_preflight 7、slack/telegram/wecom/feishu、minimax、fetch_models_base_url、openviking …),
+症状五花八门:`Bad Gateway`、`TCP connect attempted for 127.0.0.1:7897`、
+`DID NOT RAISE`、`TimeoutError: no OAuth callback received`。**必须连 `no_proxy` 一起设**:
+
+```bash
+unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy
+export no_proxy='127.0.0.1,localhost,::1' NO_PROXY='127.0.0.1,localhost,::1'
+# 自检:下面这行必须打印 {} 或不含 7897
+python3 -c "import urllib.request; print(urllib.request.getproxies())"
+```
 
 ### 1.1 Python 全量(必跑)
 
 ```bash
-unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
-bash scripts/run_tests.sh          # 约 7 分钟,per-file 进程隔离,与 CI 一致
+unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy
+export no_proxy='127.0.0.1,localhost,::1' NO_PROXY='127.0.0.1,localhost,::1'
+bash scripts/run_tests.sh 2>&1 | tee /tmp/full-run.log     # 约 10 分钟,per-file 进程隔离
 ```
 
 必须看到最终 `=== Summary: N files, M tests passed, K failed (100% complete) ===`。
 **没有 `100% complete` 就不算跑完。**
+
+⚠️ **别用 `| tail -N` 接这条命令(v17)**:Summary 行打印在**失败文件清单之前**,
+`tail -200` 正好把它砍掉,只剩清单 —— 看起来像"跑完了"但拿不到权威数字,只能重跑 10 分钟。
+用 `tee` 存全量日志,再 `grep '=== Summary'`。
 
 ### 1.2 JS/TS —— **每个改动到的 workspace 都要跑它的 `check`(含测试)**
 
@@ -101,6 +122,33 @@ grep -rn 'NousResearch/hermes-agent\|hermes-agent.git' \
 
 **不要把所有失败都当噪音,也不要把噪音都当回归。** 判定顺序:
 
+### 🥇 先做这个:`origin/main` worktree 基线差分(v17,大范围同步的最快解法)
+
+失败超过十来个时,别一个个凭经验猜。**把同一批失败文件在 `origin/main` 上再跑一遍**,
+"两边都失败"的直接出局。v17 用它把 31 个失败文件在两分钟内切成 25 噪音 / 6 真回归,
+比逐个读 traceback 快一个数量级,而且结论是**证据**不是判断。
+
+```bash
+S=<scratchpad>
+git worktree add -f --detach $S/main-wt origin/main
+# 关键:worktree 里没有 .venv,用主仓的绝对路径;cwd=worktree 让它的模块盖过 editable 安装
+cd $S/main-wt && /path/to/repo/.venv/bin/python -c "import kopi_state; print(kopi_state.__file__)"
+#   ↑ 必须打印 worktree 里的路径,否则测的还是主仓,差分无意义
+while read f; do
+  [ -f "$f" ] || { echo "ABSENT-ON-MAIN $f"; continue; }
+  echo "$(/path/to/repo/.venv/bin/python -m pytest "$f" -q --no-header -p no:cacheprovider \
+          2>&1 | tail -3 | grep -E 'passed|failed|error' | tail -1)  <<  $f"
+done < $S/failing.txt
+git worktree remove --force $S/main-wt      # 用完删掉
+```
+
+**第二道筛子**:对剩下的失败再跑一次 `no_proxy` + 干净 `HOME`(`HOME=$S/fakehome`)。
+v17 这一步又把 27 个文件砍到 11 个 —— 剩下的才是真平台差异
+(Linux systemd/PulseAudio、BSD vs GNU coreutils、SQLite 版本、`/tmp`→`/private/tmp`、缺可选依赖)。
+干净 HOME 同时能排掉 `~/.kopi/kopi-ai-agent` 安装副本的干扰,见第 5 条。
+
+差分之后再按下面的顺序查那些"只在本分支失败"的:
+
 1. **该失败文件在本次 diff 里改动过吗?**
 
    ```bash
@@ -122,6 +170,23 @@ grep -rn 'NousResearch/hermes-agent\|hermes-agent.git' \
 
 4. 已知噪音类别(macOS 平台/FS、clash fake-IP SSRF、可选依赖未装、Linux-only、upstream-identical)
    见 `.upstream-sync.json` 的 `known_noise_failures`,**只跳过,不"修"**。
+
+5. **`~/.kopi/kopi-ai-agent` 安装副本会 shadow 掉仓库代码(v17)。**
+   少数测试文件开头有 `sys.path.insert(0, os.path.expanduser("~/.kopi/kopi-ai-agent"))`
+   (例:`tests/agent/test_anthropic_output_field_leak.py:14`)。本机装过 kopi 时,
+   这一行让 `agent.*` / `kopi_state` 等**从那份旧副本导入**,而不是从工作区。
+   同步刚引入的新符号在旧副本里不存在,表现成莫名其妙的
+   `AttributeError: module 'agent.moa_loop' has no attribute '_preset_cache'`
+   —— 而 grep 明明能在工作区里搜到它。CI 上没有这个目录,所以只在本地红。
+
+   **判定**:用干净 HOME 重跑一次,过了就是这一类。
+
+   ```bash
+   mkdir -p "$S/fakehome" && HOME="$S/fakehome" .venv/bin/python -m pytest <file> -q
+   ```
+
+   注意 `kopi desktop` 构建(`apps/desktop` 的 `test:desktop:all`)会刷新那份副本的
+   install-stamp,但**不保证同步源码** —— 别因为 stamp 显示成当前分支就以为副本是新的。
 
 ---
 
@@ -280,6 +345,70 @@ PY
 2. **空文件的语法永远是对的** —— 所以语法检查必须配一个大小检查,否则全是假阳性。
    v17 就因为这个连续三次误判"HEAD 是好的"。
 
+### 4c. 🔴 `ast.parse` 抓不到"装饰器被合并吃掉"(v17,一次同步栽三次)
+
+**丢一个装饰器,语法完全合法** —— 上一节的体检全绿,测试却静默失效。
+v17 在两个文件里丢了三个,每个的表现都不像"合并出错":
+
+| 丢的东西 | 表现 |
+|---|---|
+| `@pytest.mark.parametrize("missing_column", [...])` | `fixture 'missing_column' not found` |
+| `@pytest.mark.requires_wal` | 该跳过的测试跑了,撞上本机 SQLite 回退 `journal_mode=DELETE`,`FileNotFoundError: ...state.db-wal` |
+| `@pytest.mark.asyncio` | `async def functions are not natively supported`,测试**根本没执行** |
+
+`@pytest.mark.asyncio` 那个最阴 —— **静默不执行也可能被算成"没失败"**,取决于配置。
+
+同一次合并还吃掉了 `import time`(→ `NameError`)和方法间的空行,
+说明 hunk 边界切在装饰器/import 上是这类合并的**系统性**失效模式,不是偶发。
+
+**每批(或至少收尾时)对被 union 过的大测试文件跑一次装饰器 AST 比对**:
+
+```bash
+python3 - <<'PY'
+import ast
+UP, OURS = "/tmp/up_<file>.py", "tests/<path>/<file>.py"   # 上游用 git show 落盘
+def deco_map(path):
+    out = {}
+    def walk(node, prefix=""):
+        for n in node.body:
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                out[prefix + n.name] = sorted(ast.unparse(d) for d in n.decorator_list)
+            elif isinstance(n, ast.ClassDef):
+                walk(n, prefix + n.name + ".")
+    walk(ast.parse(open(path, encoding="utf-8").read()))
+    return out
+def norm(ds): return sorted(d.replace("hermes", "kopi").replace("Hermes", "Kopi") for d in ds)
+up, ours = deco_map(UP), deco_map(OURS)
+bad = [(n, norm(up[n]), norm(ours[n])) for n in set(up) & set(ours) if norm(up[n]) != norm(ours[n])]
+print(f"共有 {len(set(up) & set(ours))} 个函数,装饰器不一致 {len(bad)}")
+for n, u, o in bad: print(f"  {n}\n    up: {u}\n    us: {o}")
+PY
+```
+
+只比**两边都有**的函数,所以 kopi 独有的测试不会误报。
+v17 用它扫 `test_web_server.py`(172 个共有函数)和 `test_api_server.py`(112 个),修完归零。
+
+**顺带一个廉价保险**:async 测试少 marker 的全仓扫描
+
+```bash
+python3 -c "
+import ast, pathlib
+for p in pathlib.Path('tests').rglob('test_*.py'):
+    src = p.read_text(encoding='utf-8')
+    if 'pytestmark' in src or 'asyncio_mode' in src: continue
+    def walk(node):
+        for n in node.body:
+            if isinstance(n, ast.AsyncFunctionDef) and n.name.startswith('test_'):
+                if not any('asyncio' in ast.unparse(d) or 'anyio' in ast.unparse(d) for d in n.decorator_list):
+                    print(f'{p}:{n.lineno} {n.name}')
+            elif isinstance(n, ast.ClassDef): walk(n)
+    try: walk(ast.parse(src))
+    except SyntaxError: pass
+"
+```
+
+会有 `IsolatedAsyncioTestCase` 之类的假阳性,**拿它和本次失败清单交叉看**,别当硬门禁。
+
 ### 5. 合并后必查
 
 - **恢复被 3-way 删掉的 kopi 自有文件**:base 有、上游没有的文件会被判成删除。
@@ -296,6 +425,26 @@ PY
   v12 的 `electron/main.ts`:union 保住了我们的 `const {app, BrowserWindow, ...} = electron` 解构,
   却取了上游用裸 `globalShortcut` 的 Quick Entry → TS2304,`apps/desktop / check:lint` 红。
   **只跑 Python 全量是抓不到这类的**,必须按第 1.2 节跑每个 workspace 的 `check`。
+- **🔴 反方向的 skew 更常见:源码吃了上游,测试留了我们的(v17,五处里占四处)。**
+  §5 上一条讲的是"测试新、源码旧";v17 全是反过来 —— 上游改了实现**并同步改了自己的测试**,
+  我们只取了实现。这类的共同特征是**上游的源码是对的,不要动源码**,要做的是把测试对齐上游:
+
+  | v17 实例 | 上游改了什么 | 我们的测试卡在哪 |
+  |---|---|---|
+  | `test_protocol.py` | `append_message` 循环 → `append_messages_batch(chunk_rows=500)` | 4 个 `_DB` 假对象只有旧方法 |
+  | `test_web_server.py` | `/api/providers/validate` 转 `httpx.AsyncClient` | 测试还在 monkeypatch 同步 `httpx.Client` |
+  | `test_api_server.py` | 路由新增 `get_nous_subscription_features()`(内部探 `image_gen`/`video_gen`) | `resolve_toolset` stub 是严格字典 → `KeyError` |
+  | `test_auth_nous_provider.py` | 新增 `_RESOLVE_TOKEN_CACHE`(5s 模块级 memo) | 无隔离,同窗口内测试互相串 token |
+
+  **两条判据**:
+  1. 上游有同名测试 → **整块取上游**,再按语法把 kopi 独有的用例插回(§3)。
+  2. 测试是 kopi 独有的 → 只把**假对象/stub 的契约**对齐新实现(补方法、补 kwarg、
+     严格字典改 `.get(k, [])`),**断言一个都不许动**。动了断言就是降级测试。
+
+  **上游新增模块级缓存 = 必须配隔离 fixture**。v17 的 `_preset_cache`(上游自己在 conftest
+  加了 `_moa_caches_isolated`)和 `_RESOLVE_TOKEN_CACHE`(上游只在个别测试里重置)都是这类。
+  症状是**单独跑过、连起来跑挂**,或断言值来自另一个测试的常量。
+  排查:`git diff origin/main..HEAD -- <src> | grep -E '^\+.*(_cache|_CACHE|lru_cache|TTL)'`。
 - **完整性扫描**:未定制的文件应当与 T(upstream) 逐字相同(模改名)。
 
 ### 6. 不可让步的 kopi 侧规则
@@ -307,7 +456,39 @@ PY
 3. **安装/更新路径指向我们**:`kopiagent/kopi-ai-agent` 和 `kopiaiagent.com`。
    同步若把 `NousResearch/hermes-agent` 或 `hermes.nousresearch.com` 带回
    `scripts/*` / `kopi_cli/*` / `apps/desktop/electron/*`,必须改回来。
-4. **`package.json` 的品牌字段**(第 1.3 节那个 grep **扫不到**它):
+
+   🔴 **半改名产物:第 1.3 节那条 grep 结构上就扫不到(v17)。** 那条 grep 找的是
+   `NousResearch/hermes-agent`,但 rebrand 已经把 `hermes`→`kopi`,于是上游的
+   `NousResearch/hermes-agent` 变成 **`NousResearch/kopi-agent`** —— 一个既不是上游、
+   也不是我们的字符串,grep 永远命中不了。
+
+   后果是**静默**的。v17 发现 `.github/workflows/docker.yml` 三个 job 的门控都是
+   `if: github.repository == 'NousResearch/kopi-agent'`,而我们是 `kopiagent/kopi-ai-agent`
+   → Docker 镜像的 build/test/publish **从来没跑过**,CI 上只显示 "skipping",不报错。
+   同样中招的还有 `deploy-site.yml`、`skills-index.yml`、`skills-index-freshness.yml`。
+
+   **每次同步补跑这条**(注意大小写和 `kopi-agent` / `kopi-ai-agent` 两种形态):
+
+   ```bash
+   grep -rn 'NousResearch/kopi\|nousresearch/kopi' \
+     --include='*.yml' --include='*.yaml' --include='*.py' --include='*.sh' \
+     --include='*.ts' --include='*.json' . | grep -v node_modules
+   # workflow 的仓库门控单独看一眼,skipping 不会让 CI 变红
+   grep -rn "github.repository ==" .github/workflows/
+   ```
+
+   `scripts/rebrand-kopi.py` 帮不上忙:它自己也被 rebrand 过,映射表大半退化成
+   `"kopi-ai-agent": "kopi-ai-agent"` 这种自反项,已不是有效工具。
+
+4. **容器镜像发到 GHCR,不是 Docker Hub(v17 起)**:`ghcr.io/kopiagent/kopi-ai-agent`。
+   用内置 `GITHUB_TOKEN` + job 级 `permissions: packages: write` 认证,
+   **不需要任何外部 secret,也不要 `environment:`** —— 上游的 `container-publish`
+   environment 在本仓库不存在,写上去 job 会在启动阶段直接失败。镜像名必须全小写。
+
+   遗留待办:`kopi_cli/config.py`、`tools/browser_tool.py`、`kopi_cli/tools_config.py`、
+   `docker-compose.windows.yml` 里给用户看的 `docker pull nousresearch/kopi-ai-agent:latest`
+   仍指向上游命名空间(有 5 个测试文件断言这些字符串,改要连测试一起改)。
+5. **`package.json` 的品牌字段**(第 1.3 节那个 grep **扫不到**它):
    `package.json` 和 `apps/desktop/package.json` 必须保住
    `homepage=https://kopiaiagent.com`、appId `com.kopiaiagent.kopi`、
    maintainer/author `Kopi Ai Agent Pte Ltd`、repository/bugs 指向 `kopiagent/kopi-ai-agent`。
@@ -323,13 +504,13 @@ PY
    还是 KOPI 的 —— Windows 安装包带着别家 logo 出厂。每次同步后用 Pillow 开一眼
    三个 icon 文件;ico 重生成:`Image.open("icon.png").save("icon.ico", sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])`。
 
-5. **`install.sh`** = 上游 staged Hermes 协议改名 + 一处 kopi 注入
+6. **`install.sh`** = 上游 staged Hermes 协议改名 + 一处 kopi 注入
    (config 阶段的 `provision_kopi_proxy_key`)。被重写就重做改名 + 重新注入。
-6. **13 个 `tests/test_install_sh_*.py` 必须保持 `pytestmark = skip`**
+7. **13 个 `tests/test_install_sh_*.py` 必须保持 `pytestmark = skip`**
    (还有 `test_install_{diverged_update,lockfile_churn,no_initial_commit,unmerged_index,autostash_conflict_recovery}`)——
    它们断言的是**旧的**上游线性安装器,KOPI 用的是 staged 版本,覆盖在 `tests/test_install_sh_kopi.py`。
    同步把它们 un-skip 了,CI 就红。
-7. **npm ≥ 12(v16 起)**:同步带进了上游的 `.npmrc`(`engine-strict=true` + `min-release-age=14` + 排除表),
+8. **npm ≥ 12(v16 起)**:同步带进了上游的 `.npmrc`(`engine-strict=true` + `min-release-age=14` + 排除表),
    `engines` 要求 `npm >= 12.0.0`。npm 11.10–12.0 认 `min-release-age` 但**不认**
    `min-release-age-exclude`,会静默装错版本。老 npm 上 `npm install` 直接
    `notsup Required: {npm:'>=12.0.0'}`。这是**上游工具链要求,不是合并缺陷** —— 升级 npm
@@ -378,12 +559,12 @@ mac 包是 ad-hoc 签名未公证,安装需 `xattr -dr com.apple.quarantine /App
 
 > 命中豁免(纯文档 / 纯版本号 bump)时,跳过前 7 条,只需最后两条 + 豁免自身的确认命令。
 
-- [ ] `unset HTTP_PROXY/HTTPS_PROXY` 了
-- [ ] Python 全量看到 `100% complete` 的 Summary
+- [ ] 清代理了,**且 `no_proxy` 也设了**(`python3 -c "import urllib.request; print(urllib.request.getproxies())"` 不含 7897)
+- [ ] Python 全量看到 `100% complete` 的 Summary(没被 `| tail` 砍掉)
 - [ ] **每个改动到的 JS/TS workspace 都跑了 `npm run check`(不是只有 lint)**
 - [ ] `apps/desktop` 改动时跑了打包测试 `test:desktop:all`
 - [ ] uv lock / 版本一致 / ruff / footgun / 品牌 grep 全过
-- [ ] 每个失败都归类了:真回归(已修)或已知噪音(有出处)
+- [ ] 每个失败都归类了:真回归(已修)或已知噪音(**有出处** —— 大批量时用 `origin/main` worktree 差分,别凭经验猜)
 - [ ] **修完 bug 重跑了全量**,并用数字变化证明
 - [ ] PR 已开,`All required checks pass` = pass
 - [ ] 用 squash/rebase 合并(无 merge commit)
@@ -393,6 +574,9 @@ mac 包是 ad-hoc 签名未公证,安装需 `xattr -dr com.apple.quarantine /App
 - [ ] 批边界来自 `--first-parent`,且每批 D 数量正常
 - [ ] 锁文件冲突是从**分支起点**恢复的,`node -e "require('./package-lock.json')"` 能过
 - [ ] union 过的文件**跑过**(pytest/vitest),不是只编译过
+- [ ] union 过的大测试文件做了**装饰器 AST 比对**(§4c) —— `ast.parse` 绿 ≠ 装饰器没丢
+- [ ] 改到 `.github/workflows/**` / `mcp_catalog.py` / `model-catalog.json` 时,
+      先**逐个审 diff** 再谈 `ci-reviewed` 标签(标签是人工签字,AI 不自签)
 - [ ] 版本号没被上游 bump 覆盖;`package.json` 品牌字段(homepage/appId/maintainer)还在
 - [ ] 13 个 `test_install_sh_*` 仍是 skip
 - [ ] `.upstream-sync.json` 的 marker + `history` 已更新,`hermes-sync-<hash>` tag 已打

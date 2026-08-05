@@ -1,9 +1,9 @@
 name: Docker Build, Test, and Publish
 
 on:
-  # Trusted main pushes run this workflow directly so environment-scoped
-  # Docker Hub secrets are resolved by the top-level workflow, never across
-  # a reusable-workflow boundary.
+  # Trusted main pushes run this workflow directly so the publish jobs get a
+  # GITHUB_TOKEN scoped by this workflow's own `packages: write`, never one
+  # handed across a reusable-workflow boundary.
   push:
     branches: [main]
   release:
@@ -24,14 +24,23 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  IMAGE_NAME: nousresearch/kopi-agent
+  # KOPI publishes to GHCR, not Docker Hub: it authenticates with the built-in
+  # GITHUB_TOKEN (see the publish/merge jobs' `packages: write`), so there are
+  # no external secrets and no environment to provision. Must stay lowercase —
+  # GHCR rejects uppercase path segments.
+  IMAGE_NAME: ghcr.io/kopiagent/kopi-ai-agent
 
 jobs:
   # Build and test the image for each architecture. This job runs PR code,
   # so it must remain secret-free. Publishing happens in the separate,
   # protected publish job after these tests pass.
   build:
-    if: github.repository == 'NousResearch/kopi-agent'
+    # KOPI: upstream guards this on its own repo; the rebrand turned
+    # `NousResearch/hermes-agent` into `NousResearch/kopi-agent`, which matches
+    # nothing here, so build+test silently skipped on every PR. The §1.3 brand
+    # grep only looks for `NousResearch/hermes-agent`, so it cannot catch this
+    # half-rebranded shape — see CLAUDE.md §6.3.
+    if: github.repository == 'kopiagent/kopi-ai-agent'
     strategy:
       fail-fast: false
       matrix:
@@ -134,12 +143,18 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Rebuild and push each architecture only after the unprivileged build/test
-  # matrix passes. This job is the sole Docker Hub credential boundary.
+  # matrix passes. This job is the sole registry credential boundary.
   # ---------------------------------------------------------------------------
   publish:
-    if: github.repository == 'NousResearch/kopi-ai-agent' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release')
+    if: github.repository == 'kopiagent/kopi-ai-agent' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release')
     needs: [build]
-    environment: container-publish
+    # KOPI: no `environment:` — upstream used `container-publish` to scope
+    # Docker Hub secrets, but GHCR authenticates with the built-in GITHUB_TOKEN
+    # granted by `packages: write` below. The environment does not exist in
+    # this repo; re-adding it would fail the job at startup.
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -171,11 +186,12 @@ jobs:
         if: steps.buildx.outcome == 'failure'
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to GHCR
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       # Push by digest only (no tag). The merge job assembles the tagged
       # manifest list after both architecture publishers complete.
@@ -217,11 +233,15 @@ jobs:
   # On releases: tags :<release_tag_name>.
   # ---------------------------------------------------------------------------
   merge:
-    if: github.repository == 'NousResearch/kopi-agent' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release')
+    if: github.repository == 'kopiagent/kopi-ai-agent' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release')
     runs-on: ubuntu-latest
     needs: [publish]
     timeout-minutes: 10
-    environment: container-publish
+    # KOPI: GHCR via GITHUB_TOKEN — see the publish job for why there is no
+    # `environment:` here.
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Download digests
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -241,11 +261,12 @@ jobs:
         if: steps.buildx.outcome == 'failure'
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to GHCR
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create manifest list and push
         working-directory: /tmp/digests
