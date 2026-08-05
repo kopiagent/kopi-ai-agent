@@ -15,8 +15,8 @@
 
 import { isLayoutNode, normalize } from '@/components/pane-shell/tree/model'
 import { $layoutTree, markActivePreset, persistTree } from '@/components/pane-shell/tree/store'
-import { exportProfileArchive, importProfileArchive } from '@/kopi'
 import { translateNow } from '@/i18n'
+import { exportProfileArchive, importProfileArchive } from '@/kopi'
 import { modePref, skinPref, type ThemeMode } from '@/themes/context'
 import { BUILTIN_THEMES } from '@/themes/presets'
 import type { DesktopTheme } from '@/themes/types'
@@ -80,8 +80,7 @@ export async function exportProfileBundle(profile: string, output?: string): Pro
   return archive
 }
 
-const isThemeMode = (value: unknown): value is ThemeMode =>
-  value === 'light' || value === 'dark' || value === 'system'
+const isThemeMode = (value: unknown): value is ThemeMode => value === 'light' || value === 'dark' || value === 'system'
 
 /**
  * Apply an imported overlay: install bundled themes, assign the new profile's
