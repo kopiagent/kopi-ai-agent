@@ -5761,6 +5761,39 @@ class TestWebServerEndpoints:
             200
         ] * len(paths)
 
+    def test_get_status_loads_gateway_config_off_event_loop(self, monkeypatch):
+        """Cold gateway config loading must not block the WebSocket loop.
+
+        On Windows the first ``load_gateway_config()`` call imports and
+        discovers platform adapters and can take longer than Desktop's 15s
+        WebSocket timeout.  Running it inline makes a concurrent /api/ws
+        handshake time out before ``gateway.ready`` can be sent.
+        """
+        import gateway.config as gateway_config
+        import kopi_cli.web_server as web_server
+
+        seen = {}
+
+        class _Config:
+            @staticmethod
+            def get_connected_platforms():
+                return []
+
+        def _load():
+            seen["thread"] = threading.get_ident()
+            return _Config()
+
+        monkeypatch.setattr(gateway_config, "load_gateway_config", _load)
+
+        async def _run():
+            event_loop_thread = threading.get_ident()
+            await web_server.get_status()
+            return event_loop_thread
+
+        event_loop_thread = asyncio.run(_run())
+
+        assert seen["thread"] != event_loop_thread
+
 
 # ---------------------------------------------------------------------------
 # _build_schema_from_config tests
