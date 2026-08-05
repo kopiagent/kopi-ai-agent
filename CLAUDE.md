@@ -213,8 +213,31 @@ gh pr merge <PR> --rebase --delete-branch     # 多提交需保留结构(如 syn
   没产出 playwright-report、通用 exit 1)。真 flake 用 `gh run rerun <run> --failed` 重跑;
   **不要**为了合并而绕过门禁。
 - 改到 CI 敏感文件(`.github/workflows/**`、`mcp_catalog.py`、`model-catalog.json`)会触发
-  `Review label gate`,需要 `ci-reviewed` 标签。
+  `Review label gate`,需要 `ci-reviewed` 标签。**这个标签是人工复核签字 —— AI 不要自己加**,
+  把 diff 逐个审完给出结论,由人决定。审的时候重点看:新增的 `run:` 有没有
+  `curl`/`wget`/`base64`/`eval`/secrets 外发,新 workflow 的 `permissions:` 和
+  `secrets.` 引用。
 - 提交作者邮箱必须在 `scripts/release.py` 的 AUTHOR_MAP 里,否则 `check-attribution` 红。
+- 🔴 **看懂 `All required checks pass` 到底拦什么(v17)。** 它的判据是
+  `failed = [n for n,i in needs.items() if i['result'] == 'failure']` ——
+  **只认 `failure`**。所以:
+
+  | job 状态 | 图标 | 是否阻塞 |
+  |---|---|---|
+  | `failure` | ❌ | **是** |
+  | `cancelled`(**包括 timeout-minutes 超时**) | ❌ | **否** |
+  | `success` / `skipped` | ✅ | 否 |
+
+  两个后果,都在 v17 踩到:
+  - `Desktop E2E` 的 `timeout-minutes: 20` 一超时就报 `cancelled` → 聚合器**放行**。
+    v17 它连续 3 次跑到 20 分整被砍、一次都没跑完,门禁全程没察觉。
+    PR 页面上是个红叉,但 `All required checks pass` 可能仍然绿。
+  - `docker` **根本不在 needs 里**(ci.yml 注释:"we don't require docker to pass rn
+    because it's so slow lol")。Docker 相关的红**不阻塞合并**。
+
+  所以看到红别只看 PR 首页,去读 `All required checks pass` 那个 job 的日志,
+  它会逐行打印 `✅/❌ <job>: <result>` 和真正导致 exit 1 的清单。
+  ❌ 图标 ≠ 阻塞。
 
 ---
 
