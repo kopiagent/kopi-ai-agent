@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import time
 
-from tests.docker.conftest import docker_exec, docker_exec_sh, start_container, poll_container
+from tests.docker.conftest import docker_exec, docker_exec_sh, start_container
 
 
 def test_dashboard_not_running_by_default(
@@ -199,11 +199,31 @@ def test_dashboard_insecure_env_var_no_longer_bypasses_gate(
     built_image: str, container_name: str,
 ) -> None:
     """``KOPI_DASHBOARD_INSECURE=1`` NO LONGER disables the auth gate
-    (June 2026 hardening). With insecure set on a 0.0.0.0 bind and NO auth
-    provider registered, start_server fails closed — the dashboard never
-    binds, so ``/api/status`` is unreachable. This proves the unauthenticated
-    public-dashboard escape hatch is gone: there is no env that serves the
-    dashboard on a public bind without an auth provider.
+    (June 2026 hardening) — asserted against KOPI's image, where a provider
+    is ALWAYS present.
+
+    Upstream proves this by the fail-closed path: with no provider
+    registered, ``start_server`` raises SystemExit before binding, so
+    nothing answers. That premise cannot hold here. ``docker/cont-init.d/
+    04-dashboard-auth`` is KOPI-only and unconditionally seeds a basic-auth
+    credential at boot (tier 3 falls back to the image's baked default), so
+    ``list_providers()`` is never empty and the dashboard always binds.
+
+    Same security property, observed the other way round: the gate must
+    still intercept gated routes even though ``--insecure`` was passed. That
+    is a STRONGER statement than "the server didn't start" — it proves the
+    escape hatch is closed rather than proving nothing was listening.
+
+    Do NOT probe ``/api/status`` to decide this. It sits in the shared
+    ``PUBLIC_API_PATHS`` allowlist and answers 200 with or without the gate,
+    so it cannot tell "gate on" from "gate off" — see the note in
+    ``test_dashboard_oauth_gate_engages_on_non_loopback_bind`` above. The
+    original probe did exactly that, over a 12s ``curl`` window: on the
+    heavily contended amd64 runner the container needed ~300s to come up, so
+    the probe never connected and the assertion passed without testing
+    anything. It only failed once arm64 came up fast enough to answer.
+    ``_http_probe`` waits up to 60s for a real HTTP response, which is what
+    keeps this honest.
     """
     start_container(
         built_image, container_name,
@@ -212,16 +232,40 @@ def test_dashboard_insecure_env_var_no_longer_bypasses_gate(
         "KOPI_DASHBOARD_INSECURE=1",
         cmd="sleep 120",
     )
-    # Fail-closed: the dashboard process must NOT successfully serve. Probe
-    # for a few seconds; /api/status should never become reachable because
-    # start_server raised SystemExit before binding.
-    ok, _ = poll_container(
-        container_name,
-        "curl -fsS -m 2 http://127.0.0.1:9119/api/status >/dev/null 2>&1",
-        deadline_s=12.0,
+
+    # (1) The seeded basic provider is what keeps the gate satisfied. Assert
+    #     it explicitly: if 04-dashboard-auth ever stops seeding, this fails
+    #     here with a clear cause instead of silently changing what (2) means.
+    status_code, body = _http_probe(container_name, "/api/auth/providers")
+    assert status_code == 200, (
+        f"/api/auth/providers should answer 200 once the dashboard binds; "
+        f"got {status_code} body={body!r}"
     )
-    assert not ok, (
-        "Dashboard must NOT serve on a public bind with --insecure and no "
-        "auth provider — the gate fails closed. /api/status became reachable, "
-        "meaning the unauthenticated escape hatch is still open."
+    provider_names = [
+        p.get("name") for p in json.loads(body).get("providers", [])
+    ]
+    assert "basic" in provider_names, (
+        "docker/cont-init.d/04-dashboard-auth must seed the bundled basic "
+        f"provider at boot. Got: {provider_names!r}"
+    )
+
+    # (2) The actual assertion: --insecure did NOT reopen the hole. A gated
+    #     route still answers 401 to an unauthenticated caller.
+    status_code, body = _http_probe(container_name, "/api/sessions")
+    assert status_code == 401, (
+        "KOPI_DASHBOARD_INSECURE=1 must NOT bypass dashboard auth on a "
+        "public bind — the unauthenticated escape hatch is gone. Gated "
+        f"/api/sessions returned status={status_code} body={body!r}"
+    )
+
+    # (3) And the server reports the gate as engaged, so the SPA/portal
+    #     cannot be tricked into rendering the unauthenticated layout.
+    status_code, body = _http_probe(container_name, "/api/status")
+    assert status_code == 200, (
+        f"/api/status must stay publicly reachable; got {status_code}"
+    )
+    status = json.loads(body)
+    assert status.get("auth_required") is True, (
+        "/api/status must report auth_required=True with --insecure on a "
+        f"non-loopback bind. Got: {status!r}"
     )

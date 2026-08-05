@@ -491,7 +491,23 @@ for p in pathlib.Path('tests').rglob('test_*.py'):
    `scripts/rebrand-kopi.py` 帮不上忙:它自己也被 rebrand 过,映射表大半退化成
    `"kopi-ai-agent": "kopi-ai-agent"` 这种自反项,已不是有效工具。
 
-4. **容器镜像发到 GHCR,不是 Docker Hub(v17 起)**:`ghcr.io/kopiagent/kopi-ai-agent`。
+4. **Docker 镜像的 dashboard 认证是 kopi 独有的分叉(v17 查明)**:
+   `docker/cont-init.d/03-kopi-key` 和 `04-dashboard-auth` **上游没有**
+   (上游 `cont-init.d/` 只有 `015-supervise-perms` + `02-reconcile-profiles`)。
+   `04-dashboard-auth` 在每次启动**无条件**播种一个 basic-auth 凭据,
+   于是 `list_providers()` 永不为空,上游"无 provider 就 fail-closed"那条路径在我们镜像里
+   **永远走不到**。任何上游测试若以"没有 provider"为前提,在这里都不成立 ——
+   改写成"门仍然拦截受保护路由(401)",不要 skip(见 `tests/docker/test_dashboard.py`)。
+
+   📌 **已知安全姿态,尚未决定是否改(2026-08-05 记录)**:镜像默认
+   `KOPI_DASHBOARD=1`(Dockerfile)+ `dash_host="${KOPI_DASHBOARD_HOST:-0.0.0.0}"`
+   (`docker/s6-rc.d/dashboard/run:30`),tier 3 口令回退到 `kopi-admin`,
+   **该镜像所有实例共享同一口令**直到有人改(Dockerfile 注释自己写明了)。
+   上游那次硬化是为了堵"未认证的公开 dashboard";我们变成了"公开可知口令保护的公开 dashboard"。
+   缓解:`KOPI_DASHBOARD_BASIC_AUTH_PASSWORD`(tier 2)/ 改 volume 的 `.env` / `KOPI_DASHBOARD=0`。
+   要动的话是产品决策,别夹在同步 PR 里。
+
+5. **容器镜像发到 GHCR,不是 Docker Hub(v17 起)**:`ghcr.io/kopiagent/kopi-ai-agent`。
    用内置 `GITHUB_TOKEN` + job 级 `permissions: packages: write` 认证,
    **不需要任何外部 secret,也不要 `environment:`** —— 上游的 `container-publish`
    environment 在本仓库不存在,写上去 job 会在启动阶段直接失败。镜像名必须全小写。
@@ -499,7 +515,7 @@ for p in pathlib.Path('tests').rglob('test_*.py'):
    遗留待办:`kopi_cli/config.py`、`tools/browser_tool.py`、`kopi_cli/tools_config.py`、
    `docker-compose.windows.yml` 里给用户看的 `docker pull nousresearch/kopi-ai-agent:latest`
    仍指向上游命名空间(有 5 个测试文件断言这些字符串,改要连测试一起改)。
-5. **`package.json` 的品牌字段**(第 1.3 节那个 grep **扫不到**它):
+6. **`package.json` 的品牌字段**(第 1.3 节那个 grep **扫不到**它):
    `package.json` 和 `apps/desktop/package.json` 必须保住
    `homepage=https://kopiaiagent.com`、appId `com.kopiaiagent.kopi`、
    maintainer/author `Kopi Ai Agent Pte Ltd`、repository/bugs 指向 `kopiagent/kopi-ai-agent`。
@@ -515,13 +531,13 @@ for p in pathlib.Path('tests').rglob('test_*.py'):
    还是 KOPI 的 —— Windows 安装包带着别家 logo 出厂。每次同步后用 Pillow 开一眼
    三个 icon 文件;ico 重生成:`Image.open("icon.png").save("icon.ico", sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])`。
 
-6. **`install.sh`** = 上游 staged Hermes 协议改名 + 一处 kopi 注入
+7. **`install.sh`** = 上游 staged Hermes 协议改名 + 一处 kopi 注入
    (config 阶段的 `provision_kopi_proxy_key`)。被重写就重做改名 + 重新注入。
-7. **13 个 `tests/test_install_sh_*.py` 必须保持 `pytestmark = skip`**
+8. **13 个 `tests/test_install_sh_*.py` 必须保持 `pytestmark = skip`**
    (还有 `test_install_{diverged_update,lockfile_churn,no_initial_commit,unmerged_index,autostash_conflict_recovery}`)——
    它们断言的是**旧的**上游线性安装器,KOPI 用的是 staged 版本,覆盖在 `tests/test_install_sh_kopi.py`。
    同步把它们 un-skip 了,CI 就红。
-8. **npm ≥ 12(v16 起)**:同步带进了上游的 `.npmrc`(`engine-strict=true` + `min-release-age=14` + 排除表),
+9. **npm ≥ 12(v16 起)**:同步带进了上游的 `.npmrc`(`engine-strict=true` + `min-release-age=14` + 排除表),
    `engines` 要求 `npm >= 12.0.0`。npm 11.10–12.0 认 `min-release-age` 但**不认**
    `min-release-age-exclude`,会静默装错版本。老 npm 上 `npm install` 直接
    `notsup Required: {npm:'>=12.0.0'}`。这是**上游工具链要求,不是合并缺陷** —— 升级 npm
