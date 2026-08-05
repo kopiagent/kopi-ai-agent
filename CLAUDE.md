@@ -245,6 +245,41 @@ node -e "require('./package-lock.json')"                      # 每批必跑的�
 
 收尾时再用 `npm install` / `uv lock` 重新生成。
 
+### 4b. 🔴 上游自己也会推出语法坏掉的提交(v17)
+
+批边界不巧落在上游的坏提交上,会把坏文件合进来,后面每一批都继承它。
+
+v17 batch3 的边界落在 hermes `bcbaaa402`,它的 `run_agent.py` 第 7109 行是
+`def _run(fence=None):` 后面直接跟 `return compress_context(` —— 函数体缺失,IndentationError。
+上游在下一段范围(`c98ed22e4`)里自己修好了。
+
+**修法**:把批边界**往前挪到上游下一个语法干净的提交**(批次数减一),
+不要手工补那个文件 —— 手补会和上游的正式修复打架。
+
+**每批必做的语法体检**(便宜,同时能抓上游坏提交和我自己的坏合并):
+
+```bash
+# 用 ast.parse,不要用 py_compile
+python3 - <<'PY'
+import ast, subprocess
+changed = subprocess.run("git status --short | awk '$2 ~ /\\.py$/{print $2}'",
+                         shell=True, capture_output=True, text=True).stdout.split()
+bad = []
+for f in changed:
+    try: ast.parse(open(f).read())
+    except SyntaxError as e: bad.append(f"{f}:{e.lineno} {e.msg}")
+    except FileNotFoundError: pass
+print("语法错误:", bad or "无")
+PY
+```
+
+**两个把我骗过的坑**:
+
+1. `git show "$ref:run_agent.py"` 里的 `:r` 会被参数扩展吃掉 → 写出**空文件**。
+   必须写成 `git show "${ref}":'path'`,并且**断言字节数**。
+2. **空文件的语法永远是对的** —— 所以语法检查必须配一个大小检查,否则全是假阳性。
+   v17 就因为这个连续三次误判"HEAD 是好的"。
+
 ### 5. 合并后必查
 
 - **恢复被 3-way 删掉的 kopi 自有文件**:base 有、上游没有的文件会被判成删除。
