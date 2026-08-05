@@ -7801,6 +7801,39 @@ class TestNewEndpoints:
         assert resp.json()
         assert calls == 1
 
+    def test_analytics_usage_skips_full_insights_generate(self):
+        """get_usage_analytics must call get_usage_breakdown, not generate()."""
+        from unittest.mock import patch
+        from agent.insights import InsightsEngine
+        from kopi_state import SessionDB
+
+        db = SessionDB()
+        try:
+            db.create_session(
+                session_id="usage-tools-test",
+                source="cli",
+                model="anthropic/claude-sonnet-4",
+            )
+            db.update_token_counts(
+                "usage-tools-test",
+                input_tokens=10,
+                output_tokens=5,
+            )
+            db.append_message(
+                "usage-tools-test",
+                role="tool",
+                content="read output",
+                tool_name="read_file",
+            )
+        finally:
+            db.close()
+
+        with patch.object(InsightsEngine, "generate") as mock_generate:
+            resp = self.client.get("/api/analytics/usage?days=7")
+        assert resp.status_code == 200
+        mock_generate.assert_not_called()
+        assert any(tool["tool"] == "read_file" for tool in resp.json()["tools"])
+
 
 # ---------------------------------------------------------------------------
 # Model context length: normalize/denormalize + /api/model/info
@@ -10679,6 +10712,58 @@ class TestValidateProviderCredential:
         )
         assert captured["headers"] is None
 
+    def test_named_custom_endpoint_probe_is_async(self, monkeypatch):
+        """Custom endpoint validation must not block the dashboard event loop."""
+        captured = {}
+
+        class _Resp:
+            status_code = 200
+            is_success = True
+
+            def json(self):
+                return {"data": [{"id": "local-model"}]}
+
+        class _Client:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def get(self, url, *args, headers=None, **kwargs):
+                captured["url"] = url
+                captured["headers"] = headers
+                return _Resp()
+
+        monkeypatch.setattr("httpx.AsyncClient", _Client)
+
+        response = self.client.post(
+            "/api/providers/custom-endpoints/validate",
+            json={
+                "name": "Local",
+                "base_url": "http://localhost:8000/v1",
+                "model": "local-model",
+                "api_key": "local-secret",
+            },
+        )
+
+        assert response.json() == {
+            "ok": True,
+            "reachable": True,
+            "message": "",
+            "models": ["local-model"],
+        }
+        assert captured == {
+            "url": "http://localhost:8000/v1/models",
+            "headers": {
+                "Accept": "application/json",
+                "Authorization": "Bearer local-secret",
+            },
+        }
+
 
 class TestDesktopCronTicker:
     """The dashboard backend fires cron jobs itself only when desktop-spawned."""
@@ -10972,3 +11057,78 @@ class TestDashboardComponentHealth:
         asyncio.run(self.ws._dashboard_selftest_once())
         assert self.ws.DASHBOARD_HEALTH.selftest_status in {"ok", "failing"}
         assert self.ws.DASHBOARD_HEALTH.selftest_http_status is not None
+
+
+class TestHashedAssetCacheHeaders:
+    """Hashed /assets/* responses must be immutable-cacheable; index.html
+    must stay no-store so it always references the current hashes
+    (salvaged from PR #28543)."""
+
+    _IMMUTABLE = "public, max-age=31536000, immutable"
+
+    @staticmethod
+    def _client(tmp_path, monkeypatch):
+        from fastapi import FastAPI
+        from starlette.testclient import TestClient
+        import kopi_cli.web_server as ws
+
+        dist = tmp_path / "web_dist"
+        (dist / "assets").mkdir(parents=True)
+        (dist / "index.html").write_text(
+            "<html><head></head><body>SPA</body></html>", encoding="utf-8"
+        )
+        (dist / "assets" / "index-abc123.js").write_text(
+            "console.log('bundle');", encoding="utf-8"
+        )
+        (dist / "assets" / "index-abc123.css").write_text(
+            "body{background:url(/ds-assets/bg.png);"
+            "font-family:url(/fonts-terminal/x.woff2)}",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(ws, "WEB_DIST", dist)
+        monkeypatch.delenv("KOPI_SERVE_HEADLESS", raising=False)
+        spa_app = FastAPI()
+        ws.mount_spa(spa_app)
+        return TestClient(spa_app)
+
+    def test_hashed_js_asset_is_immutable(self, tmp_path, monkeypatch):
+        client = self._client(tmp_path, monkeypatch)
+        resp = client.get("/assets/index-abc123.js")
+        assert resp.status_code == 200
+        assert resp.headers["cache-control"] == self._IMMUTABLE
+
+    def test_serve_css_is_immutable_and_keeps_prefix_rewrites(
+        self, tmp_path, monkeypatch
+    ):
+        client = self._client(tmp_path, monkeypatch)
+        resp = client.get("/assets/index-abc123.css")
+        assert resp.status_code == 200
+        assert resp.headers["cache-control"] == self._IMMUTABLE
+
+        # The proxy-prefix rewrite path (main's ds-assets/fonts-terminal
+        # handling) must survive the header change.
+        prefixed = client.get(
+            "/assets/index-abc123.css",
+            headers={"X-Forwarded-Prefix": "/kopi"},
+        )
+        assert prefixed.status_code == 200
+        assert prefixed.headers["cache-control"] == self._IMMUTABLE
+        assert "url(/kopi/ds-assets/bg.png)" in prefixed.text
+        assert "url(/kopi/fonts-terminal/x.woff2)" in prefixed.text
+
+    def test_index_html_stays_no_store(self, tmp_path, monkeypatch):
+        client = self._client(tmp_path, monkeypatch)
+        for route in ("/", "/chat"):
+            resp = client.get(route)
+            assert resp.status_code == 200
+            cache_control = resp.headers["cache-control"]
+            assert "no-store" in cache_control
+            assert "immutable" not in cache_control
+
+    def test_missing_asset_is_not_marked_immutable(self, tmp_path, monkeypatch):
+        """A 404 must never be cached for a year — a later rebuild can
+        legitimately create the file."""
+        client = self._client(tmp_path, monkeypatch)
+        resp = client.get("/assets/nope-000000.js")
+        assert resp.status_code == 404
+        assert "immutable" not in resp.headers.get("cache-control", "")

@@ -855,16 +855,23 @@ def apply_database_pragmas(
     *,
     db_label: str = "state.db",
 ) -> None:
-    """Apply optional WAL-sizing PRAGMAs from ``config.yaml``.
+    """Apply optional performance and WAL-sizing PRAGMAs from ``config.yaml``.
 
-    Reads the ``database:`` section and applies ``wal_autocheckpoint``
-    and ``journal_size_limit`` when set to integer values.  The journal
-    mode itself is NOT handled here — ``database.journal_mode`` is owned
-    by :func:`resolve_journal_mode` inside :func:`apply_wal_with_fallback`,
-    which layers the operator setting under all the safety guards
-    (never live-downgrading an on-disk WAL DB, filesystem fallback,
-    WAL-reset-bug gating).  Keeping a single owner prevents a second,
-    unguarded journal-mode switch path.
+    Reads the ``database:`` section and applies configurable PRAGMAs when set
+    to integer values.  The journal mode itself is NOT handled here —
+    ``database.journal_mode`` is owned by :func:`resolve_journal_mode` inside
+    :func:`apply_wal_with_fallback`, which layers the operator setting under
+    all the safety guards (never live-downgrading an on-disk WAL DB,
+    filesystem fallback, WAL-reset-bug gating).
+
+    Supported keys under ``database:`` in config.yaml:
+
+    * ``cache_size`` — negative value = KiB, positive = pages
+      (e.g. ``-262144`` = 256 MB page cache)
+    * ``mmap_size`` — max bytes for memory-mapped I/O (0 = disabled)
+    * ``temp_store`` — 0=DEFAULT(file), 1=FILE, 2=MEMORY, 3=ALWAYS
+    * ``wal_autocheckpoint`` — WAL auto-checkpoint threshold in pages
+    * ``journal_size_limit`` — max journal/WAL size in bytes
 
     Best-effort: config load or pragma failures are ignored so DB init
     never breaks on a malformed ``database:`` section.
@@ -877,7 +884,15 @@ def apply_database_pragmas(
     except Exception:
         return
 
-    for pragma_name in ("wal_autocheckpoint", "journal_size_limit"):
+    # Performance PRAGMAs (applied to ALL connection types: writer, read_only,
+    # and WAL per-thread readers).
+    for pragma_name in (
+        "cache_size",
+        "mmap_size",
+        "temp_store",
+        "wal_autocheckpoint",
+        "journal_size_limit",
+    ):
         raw_value = cfg_get(cfg, "database", pragma_name, default=None)
         if raw_value is None:
             continue
@@ -1929,6 +1944,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                 # raw-copy for the rest of the process — the writable heal
                 # that follows would then repair WITHOUT its forensic backup.
                 try:
+                    apply_database_pragmas(self._conn, db_label="state.db")
                     cursor = self._conn.cursor()
                     self._fts_enabled = (
                         self._fts_table_probe(cursor, "messages_fts") is True
@@ -2128,6 +2144,7 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                 isolation_level=None,
             )
             conn.row_factory = sqlite3.Row
+            apply_database_pragmas(conn, db_label="state.db")
             # Load the CJK tokenizer extension on this connection so
             # messages_fts_cjk queries work on the read path. The .so
             # registers the tokenizer in the connection's in-memory
@@ -5751,16 +5768,31 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         # as the live conversation. Keep the root's started_at to preserve
         # chronological ordering by original conversation start.
         if project_compression_tips and not include_children:
-            projected = []
+            # get_compression_tip() walks each root's chain individually (it's
+            # a per-session graph walk, not batchable in one query), but the
+            # tip *row* fetch afterward was previously one _get_session_rich_row()
+            # call per compression root. Batch that half instead: resolve
+            # every tip id first, then fetch all tip rows in a single query.
+            tip_ids_by_root: Dict[str, str] = {}
             for s in sessions:
                 if s.get("end_reason") != "compression":
-                    projected.append(s)
                     continue
                 tip_id = self.get_compression_tip(s["id"])
-                if tip_id == s["id"]:
-                    projected.append(s)
-                    continue
-                tip_row = self._get_session_rich_row(tip_id, compact_rows=compact_rows)
+                if tip_id != s["id"]:
+                    tip_ids_by_root[s["id"]] = tip_id
+
+            tip_rows = (
+                self._get_session_rich_rows_batch(
+                    set(tip_ids_by_root.values()), compact_rows=compact_rows
+                )
+                if tip_ids_by_root
+                else {}
+            )
+
+            projected = []
+            for s in sessions:
+                tip_id = tip_ids_by_root.get(s["id"])
+                tip_row = tip_rows.get(tip_id) if tip_id else None
                 if not tip_row:
                     projected.append(s)
                     continue
@@ -7334,14 +7366,19 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             return cursor.fetchone()[0]
 
     def session_count_ge(self, n: int = 1) -> bool:
-        """Check if at least N sessions exist.
+        """Check if at least N sessions exist (archived included).
 
-        Short-circuits via LIMIT — much cheaper than COUNT(*) when
-        you only need an existence check.  Use this instead of
-        ``session_count() >= n`` when the exact count is irrelevant.
+        Short-circuits via LIMIT — much cheaper than ``session_count()``,
+        which pays a full index scan for its default ``archived = 0``
+        filter (measured 543us vs 4us on a 20k-session DB). Archived
+        sessions count: every caller so far asks "has this install ever
+        had sessions", and an archived session is still a created one.
+        Use this instead of ``session_count() >= n`` when the exact count
+        is irrelevant.
         """
-        cursor = self._conn.execute("SELECT 1 FROM sessions LIMIT ?", (n,))
-        rows = cursor.fetchall()
+        with self._lock:
+            cursor = self._conn.execute("SELECT 1 FROM sessions LIMIT ?", (n,))
+            rows = cursor.fetchall()
         return len(rows) >= n
 
     def session_count_by_source(
