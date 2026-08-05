@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-08-02T03:05:07Z",
+  "updated_at": "2026-08-05T03:25:21Z",
   "metadata": {
     "source": "kopi-ai-agent repo",
     "docs": "https://kopi-ai-agent.nousresearch.com/docs/reference/model-catalog"
@@ -101,7 +101,7 @@
           "description": "dated snapshot of v4-flash"
         },
         {
-          "id": "qwen/qwen3.7-max",
+          "id": "qwen/qwen3.8-max",
           "description": ""
         },
         {
@@ -238,7 +238,7 @@
           "id": "deepseek/deepseek-v4-flash-0731"
         },
         {
-          "id": "qwen/qwen3.7-max"
+          "id": "qwen/qwen3.8-max"
         },
         {
           "id": "moonshotai/kimi-k3"
