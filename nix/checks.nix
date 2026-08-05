@@ -256,8 +256,8 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
           echo "ok" > $out/result
         '';
 
-        # Verify KOPI_NODE is set in wrapper and points to Node 20+
-        # (string-width uses the /v regex flag which requires Node 20+)
+        # Verify KOPI_NODE is set in wrapper and points to Node 26+
+        # (Kopi pins its toolchain to Node 26 everywhere)
         kopi-node = pkgs.runCommand "kopi-node-version" { } ''
           set -e
           echo "=== Checking KOPI_NODE in wrapper ==="
@@ -270,9 +270,9 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
           echo "PASS: KOPI_NODE executable at $KOPI_NODE"
 
           NODE_MAJOR=$("$KOPI_NODE" --version | sed 's/^v//' | cut -d. -f1)
-          test "$NODE_MAJOR" -ge 20 || \
-            (echo "FAIL: Node v$NODE_MAJOR < 20, TUI needs /v regex flag support"; exit 1)
-          echo "PASS: Node v$NODE_MAJOR >= 20"
+          test "$NODE_MAJOR" -ge 26 || \
+            (echo "FAIL: Node v$NODE_MAJOR < 26, Kopi requires Node 26"; exit 1)
+          echo "PASS: Node v$NODE_MAJOR >= 26"
 
           echo "=== All KOPI_NODE checks passed ==="
           mkdir -p $out

@@ -15,7 +15,7 @@ import { classifyActiveRuntime } from './active-runtime-state'
 import { stopBackendChild as stopBackendChildImpl } from './backend-child'
 import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
 import { createBackendConnectionState } from './backend-connection-state'
-import { buildDesktopBackendEnv, normalizeKopiHomeRoot } from './backend-env'
+import { buildDesktopBackendEnv, kopiManagedNodePathEntries, normalizeKopiHomeRoot } from './backend-env'
 import { isReauthRequiredError, waitForKopiReady } from './backend-health'
 import {
   canImportKopiCli,
@@ -582,19 +582,10 @@ function resolveKopiHome() {
 
 const KOPI_HOME = resolveKopiHome()
 
-function kopiManagedNodePathEntries() {
-  // NOTE: keep this ordering in sync with iter_kopi_node_dirs() in
-  // kopi_constants.py — this Node main process cannot import the Python
-  // module, so the platform-ordering rule is mirrored here.
-  const root = path.join(KOPI_HOME, 'node')
-  const bin = path.join(root, 'bin')
-  const entries = IS_WINDOWS ? [root, bin] : [bin, root]
-
-  return entries.filter(directoryExists)
-}
-
 function pathWithKopiManagedNode(...entries) {
-  return [...kopiManagedNodePathEntries(), ...entries, process.env.PATH].filter(Boolean).join(path.delimiter)
+  const managed = kopiManagedNodePathEntries(KOPI_HOME).filter(directoryExists)
+
+  return [...managed, ...entries, process.env.PATH].filter(Boolean).join(path.delimiter)
 }
 
 // ACTIVE_KOPI_ROOT — the canonical mutable Kopi install. Same path

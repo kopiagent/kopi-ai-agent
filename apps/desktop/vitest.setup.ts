@@ -1,50 +1,32 @@
 import { configure } from '@testing-library/react'
 
-class MemoryStorage implements Storage {
-  private data = new Map<string, string>()
-
-  get length(): number {
-    return this.data.size
+// Node 26 defines its own `localStorage` accessor on the global object, which
+// returns `undefined` unless the process was started with --localstorage-file
+// (it warns: "localStorage is not available because --localstorage-file was
+// not provided"). In the jsdom environment `globalThis` IS the window, so that
+// accessor shadows jsdom's Storage and every `localStorage.getItem(...)` in a
+// test throws "Cannot read properties of undefined". Install a real in-memory
+// Storage when the global resolves to nothing, before any test module reads it.
+if (typeof (globalThis as any).localStorage === 'undefined') {
+  const store = new Map<string, string>()
+  const storage: Storage = {
+    get length() {
+      return store.size
+    },
+    key: (i: number) => [...store.keys()][i] ?? null,
+    getItem: (k: string) => store.get(String(k)) ?? null,
+    setItem: (k: string, v: string) => void store.set(String(k), String(v)),
+    removeItem: (k: string) => void store.delete(String(k)),
+    clear: () => store.clear(),
   }
-
-  clear(): void {
-    this.data.clear()
-  }
-
-  getItem(key: string): string | null {
-    return this.data.get(String(key)) ?? null
-  }
-
-  key(index: number): string | null {
-    return Array.from(this.data.keys())[index] ?? null
-  }
-
-  removeItem(key: string): void {
-    this.data.delete(String(key))
-  }
-
-  setItem(key: string, value: string): void {
-    this.data.set(String(key), String(value))
+  for (const target of [globalThis, (globalThis as any).window].filter(Boolean)) {
+    Object.defineProperty(target, 'localStorage', {
+      value: storage,
+      configurable: true,
+      writable: true,
+    })
   }
 }
-
-const ensureStorage = (name: 'localStorage' | 'sessionStorage') => {
-  const target = globalThis.window ?? globalThis
-
-  try {
-    if (target[name]) {return}
-  } catch {
-    // Some environments expose a throwing storage getter.
-  }
-
-  Object.defineProperty(target, name, {
-    configurable: true,
-    value: new MemoryStorage()
-  })
-}
-
-ensureStorage('localStorage')
-ensureStorage('sessionStorage')
 
 // React 19 + Testing Library 16: opt into the act environment so render(),
 // fireEvent(), and findBy* queries automatically flush state updates without

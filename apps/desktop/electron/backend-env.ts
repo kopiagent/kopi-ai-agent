@@ -60,6 +60,34 @@ function appendUniquePathEntries(entries, { delimiter = path.delimiter } = {}) {
   return ordered.join(delimiter)
 }
 
+/**
+ * Kopi-managed Node.js directories, in preferred lookup order.
+ *
+ * There are two on-disk layouts. `scripts/install.ps1` unpacks portable Node
+ * straight into `%LOCALAPPDATA%\kopi\node` (node.exe at the root, no `bin\`);
+ * `scripts/install.sh` and the node-bootstrap helper use the POSIX
+ * `$KOPI_HOME/node/bin`. Emit BOTH on every platform so mixed and migrated
+ * installs resolve, leading with the layout native to the current platform.
+ *
+ * This is the single source of truth for the ordering rule on the Node side —
+ * `main.ts` imports it rather than keeping its own copy. Mirrors
+ * `iter_kopi_node_dirs()` in kopi_constants.py, which the Electron main
+ * process cannot import.
+ */
+function kopiManagedNodePathEntries(
+  kopiHome,
+  { platform = process.platform, pathModule = pathModuleForPlatform(platform) }: any = {}
+) {
+  if (!kopiHome) {
+    return []
+  }
+
+  const root = pathModule.join(kopiHome, 'node')
+  const bin = pathModule.join(root, 'bin')
+
+  return platform === 'win32' ? [root, bin] : [bin, root]
+}
+
 function buildDesktopBackendPath({
   kopiHome,
   venvRoot,
@@ -68,11 +96,11 @@ function buildDesktopBackendPath({
   pathModule = pathModuleForPlatform(platform)
 }: any = {}) {
   const delimiter = delimiterForPlatform(platform)
-  const kopiNodeBin = kopiHome ? pathModule.join(kopiHome, 'node', 'bin') : null
+  const kopiNodeDirs = kopiManagedNodePathEntries(kopiHome, { platform, pathModule })
   const venvBin = venvRoot ? pathModule.join(venvRoot, platform === 'win32' ? 'Scripts' : 'bin') : null
   const saneEntries = platform === 'win32' ? [] : POSIX_SANE_PATH_ENTRIES
 
-  return appendUniquePathEntries([kopiNodeBin, venvBin, currentPath, saneEntries], { delimiter })
+  return appendUniquePathEntries([kopiNodeDirs, venvBin, currentPath, saneEntries], { delimiter })
 }
 
 function normalizeKopiHomeRoot(kopiHome, { pathModule = pathModuleForPlatform(process.platform) }: any = {}) {
@@ -126,6 +154,7 @@ export {
   buildDesktopBackendEnv,
   buildDesktopBackendPath,
   delimiterForPlatform,
+  kopiManagedNodePathEntries,
   normalizeKopiHomeRoot,
   pathEnvKey,
   POSIX_SANE_PATH_ENTRIES
