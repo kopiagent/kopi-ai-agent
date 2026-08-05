@@ -1344,6 +1344,9 @@ def test_session_branch_persists_branched_from_marker(server, monkeypatch):
         def append_message(self, **_kwargs):
             return None
 
+        def append_messages_batch(self, _session_id, messages, **_kwargs):
+            return list(range(1, len(messages) + 1))
+
         def set_session_title(self, _key, _title):
             return None
 
@@ -1405,6 +1408,11 @@ def test_session_branch_with_count_truncates_history(server, monkeypatch):
         def append_message(self, **kwargs):
             append_calls.append(kwargs)
             return None
+
+        def append_messages_batch(self, session_id, messages, **kwargs):
+            for msg in messages:
+                append_calls.append(dict(msg, session_id=session_id))
+            return list(range(1, len(messages) + 1))
 
         def set_session_title(self, _key, _title):
             return None
@@ -1474,6 +1482,11 @@ def test_session_branch_forwards_original_timestamps(server, monkeypatch):
             append_calls.append(kwargs)
             return None
 
+        def append_messages_batch(self, session_id, messages, **kwargs):
+            for msg in messages:
+                append_calls.append(dict(msg, session_id=session_id))
+            return list(range(1, len(messages) + 1))
+
         def set_session_title(self, _key, _title):
             return None
 
@@ -1524,6 +1537,11 @@ def test_persist_branch_seed_forwards_original_timestamps(server, monkeypatch):
         def append_message(self, **kwargs):
             append_calls.append(kwargs)
             return None
+
+        def append_messages_batch(self, session_id, messages, **kwargs):
+            for msg in messages:
+                append_calls.append(dict(msg, session_id=session_id))
+            return list(range(1, len(messages) + 1))
 
     @contextlib.contextmanager
     def _fake_session_db(_session):

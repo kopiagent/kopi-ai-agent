@@ -6,6 +6,7 @@ import json
 import shutil
 import sys
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
@@ -5596,6 +5597,7 @@ class TestWebServerEndpoints:
         assert data["model"] == ""
         assert data["free_tier"] is None
 
+    @pytest.mark.requires_wal
     def test_get_sessions_poll_preserves_pending_wal(self):
         """Repeated GET-only polls must not checkpoint another writer's WAL."""
         import sqlite3
@@ -5693,12 +5695,15 @@ class TestWebServerEndpoints:
             assert verify.get_meta("last_auto_archive")
         finally:
             verify.close()
+
     def test_get_sessions_fresh_store_returns_empty_list(self):
         response = self.client.get("/api/sessions?limit=50&offset=0")
 
         assert response.status_code == 200
         assert response.json()["sessions"] == []
         assert response.json()["total"] == 0
+
+    @pytest.mark.parametrize("missing_column", ["archived", "pinned"])
     def test_get_sessions_heals_stale_schema_store(self, missing_column):
         import sqlite3
 
@@ -6997,8 +7002,13 @@ class TestNewEndpoints:
         monkeypatch.setattr(
             tools_config,
             "_toolset_has_keys",
-            lambda ts_key, config=None: ts_key != "web",
+            lambda ts_key, config=None, *, force_fresh=False, features=None: ts_key
+            != "web",
         )
+        # Lenient lookup: the route also resolves toolsets outside the three
+        # rows above — get_nous_subscription_features() probes image_gen /
+        # video_gen to decide managed-backend entitlement. A strict dict would
+        # raise KeyError from that unrelated call path.
         monkeypatch.setattr(
             toolsets_module,
             "resolve_toolset",
@@ -7006,7 +7016,7 @@ class TestNewEndpoints:
                 "web": ["web_search", "web_extract"],
                 "skills": ["skills_list", "skill_view"],
                 "memory": ["memory_read"],
-            }[name],
+            }.get(name, []),
         )
         monkeypatch.setattr(web_server, "load_config", lambda: {"platform_toolsets": {"cli": ["web", "skills"]}})
 
@@ -10628,10 +10638,9 @@ class TestDashboardPluginStaticAssetAllowlist:
         assert resp.status_code in (403, 404)
 
 
-def _fake_httpx_client(*, status: int | None = None, raise_exc: bool = False):
-    """Build a drop-in for httpx.Client whose .get() returns a canned status
-    (or raises a transport error). Patched in for the credential-validate probe
-    so tests never touch the network."""
+def _fake_httpx_async_client(*, status: int | None = None, raise_exc: bool = False):
+    """Build a drop-in for httpx.AsyncClient with a canned GET response."""
+
     class _Resp:
         def __init__(self, code):
             self.status_code = code
@@ -10644,13 +10653,13 @@ def _fake_httpx_client(*, status: int | None = None, raise_exc: bool = False):
         def __init__(self, *a, **k):
             pass
 
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *a):
+        async def __aexit__(self, *a):
             return False
 
-        def get(self, *a, **k):
+        async def get(self, *a, **k):
             if raise_exc:
                 raise RuntimeError("connection refused")
             return _Resp(status)
@@ -10673,37 +10682,42 @@ class TestValidateProviderCredential:
         self.client = TestClient(app)
         self.client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
 
+        class _BlockingClient:
+            def __init__(self, *args, **kwargs):
+                raise AssertionError(
+                    "async validation route used blocking httpx.Client"
+                )
+
+        monkeypatch.setattr("httpx.Client", _BlockingClient)
+
     def _post(self, key, value):
-        return self.client.post("/api/providers/validate", json={"key": key, "value": value})
+        return self.client.post(
+            "/api/providers/validate", json={"key": key, "value": value}
+        )
 
     def test_rejected_key_blocks(self, monkeypatch):
-        monkeypatch.setattr("httpx.Client", _fake_httpx_client(status=401))
+        monkeypatch.setattr("httpx.AsyncClient", _fake_httpx_async_client(status=401))
         data = self._post("OPENROUTER_API_KEY", "sk-bogus").json()
         assert data["ok"] is False and data["reachable"] is True
 
     def test_valid_key_passes(self, monkeypatch):
-        monkeypatch.setattr("httpx.Client", _fake_httpx_client(status=200))
+        monkeypatch.setattr("httpx.AsyncClient", _fake_httpx_async_client(status=200))
         data = self._post("OPENAI_API_KEY", "sk-real").json()
         assert data["ok"] is True and data["reachable"] is True
 
     def test_rate_limited_counts_as_valid(self, monkeypatch):
-        monkeypatch.setattr("httpx.Client", _fake_httpx_client(status=429))
+        monkeypatch.setattr("httpx.AsyncClient", _fake_httpx_async_client(status=429))
         data = self._post("XAI_API_KEY", "xai-real").json()
         assert data["ok"] is True
 
     def test_network_error_is_unreachable_not_blocking(self, monkeypatch):
-        monkeypatch.setattr("httpx.Client", _fake_httpx_client(raise_exc=True))
+        monkeypatch.setattr(
+            "httpx.AsyncClient", _fake_httpx_async_client(raise_exc=True)
+        )
         data = self._post("OPENROUTER_API_KEY", "sk-real").json()
         assert data["ok"] is False and data["reachable"] is False
 
-    def test_unknown_provider_is_not_validated(self):
-        # No probe for this key → don't block (ok True, reachable False).
-        data = self._post("SOME_OTHER_API_KEY", "whatever-value").json()
-        assert data["ok"] is True and data["reachable"] is False
 
-    def test_empty_value_rejected(self):
-        data = self._post("OPENAI_API_KEY", "   ").json()
-        assert data["ok"] is False
 
     def test_local_endpoint_forwards_api_key_as_bearer(self, monkeypatch):
         """A custom endpoint that gates /v1/models behind auth must still
@@ -10722,18 +10736,18 @@ class TestValidateProviderCredential:
             def __init__(self, *a, **k):
                 pass
 
-            def __enter__(self):
+            async def __aenter__(self):
                 return self
 
-            def __exit__(self, *a):
+            async def __aexit__(self, *a):
                 return False
 
-            def get(self, url, *a, headers=None, **k):
+            async def get(self, url, *a, headers=None, **k):
                 captured["url"] = url
                 captured["headers"] = headers
                 return _Resp()
 
-        monkeypatch.setattr("httpx.Client", _Client)
+        monkeypatch.setattr("httpx.AsyncClient", _Client)
 
         resp = self.client.post(
             "/api/providers/validate",
@@ -10764,17 +10778,17 @@ class TestValidateProviderCredential:
             def __init__(self, *a, **k):
                 pass
 
-            def __enter__(self):
+            async def __aenter__(self):
                 return self
 
-            def __exit__(self, *a):
+            async def __aexit__(self, *a):
                 return False
 
-            def get(self, url, *a, headers=None, **k):
+            async def get(self, url, *a, headers=None, **k):
                 captured["headers"] = headers
                 return _Resp()
 
-        monkeypatch.setattr("httpx.Client", _Client)
+        monkeypatch.setattr("httpx.AsyncClient", _Client)
 
         self.client.post(
             "/api/providers/validate",
@@ -10833,6 +10847,14 @@ class TestValidateProviderCredential:
                 "Authorization": "Bearer local-secret",
             },
         }
+
+    def test_unknown_provider_is_not_validated(self):
+        # No probe for this key → don't block (ok True, reachable False).
+        data = self._post("SOME_OTHER_API_KEY", "whatever-value").json()
+        assert data["ok"] is True and data["reachable"] is False
+    def test_empty_value_rejected(self):
+        data = self._post("OPENAI_API_KEY", "   ").json()
+        assert data["ok"] is False
 
 
 class TestDesktopCronTicker:
