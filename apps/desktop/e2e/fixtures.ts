@@ -261,6 +261,24 @@ function writeEmptyConfig(kopiHome: string): void {
 export function buildAppEnv(sandbox: Sandbox, extra: Record<string, string> = {}): Record<string, string> {
   const clean = stripCredentials(process.env)
 
+  // ELECTRON_RUN_AS_NODE turns the Electron binary into a plain Node, so it
+  // rejects the Chromium flags Playwright's launcher passes and dies before a
+  // single test runs:
+  //
+  //   Electron.app/Contents/MacOS/Electron: bad option: --remote-debugging-port=0
+  //
+  // ("bad option" is Node's wording, not Chromium's — that is the tell.)
+  //
+  // Nothing sets this on a CI runner, but any terminal hosted inside an
+  // Electron app exports it — VS Code, Cursor, the Claude Code extension — so
+  // the whole suite is unrunnable locally for most developers while being
+  // perfectly green on GitHub. That asymmetry is what kept #32 from being
+  // reproduced off-CI. `kopi_cli/main.py` already pops it for the
+  // `kopi desktop` path (see the KOPI comment there); this is the same guard
+  // for the E2E launcher. stripCredentials() does not catch it — the name
+  // looks nothing like a credential.
+  delete clean.ELECTRON_RUN_AS_NODE
+
   // XDG_RUNTIME_DIR is needed for Electron on Linux when running in a
   // headless/CI context — without it the zygote may fail to initialize.
   if (!clean.XDG_RUNTIME_DIR && process.env.XDG_RUNTIME_DIR) {
