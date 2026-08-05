@@ -2703,6 +2703,7 @@ def list_authenticated_providers(
                     live_models = fetch_api_models(
                         api_key,
                         api_url,
+                        timeout=1.5 if for_picker else 5.0,  # picker: fail fast so a slow custom endpoint doesn't block /model
                         headers=_extra_headers_from_config(ep_cfg) or None,
                     )
                     if live_models:
@@ -2774,7 +2775,11 @@ def list_authenticated_providers(
                 # an unauthenticated /models, which used to collapse this row
                 # to just the current model.
                 _probe_key = current_api_key or os.environ.get("OPENAI_API_KEY", "")
-                _live_models = fetch_api_models(_probe_key, str(current_base_url).strip().rstrip("/"))
+                _live_models = fetch_api_models(
+                    _probe_key,
+                    str(current_base_url).strip().rstrip("/"),
+                    timeout=1.5 if for_picker else 5.0,  # picker: fail fast on a slow current endpoint
+                )
                 if _live_models:
                     _models = _live_models
             except Exception:
@@ -3017,6 +3022,7 @@ def list_authenticated_providers(
                     live_models = fetch_api_models(
                         api_key,
                         api_url,
+                        timeout=1.5 if for_picker else 5.0,  # picker: fail fast so a slow custom endpoint doesn't block /model
                         headers=grp.get("extra_headers") or None,
                     )
                     if live_models:

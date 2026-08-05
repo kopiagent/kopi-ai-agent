@@ -48,6 +48,7 @@ from kopi_cli.config import (
 )
 from kopi_cli.fallback_config import get_fallback_chain
 from kopi_time import now as _kopi_now
+from agent.interrupt_compat import request_hard_interrupt
 
 logger = logging.getLogger(__name__)
 
@@ -3632,8 +3633,7 @@ def run_job(
                 _last_desc, _iter_n, _iter_max,
                 _cur_tool or "none",
             )
-            if hasattr(agent, "interrupt"):
-                agent.interrupt("Cron job timed out (inactivity)")
+            request_hard_interrupt(agent, "Cron job timed out (inactivity)")
             raise TimeoutError(
                 f"Cron job '{job_name}' idle for "
                 f"{int(_secs_ago)}s (limit {int(_cron_inactivity_limit)}s) "
