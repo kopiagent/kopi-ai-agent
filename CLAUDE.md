@@ -274,6 +274,17 @@ D 的数量远超整个范围的真实删除数 = 边界选错了。
 - **别动真实 npm 包名**:`hermes-parser` / `hermes-estree` 等在 `package.json` /
   `package-lock.json` 里改了会 404。
 - 改名不能碰 `skills/**`,也不碰 `-memory` / `-setup` / `-dev` / `-skill-authoring` 后缀。
+- 🔴 **改名会改坏"值和断言配套"的测试(v17)。** 替换只认 `hermes` 这个词,
+  但测试里常有**与被替换值相关、字面上却不含 `hermes`** 的另一半,它逃过替换后就对不上了。
+
+  `tests/docker/test_sqlite_runtime.py` 的 FTS5 trigram 探针:上游插 `'hermes'`、
+  匹配 `'erm'`(hermes 的一个三元组)。改名把值变成 `'kopi'`,而 `'erm'` 里没有 "hermes"
+  可替换 → 探针在找一个不可能存在的 trigram,`trigram_matches` 恒为 0。
+  **这个测试从 v12 起就是坏的**,只因为 Docker 那套测试根本没跑过(见 §6.3),没人发现。
+
+  同类风险:哈希/长度/切片/正则/子串断言、`assert x[:4] ==`、fixture 里手算的偏移量。
+  没有通用 grep 能扫出来 —— 唯一可靠的办法是**让测试真的跑起来**,
+  所以「某套测试一直是 skipping」本身就是必须查的信号。
 
 ### 3. 🔴 冲突解法:朴素拼接对代码块是不安全的(v16,一次同步栽两次)
 

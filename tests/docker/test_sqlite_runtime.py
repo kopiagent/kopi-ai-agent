@@ -16,8 +16,12 @@ db = sqlite3.connect(":memory:")
 try:
     db.execute("CREATE VIRTUAL TABLE docs USING fts5(content, tokenize='trigram')")
     db.execute("INSERT INTO docs VALUES ('kopi')")
+    # 'opi' must be a real trigram of the inserted value. Upstream inserts
+    # 'hermes' and matches 'erm'; the rebrand rewrote the value to 'kopi' but
+    # left 'erm' alone (it contains no "hermes" substring to rewrite), so the
+    # probe asked for a trigram that cannot exist and always returned 0.
     matches = db.execute(
-        "SELECT count(*) FROM docs WHERE docs MATCH 'erm'"
+        "SELECT count(*) FROM docs WHERE docs MATCH 'opi'"
     ).fetchone()[0]
 finally:
     db.close()
