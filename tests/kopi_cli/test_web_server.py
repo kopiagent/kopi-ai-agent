@@ -7771,6 +7771,36 @@ class TestNewEndpoints:
         except Exception:
             pass
 
+    def test_toolsets_resolve_subscription_features_once(self, monkeypatch):
+        import kopi_cli.tools_config as tools_config
+        from kopi_cli.nous_subscription import NousSubscriptionFeatures
+
+        calls = 0
+        features = NousSubscriptionFeatures(
+            subscribed=False,
+            nous_auth_present=False,
+            provider_is_nous=False,
+            features={},
+            account_info=None,
+        )
+
+        def resolve_features(config, *, force_fresh=False):
+            nonlocal calls
+            calls += 1
+            return features
+
+        monkeypatch.setattr(
+            tools_config,
+            "get_nous_subscription_features",
+            resolve_features,
+        )
+
+        resp = self.client.get("/api/tools/toolsets")
+
+        assert resp.status_code == 200
+        assert resp.json()
+        assert calls == 1
+
 
 # ---------------------------------------------------------------------------
 # Model context length: normalize/denormalize + /api/model/info

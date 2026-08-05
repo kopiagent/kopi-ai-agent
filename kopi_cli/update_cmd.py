@@ -2089,7 +2089,7 @@ def _update_node_dependencies() -> list[str]:
         print("    deps). Fix npm and re-run `kopi update`.")
         return list(labels)
 
-    extra_args = ["--no-fund", "--no-audit", "--progress=false"]
+    extra_args = ["--no-fund", "--no-audit", "--prefer-offline", "--progress=false"]
 
     from kopi_constants import with_kopi_node_path
 
