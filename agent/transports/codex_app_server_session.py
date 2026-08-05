@@ -1259,6 +1259,8 @@ def _approval_choice_to_codex_decision(choice: str) -> str:
         return "accept"
     if choice in {"session", "always"}:
         return "acceptForSession"
+    # "deny" and "timeout" both map to decline — codex has no wire value for
+    # "prompt expired"; the Kopi-side messaging already distinguishes them.
     return "decline"
 
 

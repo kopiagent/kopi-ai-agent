@@ -44,6 +44,7 @@ def _run_gateway_import(kopi_home: Path, initial_env: dict[str, str]) -> dict[st
             "KOPI_MAX_ITERATIONS",
             "KOPI_AGENT_TIMEOUT",
             "KOPI_AGENT_TIMEOUT_WARNING",
+            "KOPI_SESSION_STALL_TIMEOUT",
             "KOPI_GATEWAY_BUSY_INPUT_MODE",
             "KOPI_GATEWAY_BUSY_TEXT_MODE",
             "KOPI_GATEWAY_PLATFORM_CONNECT_TIMEOUT",
@@ -113,16 +114,19 @@ def test_config_gateway_timeout_wins_over_stale_env(kopi_home: Path) -> None:
     _write_config(kopi_home, agent_cfg={
         "gateway_timeout": 1800,
         "gateway_timeout_warning": 900,
+        "session_stall_timeout": 300,
     })
     _write_env(kopi_home, {
         "KOPI_AGENT_TIMEOUT": "60",
         "KOPI_AGENT_TIMEOUT_WARNING": "30",
+        "KOPI_SESSION_STALL_TIMEOUT": "15",
     })
 
     env = _run_gateway_import(kopi_home, initial_env={})
 
     assert env.get("KOPI_AGENT_TIMEOUT") == "1800"
     assert env.get("KOPI_AGENT_TIMEOUT_WARNING") == "900"
+    assert env.get("KOPI_SESSION_STALL_TIMEOUT") == "300"
 
 
 def test_config_platform_connect_timeout_supplies_env_when_unset(kopi_home: Path) -> None:
