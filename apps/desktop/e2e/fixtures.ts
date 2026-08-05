@@ -97,6 +97,44 @@ export interface Sandbox {
   cleanup: () => void
 }
 
+/**
+ * Copy the backend's own log into `test-results/` before the sandbox is
+ * deleted, so it ships with the uploaded artifact.
+ *
+ * Without this a boot hang is undiagnosable. `electron/main.ts` writes the
+ * spawned `kopi` child's output to `$KOPI_HOME/logs/desktop.log`, and in E2E
+ * `KOPI_HOME` is a temp sandbox that `sandbox.cleanup()` rm -rf's on the way
+ * out — so a workflow step that collects logs after the run always finds
+ * nothing. The uploaded artifacts only ever held the Playwright report and
+ * traces, neither of which says why the child failed.
+ *
+ * Concretely: CI boots hung at 86% on `advanceBootProgress('backend.port',
+ * 'Waiting for Kopi backend to launch')` — the child never announced its
+ * port, and nothing recorded what it printed instead (see #32).
+ *
+ * Deliberately a plain file copy rather than `testInfo.attach()`: fixtures are
+ * torn down from `test.afterAll`, where `test.info()` is not guaranteed to be
+ * available, so an attach-based version would silently no-op in exactly the
+ * runs we need it for. `test-results/` is Playwright's default `outputDir` and
+ * is what the workflow uploads.
+ *
+ * Best-effort: never throws, so a missing log cannot mask a real failure.
+ */
+export function saveBackendLog(sandbox: Sandbox): void {
+  try {
+    const src = path.join(sandbox.kopiHome, 'logs', 'desktop.log')
+    if (!fs.existsSync(src)) {
+      return
+    }
+
+    const dir = path.join(DESKTOP_ROOT, 'test-results', 'backend-logs')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.copyFileSync(src, path.join(dir, `${path.basename(sandbox.root)}.log`))
+  } catch {
+    // Best-effort diagnostics only.
+  }
+}
+
 export function createSandbox(prefix: string): Sandbox {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `kopi-e2e-${prefix}-${Math.random()}`))
   const kopiHome = path.join(root, 'kopi-home')
@@ -406,6 +444,7 @@ export async function setupMockBackend(options: MockBackendOptions = {}): Promis
     cleanup: async () => {
       await app.close().catch(() => undefined)
       await mock.close()
+      saveBackendLog(sandbox)
       sandbox.cleanup()
     },
   }
@@ -435,6 +474,7 @@ export async function setupNoProvider(): Promise<NoProviderFixture> {
     sandbox,
     cleanup: async () => {
       await app.close().catch(() => undefined)
+      saveBackendLog(sandbox)
       sandbox.cleanup()
     },
   }
@@ -496,6 +536,7 @@ providers:
     sandbox,
     cleanup: async () => {
       await app.close().catch(() => undefined)
+      saveBackendLog(sandbox)
       sandbox.cleanup()
     },
   }
@@ -582,6 +623,7 @@ export async function setupPackagedApp(): Promise<PackagedAppFixture> {
     sandbox,
     cleanup: async () => {
       await app.close().catch(() => undefined)
+      saveBackendLog(sandbox)
       sandbox.cleanup()
     },
   }

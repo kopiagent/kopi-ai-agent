@@ -18,7 +18,15 @@ jobs:
   e2e:
     name: Playwright E2E (Linux)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 20 was not enough to finish even once: 45 tests on 2 workers with
+    # `retries: 1`, so every failure costs its wall time twice. The job was
+    # killed at exactly 20m on four consecutive runs (three PR, one main) with
+    # Playwright still executing, which means we never got the failure summary
+    # — and because a timeout reports `cancelled`, not `failure`, the
+    # `All required checks pass` aggregator waved it through every time (see
+    # CLAUDE.md §3). Raised so a run completes and reports; the real fix is to
+    # make the failing specs pass, tracked in #32.
+    timeout-minutes: 45
     outputs:
       review_status: ${{ steps.review-status.outputs.review_status }}
     steps:
