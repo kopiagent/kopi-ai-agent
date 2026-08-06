@@ -425,6 +425,57 @@ async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Close the app and make sure the OS process is actually gone.
+ *
+ * `app.close()` resolves as soon as Electron accepts the request — measured at
+ * a 0.3s median on CI — but that says nothing about the process having exited.
+ * Playwright's worker teardown then blocks on the child-process tree, and the
+ * gap from one fixture's last line to the next worker's first is a median 76.8s
+ * with a cluster sitting on 91.0/91.0/91.1s. Values that identical are a fixed
+ * timeout being served, not work being done. Every timed-out run also ends with
+ * the runner force-killing orphan `electron` processes, which is the same fact
+ * from the other side.
+ *
+ * `main.ts` has real reasons to linger — `before-quit` can `preventDefault()`
+ * for SSH teardown or the active-work prompt, and the spawned `kopi` backend is
+ * only SIGTERM'd — so rather than change shutdown semantics for the product,
+ * the harness stops waiting on them: ask nicely, give it a grace period, then
+ * SIGKILL. The app under test has already been closed by that point; what is
+ * being reaped is a process that outlived its purpose.
+ *
+ * Logs `app.exit` separately from `app.close` so the two stay distinguishable
+ * — the whole reason this went unexplained for so long is that the fast one was
+ * being read as proof about the slow one.
+ */
+async function closeAppAndReap(app: ElectronApplication): Promise<void> {
+  const proc = app.process()
+
+  await timed('app.close', () => app.close().catch(() => undefined))
+
+  await timed('app.exit', async () => {
+    const deadline = Date.now() + 5_000
+
+    while (Date.now() < deadline) {
+      if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+        return
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+
+    if (proc?.pid) {
+      console.log(`[e2e-timing] app.exit REAPING pid=${proc.pid} — still alive 5s after close()`)
+
+      try {
+        process.kill(proc.pid, 'SIGKILL')
+      } catch {
+        // Already gone between the check and the signal.
+      }
+    }
+  })
+}
+
 // ─── Public fixtures ────────────────────────────────────────────────────
 
 export interface MockBackendFixture {
@@ -486,7 +537,7 @@ export async function setupMockBackend(options: MockBackendOptions = {}): Promis
     mockUrl: mock.url,
     sandbox,
     cleanup: async () => {
-      await timed('app.close', () => app.close().catch(() => undefined))
+      await closeAppAndReap(app)
       await timed('mock.close', () => mock.close())
       saveBackendLog(sandbox)
       sandbox.cleanup()
@@ -517,7 +568,7 @@ export async function setupNoProvider(): Promise<NoProviderFixture> {
     page,
     sandbox,
     cleanup: async () => {
-      await app.close().catch(() => undefined)
+      await closeAppAndReap(app)
       saveBackendLog(sandbox)
       sandbox.cleanup()
     },
@@ -579,7 +630,7 @@ providers:
     page,
     sandbox,
     cleanup: async () => {
-      await app.close().catch(() => undefined)
+      await closeAppAndReap(app)
       saveBackendLog(sandbox)
       sandbox.cleanup()
     },
@@ -666,7 +717,7 @@ export async function setupPackagedApp(): Promise<PackagedAppFixture> {
     page,
     sandbox,
     cleanup: async () => {
-      await app.close().catch(() => undefined)
+      await closeAppAndReap(app)
       saveBackendLog(sandbox)
       sandbox.cleanup()
     },
