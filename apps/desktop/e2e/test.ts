@@ -15,6 +15,33 @@
 
 import { test as base, expect, type Page, type ElectronApplication, _electron } from '@playwright/test'
 
+// Module-load marker. Every spec imports this file, so one line per load says
+// whether Playwright reuses a worker process across spec files or starts a
+// fresh one each time.
+//
+// This is the last unexplained piece of #32. Measurement has cleared
+// everything under our control: all fixture phases total ~2.0 min and every
+// test's own `testInfo.duration` totals 7.0 min, inside a 42.7 min span. The
+// missing 33.6 min sits in gaps that begin at `mock.close` — the last line of
+// one fixture's teardown — and end at `mock.start`, the first line of the
+// next, with none of our code running in between. Those gaps run 25-90s and
+// there is roughly one per spec file.
+//
+// `pid` and `uptime` settle it: a new pid with uptime near zero means the
+// worker is being torn down and restarted between files, and the cost is
+// process startup plus re-transpiling this import graph on a cold runner —
+// which would also explain 3.8 min locally against 43 min on CI, and why
+// raising `timeout-minutes` never helped. A stable pid means the cost is
+// somewhere else again and this explanation is wrong too.
+//
+// Four earlier hypotheses in this area died to measurements (backend spawn,
+// `app.close`, the overlay poll, `waitForAppReady` as a whole), so this one
+// gets verified before anything is tuned on the strength of it.
+console.log(
+  `[e2e-timing] module.load test.ts pid=${process.pid} ` +
+    `worker=${process.env.TEST_WORKER_INDEX ?? '?'} uptime=${process.uptime().toFixed(1)}s`,
+)
+
 // Track error messages per test so afterEach can assert + report.
 const seenErrors: string[] = []
 let activePage: Page | null = null
