@@ -136,7 +136,23 @@ export const test = base.extend({
 // Uses `activePage` (set by installErrorBannerGuard) instead of the
 // default `page` fixture — Electron tests create their own page via
 // app.firstWindow(), so the default `page` fixture is undefined.
+// Test-level boundaries for the #32 investigation. The job log shows 28 gaps
+// of 20-103s totalling 32.8 min inside a 42.6 min span, but with two workers
+// interleaving there is no way to tell from the outside whether a gap sits
+// inside a test body, inside a hook, or between files — and Playwright's own
+// per-test timings are unavailable because `results.json` is written only when
+// a run finishes, which this suite never does. A start/end marker on stdout
+// closes that gap and survives the `timeout-minutes` kill.
+base.beforeEach(async ({}, testInfo) => {
+  console.log(`[e2e-timing] test.start ${testInfo.titlePath.slice(1).join(' > ')}`)
+})
+
 base.afterEach(async ({}, testInfo) => {
+  console.log(
+    `[e2e-timing] test.end ${testInfo.status} ${testInfo.duration}ms ` +
+      `${testInfo.titlePath.slice(1).join(' > ')}`,
+  )
+
   const wasAllowed = errorBannersAllowed
   // Reset for the next test.
   errorBannersAllowed = false
