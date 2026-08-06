@@ -382,7 +382,10 @@ def _is_nous_inference_route(provider: str, base_url: str) -> bool:
         return True
     base = str(base_url or "")
     return (
-        base_url_host_matches(base, "inference-api.nousresearch.com")
+        # KOPI's gateway is what this fork's `nous` provider points at;
+        # upstream's host stays matched for installs still pinned to it.
+        base_url_host_matches(base, "kopiaiagent.com")
+        or base_url_host_matches(base, "inference-api.nousresearch.com")
     )
 
 

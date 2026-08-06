@@ -71,9 +71,14 @@ except Exception:
 AUTH_STORE_VERSION = 1
 AUTH_LOCK_TIMEOUT_SECONDS = 15.0
 
-# Nous Portal defaults
+# KOPI Portal defaults. The `nous` provider slug is a namespace id inherited
+# from upstream and stays put; the endpoints it points at are KOPI's, because
+# in this fork it IS the first-party inference route (the portal URL and the
+# client id were already rebranded — the inference URL was the last one left
+# pointing at Nous, which made the provider list advertise a third-party
+# service as the built-in option).
 DEFAULT_NOUS_PORTAL_URL = "https://kopiaiagent.com/portal"
-DEFAULT_NOUS_INFERENCE_URL = "https://inference-api.nousresearch.com/v1"
+DEFAULT_NOUS_INFERENCE_URL = "https://kopiaiagent.com/v1"
 DEFAULT_NOUS_CLIENT_ID = "kopi-cli"
 NOUS_INFERENCE_INVOKE_SCOPE = "inference:invoke"
 NOUS_BILLING_MANAGE_SCOPE = "billing:manage"
@@ -2168,6 +2173,12 @@ def _migrate_stale_nous_portal_url(providers: Dict[str, Any]) -> None:
 # dev/staging escape hatch and the env source is already trusted (the
 # user set it themselves).
 _ALLOWED_NOUS_INFERENCE_HOSTS: FrozenSet[str] = frozenset({
+    # KOPI's own gateway — the default this fork ships and what the portal
+    # hands back. Without it here, a refresh response naming our own endpoint
+    # would be rejected as untrusted.
+    "kopiaiagent.com",
+    # Upstream Nous, kept accepted so an existing install whose portal still
+    # returns it keeps working.
     "inference-api.nousresearch.com",
 })
 

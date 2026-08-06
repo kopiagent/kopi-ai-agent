@@ -80,7 +80,7 @@ nous = NousProfile(
         "kopi-3-405b",
         "kopi-3-70b",
     ),
-    base_url="https://inference-api.nousresearch.com/v1",
+    base_url="https://kopiaiagent.com/v1",
     auth_type="oauth_device_code",
 )
 
