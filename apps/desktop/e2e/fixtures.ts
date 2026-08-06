@@ -697,16 +697,18 @@ export async function waitForAppReady(fixture: MockBackendFixture | NoProviderFi
   const { page, app } = fixture
 
   // Wait for the composer to exist in the DOM (not necessarily interactive yet).
-  await page.waitForSelector('textarea, [contenteditable="true"]', {
-    state: 'attached',
-    timeout: timeoutMs,
-  })
+  await timed('ready.composer', () =>
+    page.waitForSelector('textarea, [contenteditable="true"]', {
+      state: 'attached',
+      timeout: timeoutMs,
+    }),
+  )
 
   // Now poll until no full-screen overlay covers the viewport center.
   // elementFromPoint returns the topmost element at a point — if it's part
   // of a fixed inset-0 overlay (onboarding/connecting/boot-failure), the
   // app isn't ready yet.
-  await page.waitForFunction(
+  await timed('ready.overlay', () => page.waitForFunction(
     () => {
       const el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)
 
@@ -773,7 +775,7 @@ export async function waitForAppReady(fixture: MockBackendFixture | NoProviderFi
     }
 
     throw error
-  })
+  }))
 
   // On Electron 40.x, ready-to-show may never fire (electron/electron#51972)
   // and the window stays hidden even though the DOM is rendered. The main
@@ -782,18 +784,26 @@ export async function waitForAppReady(fixture: MockBackendFixture | NoProviderFi
   // window is actually visible so interactions (click, screenshot) don't
   // hit a hidden surface.
   if (app) {
-    const deadline = Date.now() + timeoutMs
+    await timed('ready.visible', async () => {
+      const deadline = Date.now() + timeoutMs
 
-    while (Date.now() < deadline) {
-      const visible = await app.evaluate(({ BrowserWindow }) => {
-        const w = BrowserWindow.getAllWindows()[0]
+      while (Date.now() < deadline) {
+        const visible = await app.evaluate(({ BrowserWindow }) => {
+          const w = BrowserWindow.getAllWindows()[0]
 
-        return w ? w.isVisible() : false
-      }).catch(() => false)
+          return w ? w.isVisible() : false
+        }).catch(() => false)
 
-      if (visible) {break}
-      await page.waitForTimeout(500)
-    }
+        if (visible) {return}
+
+        await page.waitForTimeout(500)
+      }
+
+      // Silent expiry, unlike the two waits above — it just falls through to
+      // the test with a hidden window. Say so, or a 60s stall here reads as
+      // the test itself being slow.
+      console.log('[e2e-timing] ready.visible EXPIRED — window never reported visible')
+    })
   }
 }
 
