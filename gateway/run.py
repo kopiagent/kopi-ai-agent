@@ -17576,7 +17576,13 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
         lines = [
             f"◆ Model: `{model}`",
-            f"◆ Provider: {provider or 'openrouter'}",
+            # Show the provider the user actually configured, not the internal
+            # routing bucket. `_resolve_runtime_agent_kwargs()` collapses every
+            # non-builtin provider to the literal "custom", so a deployment on
+            # its own gateway reported "Provider: custom" — true internally,
+            # useless to the reader. config's `model.provider` is the name they
+            # chose; fall back to the runtime value when it isn't set.
+            f"◆ Provider: {configured_provider or provider or 'openrouter'}",
             f"◆ Context: {ctx_display} tokens ({ctx_source})",
         ]
 

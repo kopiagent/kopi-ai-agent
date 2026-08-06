@@ -64,6 +64,43 @@ class TestFormatSessionInfo:
         assert "localhost:11434" in info
         assert "8K" in info
 
+    def test_banner_shows_configured_provider_not_custom_bucket(
+        self, runner, tmp_path
+    ):
+        """A self-hosted gateway configures `model.provider: kopi`, but the
+        runtime resolver collapses every non-builtin provider to the literal
+        "custom". The banner must name what the operator configured — reporting
+        "Provider: custom" is internally true and useless to the reader."""
+        p1, p2, p3 = _patch_info(
+            tmp_path,
+            "model:\n  default: kopi-o\n  provider: kopi\n"
+            "  base_url: https://kopiaiagent.com/v2\n",
+            "kopi-o",
+            {
+                "provider": "custom",
+                "base_url": "https://kopiaiagent.com/v2",
+                "api_key": "k",
+            },
+        )
+        with p1, p2, p3:
+            info = runner._format_session_info()
+        assert "Provider: kopi" in info
+        assert "Provider: custom" not in info
+
+    def test_banner_falls_back_to_runtime_provider_when_unconfigured(
+        self, runner, tmp_path
+    ):
+        """No `model.provider` in config → the runtime value is all we have."""
+        p1, p2, p3 = _patch_info(
+            tmp_path,
+            "model:\n  default: some-model\n",
+            "some-model",
+            {"provider": "openrouter", "base_url": "", "api_key": "k"},
+        )
+        with p1, p2, p3:
+            info = runner._format_session_info()
+        assert "Provider: openrouter" in info
+
 
 class TestResetNoticeSessionInfo:
     """#59003: the auto-reset banner must report the serving profile's config,
