@@ -90,19 +90,31 @@ jobs:
       # dist/ is always fresh — no separate build step needed here.
 
       # ── Restore visual baseline screenshots from main ──────────────────
-      # Baselines are generated on main (via --update-snapshots) and cached.
-      # On PRs, we restore them so toHaveScreenshot has something to compare
-      # against.  The cache key is keyed on the desktop source files so a
-      # UI change naturally invalidates it — but we fall back to the main
-      # cache to avoid cold starts on unrelated PRs.
+      # Baselines are generated on main (via --update-snapshots) and cached;
+      # PRs restore them so toHaveScreenshot has something to compare against.
+      #
+      # The key carries the commit sha, NOT a bare branch name. Actions cache
+      # entries are immutable: once a key exists, every later save under it is
+      # refused with "Unable to reserve cache with key ..." — reported as a
+      # warning while the step still exits green. Under the old fixed
+      # `visual-baselines-main` key that meant the baselines froze at whenever
+      # the entry was first written and never moved again, so every branch
+      # (including dependabot ones carrying no UI change at all) compared
+      # against a v1.21.1-era interface and went red. A fresh key per main
+      # commit is the whole fix; `restore-keys` prefix-matches and returns the
+      # newest entry.
+      #
+      # `actions/cache/restore`, not `actions/cache`: the composite action also
+      # saves in its post step on a key miss, which on main would collide with
+      # the explicit save below — reintroducing the same failure.
       - name: Restore visual baseline screenshots
         id: restore-baselines
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        uses: actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
           path: apps/desktop/e2e/*-snapshots
-          key: visual-baselines-${{ github.ref_name }}
+          key: visual-baselines-main-${{ github.sha }}
           restore-keys: |
-            visual-baselines-main
+            visual-baselines-main-
 
       # ── Run Playwright E2E under xvfb ─────────────────────────────────
       # xvfb runs at a fixed 1280x1024 screen so the 1220x800 Electron
@@ -130,12 +142,31 @@ jobs:
           NOUS_API_KEY: ''
 
       # ── Save updated baselines to cache (main only) ───────────────────
+      # Unique key per main commit — see the restore step for why a fixed key
+      # silently froze the baselines. `restore-keys` picks the newest.
       - name: Save updated baselines to cache
         if: github.ref_name == 'main' && always()
         uses: actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
           path: apps/desktop/e2e/*-snapshots
-          key: visual-baselines-main
+          key: visual-baselines-main-${{ github.sha }}
+
+      # ── Upload the baselines too (main only) ──────────────────────────
+      # The cache is invisible: you cannot review what is in it, diff it, or
+      # use it locally, which is how it drifted eight minor versions without
+      # anyone noticing. Publishing the same directory as an artifact makes
+      # the current baselines downloadable — for eyeballing a UI change, and
+      # as the source material for committing them to the repo (they are
+      # gitignored today, see #32).
+      - name: Upload visual baselines
+        if: github.ref_name == 'main' && always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: visual-baselines-${{ github.sha }}
+          path: apps/desktop/e2e/*-snapshots
+          retention-days: 14
+          if-no-files-found: warn
+          overwrite: true
 
       # ── Upload Playwright report (HTML + traces) ──────────────────────
       - name: Upload Playwright report
