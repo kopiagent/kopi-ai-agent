@@ -1263,7 +1263,14 @@ function rememberLog(chunk) {
     return
   }
 
-  const lines = text.split(/\r?\n/).map(line => `[kopi] ${line}`)
+  // Seconds since this Electron process started. Boot is a chain of waits —
+  // resolve, spawn, port announcement, HTTP ready, WebSocket probe — and
+  // without a clock on each line there is no way to tell which one is slow.
+  // On CI every E2E fixture setup costs ~95s wall while the tests themselves
+  // average a few seconds (see #32); the same setup is ~7s locally, so it
+  // cannot be reproduced off-CI and has to be measured where it happens.
+  const at = `+${process.uptime().toFixed(1)}s`
+  const lines = text.split(/\r?\n/).map(line => `[kopi ${at}] ${line}`)
   kopiLog.push(...lines)
 
   if (kopiLog.length > 300) {
