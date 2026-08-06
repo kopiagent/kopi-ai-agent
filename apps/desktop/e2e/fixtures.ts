@@ -736,7 +736,44 @@ export async function waitForAppReady(fixture: MockBackendFixture | NoProviderFi
     },
     undefined,
     { timeout: timeoutMs },
-  )
+  ).catch(async (error: unknown) => {
+    // This poll is where the CI suite actually burns its wall clock: 29 waits
+    // of 80-101s against 8.4 min of real test time (#32). The backend is ready
+    // in a median of 2.2s and every fixture phase is sub-second, so whatever
+    // sits over the viewport centre is the whole cost — and the failure
+    // screenshot shows a fully-loaded app that merely looks washed out, i.e. a
+    // near-transparent cover rather than a boot overlay.
+    //
+    // Naming that element is a one-line answer that no artifact currently
+    // carries: traces come back unfinalised because the kill lands mid-write,
+    // and `results.json` is only written when the run completes.
+    const chain = await page.evaluate(() => {
+      const el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)
+      const out: string[] = []
+      let node: Element | null = el
+
+      while (node && out.length < 8) {
+        const cs = window.getComputedStyle(node)
+        const r = node.getBoundingClientRect()
+
+        out.push(
+          `<${node.tagName.toLowerCase()} class="${node.className}" ` +
+            `pos=${cs.position} opacity=${cs.opacity} pointer=${cs.pointerEvents} ` +
+            `z=${cs.zIndex} rect=${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.right)},${Math.round(r.bottom)}>`,
+        )
+        node = node.parentElement
+      }
+
+      return { chain: out, viewport: `${window.innerWidth}x${window.innerHeight}` }
+    }).catch(() => null)
+
+    console.log(`[e2e-timing] waitForAppReady BLOCKED viewport=${chain?.viewport ?? '?'}`)
+    for (const entry of chain?.chain ?? ['(could not read the DOM)']) {
+      console.log(`[e2e-timing]   ${entry}`)
+    }
+
+    throw error
+  })
 
   // On Electron 40.x, ready-to-show may never fire (electron/electron#51972)
   // and the window stays hidden even though the DOM is rendered. The main
