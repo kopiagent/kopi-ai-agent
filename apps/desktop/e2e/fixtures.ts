@@ -399,6 +399,32 @@ export async function launchDesktop(
   return { app, page }
 }
 
+/**
+ * Time a fixture phase and print it to stdout.
+ *
+ * Deliberately `console.log` and not Playwright's own reporting: the JSON
+ * reporter only writes `results.json` when the run *finishes*, and this suite
+ * is killed by `timeout-minutes` before it ever does — so its timings are
+ * unavailable for exactly the runs we need to explain. Anything printed to
+ * stdout is already in the job log, with a GitHub timestamp on it, whether or
+ * not the run survives.
+ *
+ * Motivation: on CI a spec file costs roughly 95s beyond the tests it runs
+ * (net test time 8.4 min against a 45.3 min wall clock), while the Electron
+ * process itself finishes all of its boot work in a median of 2.2s — measured,
+ * not assumed, from the `[kopi +Ns]` backend logs. So the cost is in the
+ * fixture around the app, and this narrows it to a phase. See #32.
+ */
+async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const started = Date.now()
+
+  try {
+    return await fn()
+  } finally {
+    console.log(`[e2e-timing] ${label} ${Date.now() - started}ms`)
+  }
+}
+
 // ─── Public fixtures ────────────────────────────────────────────────────
 
 export interface MockBackendFixture {
@@ -436,7 +462,7 @@ export interface MockBackendOptions {
 
 export async function setupMockBackend(options: MockBackendOptions = {}): Promise<MockBackendFixture> {
   // 1. Start mock server
-  const mock = await startMockServer(options.mockServer)
+  const mock = await timed('mock.start', () => startMockServer(options.mockServer))
 
   // 2. Create sandbox + write config
   const sandbox = createSandbox('mock')
@@ -451,7 +477,7 @@ export async function setupMockBackend(options: MockBackendOptions = {}): Promis
 
   // 3. Build env + launch
   const env = buildAppEnv(sandbox)
-  const { app, page } = await launchDesktop(env)
+  const { app, page } = await timed('app.launch', () => launchDesktop(env))
 
   return {
     app,
@@ -460,8 +486,8 @@ export async function setupMockBackend(options: MockBackendOptions = {}): Promis
     mockUrl: mock.url,
     sandbox,
     cleanup: async () => {
-      await app.close().catch(() => undefined)
-      await mock.close()
+      await timed('app.close', () => app.close().catch(() => undefined))
+      await timed('mock.close', () => mock.close())
       saveBackendLog(sandbox)
       sandbox.cleanup()
     },
