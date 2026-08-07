@@ -1,0 +1,111 @@
+#!/command/with-contenv sh
+# ============================================================================
+# Point the model layer at the deployment's gateway.
+#
+# WHY THIS EXISTS
+# ---------------
+# `cli-config.yaml.example` ships `model.base_url` as a **literal**
+# (`https://kopiaiagent.com/v2`), while the key next to it is a `${KOPI_API_KEY}`
+# placeholder that the config loader expands at runtime. So a deployment could
+# inject its key but had no way to inject its endpoint: every container silently
+# talked to the baked-in gateway no matter what it was deployed against.
+#
+# That failure is nasty because it looks like it works — the container starts,
+# the dashboard is fine, the key is correct — and only model calls 401, from
+# inside the pod, where nobody is looking.
+#
+# Resolution order (first hit wins), mirroring 03-kopi-key:
+#   1. $KOPI_HOME/.env already has KOPI_PROXY_BASE_URL — keep it (idempotent;
+#      an operator's later edit survives restarts and image upgrades).
+#   2. KOPI_PROXY_BASE_URL env var (docker -e / compose / k8s) — persist it and
+#      rewrite `model.base_url` in the generated config.yaml to match.
+#   3. Neither — leave the config alone (the baked default still applies), so
+#      existing single-tenant installs keep working untouched.
+#
+# We rewrite the config file rather than relying on `${KOPI_PROXY_BASE_URL}`
+# expansion because the loader has **no default-value syntax**: an unset var
+# would leave the literal `${KOPI_PROXY_BASE_URL}` in place as a base URL,
+# which is strictly worse than the current baked default.
+#
+# Runs after 03-kopi-key so the key is already resolved. Fails soft: a bad or
+# missing config must never stop the container from booting.
+# ============================================================================
+set -eu
+
+KOPI_HOME="${KOPI_HOME:-/opt/data}"
+ENV_FILE="$KOPI_HOME/.env"
+CONFIG_FILE="$KOPI_HOME/config.yaml"
+KOPI_UID="${KOPI_UID:-10000}"
+KOPI_GID="${KOPI_GID:-10000}"
+
+# Persisted value wins, so an operator editing .env isn't overwritten on restart.
+persisted="$(grep -m1 '^KOPI_PROXY_BASE_URL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
+base_url="${persisted:-${KOPI_PROXY_BASE_URL:-}}"
+
+if [ -z "$base_url" ]; then
+    echo "[05-model-base-url] no KOPI_PROXY_BASE_URL — keeping the config's baked default"
+    exit 0
+fi
+
+# Reject anything that isn't an absolute http(s) URL: a typo here silently
+# breaks every model call, so fail loud in the log rather than write garbage.
+case "$base_url" in
+    http://*|https://*) ;;
+    *)
+        echo "[05-model-base-url] ignoring malformed KOPI_PROXY_BASE_URL: $base_url"
+        exit 0
+        ;;
+esac
+# A trailing slash yields '…//chat/completions' against some gateways.
+base_url="${base_url%/}"
+
+# Persist so the value lives with the data volume (survives image upgrades).
+if ! grep -qxF "KOPI_PROXY_BASE_URL=${base_url}" "$ENV_FILE" 2>/dev/null; then
+    mkdir -p "$KOPI_HOME"
+    grep -v '^KOPI_PROXY_BASE_URL=' "$ENV_FILE" > "$ENV_FILE.tmp" 2>/dev/null || true
+    mv "$ENV_FILE.tmp" "$ENV_FILE" 2>/dev/null || true
+    echo "KOPI_PROXY_BASE_URL=${base_url}" >> "$ENV_FILE"
+    chown "$KOPI_UID:$KOPI_GID" "$ENV_FILE" 2>/dev/null || true
+    chmod 600 "$ENV_FILE" 2>/dev/null || true
+    echo "[05-model-base-url] persisted KOPI_PROXY_BASE_URL=${base_url}"
+fi
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "[05-model-base-url] $CONFIG_FILE not generated yet — env alone will apply"
+    exit 0
+fi
+
+current="$(sed -n 's/^[[:space:]]*base_url:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}[[:space:]]*$/\1/p' "$CONFIG_FILE" | head -1)"
+if [ "$current" = "$base_url" ]; then
+    echo "[05-model-base-url] config already points at ${base_url}"
+    exit 0
+fi
+
+# Only the FIRST uncommented `base_url:` is ours; the later ones live in
+# commented provider examples and must stay untouched.
+#
+# awk, not sed: `sed '0,/re/s//…/'` is a GNU extension — on BSD sed (macOS, and
+# some slim base images) it silently does nothing, which is how this script
+# first shipped broken. awk behaves the same everywhere.
+tmp="$CONFIG_FILE.tmp"
+if awk -v url="$base_url" '
+    BEGIN { done = 0 }
+    !done && /^[[:space:]]*base_url:/ {
+        match($0, /^[[:space:]]*/)
+        printf "%sbase_url: \"%s\"\n", substr($0, 1, RLENGTH), url
+        done = 1
+        next
+    }
+    { print }
+' "$CONFIG_FILE" > "$tmp" 2>/dev/null; then
+    mv "$tmp" "$CONFIG_FILE"
+    # 🔴 Written as root by s6 — the runtime user (uid 10000) must own it or the
+    # engine cannot read its own config.
+    chown "$KOPI_UID:$KOPI_GID" "$CONFIG_FILE" 2>/dev/null || true
+    echo "[05-model-base-url] model.base_url: ${current:-<unset>} -> ${base_url}"
+else
+    rm -f "$tmp"
+    echo "[05-model-base-url] could not rewrite $CONFIG_FILE — leaving it as is"
+fi
+
+exit 0
