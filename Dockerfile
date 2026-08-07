@@ -364,6 +364,9 @@ COPY --chmod=0755 docker/cont-init.d/02-reconcile-profiles /etc/cont-init.d/02-r
 # .env, else auto-provision). The image itself never contains a key.
 COPY --chmod=0755 docker/cont-init.d/03-kopi-key /etc/cont-init.d/03-kopi-key
 COPY --chmod=0755 docker/cont-init.d/04-dashboard-auth /etc/cont-init.d/04-dashboard-auth
+# Points model.base_url at the deployment gateway; without it every container
+# talks to the baked-in default no matter what it was deployed against.
+COPY --chmod=0755 docker/cont-init.d/05-model-base-url /etc/cont-init.d/05-model-base-url
 
 # ---------- Runtime ----------
 ENV KOPI_WEB_DIST=/opt/kopi/kopi_cli/web_dist
