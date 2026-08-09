@@ -123,17 +123,29 @@ export async function collectErrorBanners(page: Page | null): Promise<string[]> 
 
   try {
     // Read errors collected by the MutationObserver in the page context.
+    const t0 = Date.now()
     const pageErrors = await page.evaluate(() => {
       const w = window as unknown as { __ERROR_BANNER_GUARD__?: string[] }
 
       return [...(w.__ERROR_BANNER_GUARD__ ?? [])]
     })
+    console.log(`[e2e-timing] banners.evaluate ${Date.now() - t0}ms`)
 
     // Also do a final DOM scan for any alert elements still visible.
+    //
+    // Timed separately from the evaluate above because this is the call with a
+    // hidden cost: Playwright locator actions carry a default timeout, and the
+    // `.catch()` below only runs AFTER it expires — so on an unresponsive page
+    // this blocks rather than returning empty. That is invisible in the current
+    // logs, which is why this function was cleared by reading it rather than by
+    // measuring it (see #32; the same mistake was made about `app.close`, which
+    // measurement later showed to be innocent at a 0.36s median).
+    const t1 = Date.now()
     const domAlerts = await page
       .locator('[role="alert"]')
       .allTextContents()
       .catch(() => [] as string[])
+    console.log(`[e2e-timing] banners.locator ${Date.now() - t1}ms`)
 
     const all = [...new Set([...pageErrors, ...domAlerts.map(t => t.trim()).filter(Boolean)])]
     seenErrors.push(...all)
@@ -192,6 +204,12 @@ base.afterEach(async ({}, testInfo) => {
 
   const errors = await collectErrorBanners(activePage)
 
+  // Closes the bracket opened by `test.end` above. Everything between the two
+  // markers is this hook; anything left over between `hook.afterEach.end` and
+  // the next `test.start` belongs to Playwright itself, not to our code — which
+  // is the distinction the current logs cannot make.
+  console.log('[e2e-timing] hook.afterEach.end')
+
   if (errors.length > 0) {
     throw new Error(
       `Error banner(s) appeared during test "${testInfo.title}":\n` +
@@ -202,8 +220,13 @@ base.afterEach(async ({}, testInfo) => {
 
 // Reset for the next test file.
 base.afterAll(async () => {
+  // The other big gap class runs `mock.close` -> `mock.start`, i.e. across the
+  // file boundary. These two markers say whether that time is spent in a hook
+  // or between them.
+  console.log('[e2e-timing] hook.afterAll.start')
   seenErrors.length = 0
   activePage = null
+  console.log('[e2e-timing] hook.afterAll.end')
 })
 
 export { expect, type Page, type ElectronApplication, _electron }
