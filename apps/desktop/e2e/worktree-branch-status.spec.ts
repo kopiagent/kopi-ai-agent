@@ -82,7 +82,12 @@ test('creating a branch with ctrl-shift-b updates the composer git-status branch
     { timeout: 15_000 },
   )
   await expect(codingRow).toContainText('main')
-  await page.keyboard.press('Control+Shift+B')
+  // The `mod+shift+b` keybind resolves `mod` to Cmd on macOS and Control
+  // elsewhere (src/lib/keybinds/combo.ts: `metaKey || (ctrlKey && !IS_MAC)`),
+  // so a hardcoded Control+Shift+B never fired the worktree dialog on a macOS
+  // dev machine — the test was red locally while passing on the Linux runner.
+  // Match the platform, as warm-resume-jitter.spec.ts already does for mod+N.
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+B' : 'Control+Shift+B')
 
   const branchInput = page.locator('input[placeholder="e.g. my-feature"]').first()
   await expect(branchInput).toBeVisible()
