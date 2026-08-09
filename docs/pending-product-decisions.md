@@ -108,10 +108,12 @@ MCP-persistence 攻击活动）；我们的现状是"**公开可知口令保护�
 
 **已知的真 bug（起点）**：
 
-- `large-session-resume.spec.ts:214` — **本地也失败**（两个变体、两次重试），
-  唯一捕获到 `error-context.md` 的测试；症状是 resume 后
-  `aui_thread-viewport` 文本等待超时（疑消息重复/丢失，用户可感知）
-- `interim-messages.spec.ts:190` — flag OFF 分支，本地也失败
+- ✅ 已定性并立案 **#41**：resume 一个带在途后台推理的会话时，**整个先前历史
+  从 transcript 消失**，只渲染在途回合（数据无损 —— SessionDB 直接探得全部
+  54 行；首次打开正常渲染 —— 是 live-session resume 路径的缺陷）。两个测试
+  变体已标 `test.fixme` 引用 #41，止住每轮 ~3 分钟的失败烧耗；修复归后端
+  `session.resume` 快路径（线索与排除项全在 issue 里）
+- `interim-messages.spec.ts:190` — flag OFF 分支，本地也失败（尚未定性）
 
 **顺序约束**：
 
