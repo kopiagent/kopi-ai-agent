@@ -1,4 +1,4 @@
-"""Nous Portal upstream adapter.
+"""Kopi Official upstream adapter.
 
 Reads the user's Nous OAuth state from ``~/.kopi/auth.json`` through the
 shared runtime resolver, validates or refreshes the inference JWT, then exposes
@@ -43,7 +43,7 @@ _ALLOWED_PATHS: FrozenSet[str] = frozenset(
 
 
 class NousPortalAdapter(UpstreamAdapter):
-    """Proxy upstream for the Nous Portal inference API."""
+    """Proxy upstream for the Kopi Official inference API."""
 
     def __init__(self) -> None:
         # Serialize proxy requests in this process; cross-process token refresh
@@ -56,7 +56,7 @@ class NousPortalAdapter(UpstreamAdapter):
 
     @property
     def display_name(self) -> str:
-        return "Nous Portal"
+        return "Kopi Official"
 
     @property
     def allowed_paths(self) -> FrozenSet[str]:
@@ -99,7 +99,7 @@ class NousPortalAdapter(UpstreamAdapter):
             state = self._read_state()
             if state is None:
                 raise RuntimeError(
-                    "Not logged into Nous Portal. Run `kopi auth add nous` first."
+                    "Not logged into Kopi Official. Run `kopi auth add nous` first."
                 )
 
             try:
@@ -119,17 +119,17 @@ class NousPortalAdapter(UpstreamAdapter):
                         quarantine_reason="proxy_refresh_failure",
                     )
                 raise RuntimeError(
-                    f"Failed to refresh Nous Portal credentials: {exc}"
+                    f"Failed to refresh Kopi Official credentials: {exc}"
                 ) from exc
             except Exception as exc:
                 raise RuntimeError(
-                    f"Failed to refresh Nous Portal credentials: {exc}"
+                    f"Failed to refresh Kopi Official credentials: {exc}"
                 ) from exc
 
             runtime_key = refreshed.get("api_key")
             if not runtime_key:
                 raise RuntimeError(
-                    "Nous Portal refresh did not return a usable inference JWT. "
+                    "Kopi Official refresh did not return a usable inference JWT. "
                     "Try `kopi auth add nous` to re-authenticate."
                 )
 

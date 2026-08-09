@@ -92,7 +92,7 @@ describe('/billing slash command (overlay-driven)', () => {
   it('not logged in → prompts to log in, no overlay', async () => {
     const { run, sys } = buildCtx({ 'billing.state': { ...ownerState(), logged_in: false, ok: true } })
     await run('')
-    expect(printed(sys)).toContain('Not logged into Nous Portal')
+    expect(printed(sys)).toContain('Not logged into Kopi Official')
     expect(getOverlayState().billing).toBeNull()
   })
 
@@ -523,7 +523,7 @@ describe('/topup gateway mode (no portal login, kopi_ virtual key)', () => {
     const { run, sys, calls } = buildCtx({ 'billing.state': { ...ownerState(), logged_in: false, ok: true } })
     await run('100')
     await settle()
-    expect(printed(sys)).toContain('Not logged into Nous Portal')
+    expect(printed(sys)).toContain('Not logged into Kopi Official')
     expect(calls.some(c => c.method === 'billing.topup_checkout')).toBe(false)
   })
 })

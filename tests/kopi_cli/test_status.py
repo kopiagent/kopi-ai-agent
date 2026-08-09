@@ -107,7 +107,11 @@ def test_show_status_reports_nous_auth_error(monkeypatch, capsys, tmp_path):
     status_mod.show_status(SimpleNamespace(all=False, deep=False))
 
     output = capsys.readouterr().out
-    assert "Nous Portal   ✗ not logged in (run: kopi portal)" in output
+    # Not one literal: the label is padded to a fixed column width, so baking
+    # the exact run of spaces in here makes the assertion fail whenever a
+    # longer provider name widens the column — which is what it just did.
+    assert "Kopi Official" in output
+    assert "✗ not logged in (run: kopi portal)" in output
     assert "Error:      Refresh session has been revoked" in output
     assert "Access exp:" in output
     assert "Key exp:" in output
@@ -158,7 +162,8 @@ def test_show_status_reports_nous_inference_key_without_portal_login(monkeypatch
     status_mod.show_status(SimpleNamespace(all=False, deep=False))
 
     output = capsys.readouterr().out
-    assert "Nous Portal   ✗ not logged in (Nous inference key configured)" in output
+    assert "Kopi Official" in output
+    assert "✗ not logged in (Nous inference key configured)" in output
     assert "Inference:  https://inference.example.com/v1" in output
     assert "Nous inference credentials are configured" in output
 
@@ -351,7 +356,7 @@ class TestShowStatusXaiOAuth:
         status_mod.show_status(SimpleNamespace(all=False, deep=False))
         out = capsys.readouterr().out
 
-        assert "Nous Portal" in out
+        assert "Kopi Official" in out
         assert "MiniMax OAuth" in out
 
     def test_status_function_exception_does_not_crash(self, monkeypatch, capsys, tmp_path):

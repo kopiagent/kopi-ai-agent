@@ -448,7 +448,7 @@ export const topupCommands: SlashCommand[] = [
                 return
               }
 
-              sys('💳 Not logged into Nous Portal — run /portal to log in, then /topup.')
+              sys('💳 Not logged into Kopi Official — run /portal to log in, then /topup.')
 
               return
             }

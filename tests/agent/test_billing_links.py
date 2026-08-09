@@ -16,7 +16,7 @@ from agent.billing_links import (
 def test_nous_route_by_provider_slug():
     block = build_billing_block(provider="nous", base_url="", model="kopi-4")
     assert block.is_nous is True
-    assert block.provider_label == "Nous Portal"
+    assert block.provider_label == "Kopi Official"
     # Nous always resolves an in-app/portal billing URL as a fallback.
     assert block.billing_url and "kopiaiagent.com" in block.billing_url  # KOPI rebrand: nous_portal_billing_url -> kopiaiagent.com/portal
 

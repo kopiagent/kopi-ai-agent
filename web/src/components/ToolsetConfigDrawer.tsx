@@ -302,7 +302,7 @@ export function ToolsetConfigDrawer({ toolset, profile, onClose, onChanged }: Pr
                       )}
                       {provider.requires_nous_auth && (
                         <Badge tone="outline" className="text-xs">
-                          Nous Portal
+                          Kopi Official
                         </Badge>
                       )}
                     </div>

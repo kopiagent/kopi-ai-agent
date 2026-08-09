@@ -71,7 +71,7 @@ def _write_auth_store(kopi_home: Path, nous_state: Dict[str, Any]) -> Path:
 def test_nous_adapter_metadata():
     adapter = NousPortalAdapter()
     assert adapter.name == "nous"
-    assert adapter.display_name == "Nous Portal"
+    assert adapter.display_name == "Kopi Official"
     assert "/chat/completions" in adapter.allowed_paths
     assert "/embeddings" in adapter.allowed_paths
     assert "/completions" in adapter.allowed_paths
@@ -859,7 +859,7 @@ def test_cmd_proxy_status_runs(capsys, tmp_path, monkeypatch):
     assert rc == 0
     out = capsys.readouterr().out
     assert "nous" in out
-    assert "Nous Portal" in out
+    assert "Kopi Official" in out
     assert "not logged in" in out
 
 
@@ -871,7 +871,7 @@ def test_cmd_proxy_providers_runs(capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert "nous" in out
-    assert "Nous Portal" in out
+    assert "Kopi Official" in out
 
 
 def test_cmd_proxy_start_refuses_unknown_provider(capsys):

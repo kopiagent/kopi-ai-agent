@@ -194,7 +194,7 @@ def show_status(args):
     from kopi_cli.auth import get_anthropic_key
     anthropic_value = get_anthropic_key()
     anthropic_display = redact_key(anthropic_value)
-    print(f"  {'Anthropic':<12}  {check_mark(bool(anthropic_value))} {anthropic_display}")
+    print(f"  {'Anthropic':<13}  {check_mark(bool(anthropic_value))} {anthropic_display}")
 
     # =========================================================================
     # Auth Providers (OAuth)
@@ -250,7 +250,7 @@ def show_status(args):
     else:
         nous_label = "not logged in (run: kopi portal)"
     print(
-        f"  {'Nous Portal':<12}  {check_mark(nous_logged_in)} "
+        f"  {'Kopi Official':<13}  {check_mark(nous_logged_in)} "
         f"{nous_label}"
     )
     portal_url = nous_status.get("portal_base_url") or "(unknown)"
@@ -276,7 +276,7 @@ def show_status(args):
 
     codex_logged_in = bool(codex_status.get("logged_in"))
     print(
-        f"  {'OpenAI Codex':<12}  {check_mark(codex_logged_in)} "
+        f"  {'OpenAI Codex':<13}  {check_mark(codex_logged_in)} "
         f"{'logged in' if codex_logged_in else 'not logged in (run: kopi model)'}"
     )
     codex_auth_file = codex_status.get("auth_store")
@@ -290,7 +290,7 @@ def show_status(args):
 
     qwen_logged_in = bool(qwen_status.get("logged_in"))
     print(
-        f"  {'Qwen OAuth':<12}  {check_mark(qwen_logged_in)} "
+        f"  {'Qwen OAuth':<13}  {check_mark(qwen_logged_in)} "
         f"{'logged in' if qwen_logged_in else 'not logged in (run: qwen auth qwen-oauth)'}"
     )
     qwen_auth_file = qwen_status.get("auth_file")
@@ -305,7 +305,7 @@ def show_status(args):
 
     minimax_logged_in = bool(minimax_status.get("logged_in"))
     print(
-        f"  {'MiniMax OAuth':<12}  {check_mark(minimax_logged_in)} "
+        f"  {'MiniMax OAuth':<13}  {check_mark(minimax_logged_in)} "
         f"{'logged in' if minimax_logged_in else 'not logged in (run: kopi auth add minimax-oauth)'}"
     )
     minimax_region = minimax_status.get("region")
@@ -327,7 +327,7 @@ def show_status(args):
 
     xai_oauth_logged_in = bool(xai_oauth_status.get("logged_in"))
     print(
-        f"  {'xAI OAuth':<12}  {check_mark(xai_oauth_logged_in)} "
+        f"  {'xAI OAuth':<13}  {check_mark(xai_oauth_logged_in)} "
         f"{'logged in' if xai_oauth_logged_in else 'not logged in (run: kopi auth add xai-oauth)'}"
     )
     xai_auth_file = xai_oauth_status.get("auth_store")
@@ -346,9 +346,9 @@ def show_status(args):
         print()
         print(color("◆ Nous Tool Gateway", Colors.CYAN, Colors.BOLD))
         if not features.nous_auth_present:
-            print("  Nous Portal   ✗ not logged in")
+            print("  Kopi Official   ✗ not logged in")
         else:
-            print("  Nous Portal   ✓ managed tools available")
+            print("  Kopi Official   ✓ managed tools available")
         for feature in features.items():
             if feature.managed_by_nous:
                 state = "active via Nous subscription"

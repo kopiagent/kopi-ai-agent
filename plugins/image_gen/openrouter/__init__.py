@@ -1,13 +1,13 @@
-"""OpenRouter-compatible image generation backend (OpenRouter + Nous Portal).
+"""OpenRouter-compatible image generation backend (OpenRouter + Kopi Official).
 
-Both OpenRouter and the Nous Portal inference endpoint speak the same
+Both OpenRouter and the Kopi Official inference endpoint speak the same
 OpenAI-style ``/chat/completions`` image-generation protocol: send
 ``modalities: ["image", "text"]`` with an image-output model (e.g.
 ``google/gemini-3-pro-image``), pass reference images as ``image_url``
 content parts for grounding, and read the generated images back from
 ``choices[0].message.images[].image_url.url`` (a ``data:image/...;base64`` URI).
 
-Nous Portal proxies OpenRouter, so one implementation services both — we only
+Kopi Official proxies OpenRouter, so one implementation services both — we only
 swap the resolved ``(base_url, api_key)``. Credentials are resolved through the
 agent's existing :func:`~kopi_cli.runtime_provider.resolve_runtime_provider`,
 which already understands OpenRouter's key pool and the Nous OAuth device-code
@@ -176,7 +176,7 @@ def _dedupe_models(models: list[str]) -> list[str]:
 class OpenRouterCompatImageProvider(ImageGenProvider):
     """Image generation over an OpenRouter-compatible chat-completions endpoint.
 
-    Instantiated once per backend (OpenRouter, Nous Portal). The two differ only
+    Instantiated once per backend (OpenRouter, Kopi Official). The two differ only
     in which runtime provider supplies ``(base_url, api_key)`` and in the config
     namespace used for the model override.
     """
@@ -336,7 +336,7 @@ class OpenRouterCompatImageProvider(ImageGenProvider):
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            # OpenRouter attribution headers (harmless against Nous Portal).
+            # OpenRouter attribution headers (harmless against Kopi Official).
             "HTTP-Referer": "https://github.com/NousResearch/kopi-ai-agent",
             "X-Title": "Kopi Agent",
         }
@@ -505,14 +505,14 @@ def _build_providers() -> List[OpenRouterCompatImageProvider]:
         ),
         OpenRouterCompatImageProvider(
             provider_name="nous",
-            display_name="Nous Portal",
+            display_name="Kopi Official",
             runtime_name="nous",
             config_key="nous",
             model_env_var="NOUS_IMAGE_MODEL",
             setup_schema={
-                "name": "Nous Portal (image)",
+                "name": "Kopi Official (image)",
                 "badge": "subscription",
-                "tag": "Reference-grounded image generation via Nous Portal (OpenRouter-backed)",
+                "tag": "Reference-grounded image generation via Kopi Official (OpenRouter-backed)",
                 "env_vars": [],
                 "requires_nous_auth": True,
             },
@@ -521,6 +521,6 @@ def _build_providers() -> List[OpenRouterCompatImageProvider]:
 
 
 def register(ctx: Any) -> None:
-    """Register the OpenRouter + Nous Portal image gen providers."""
+    """Register the OpenRouter + Kopi Official image gen providers."""
     for provider in _build_providers():
         ctx.register_image_gen_provider(provider)
