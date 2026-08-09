@@ -15,7 +15,13 @@ from __future__ import annotations
 import json
 import time
 
-from tests.docker.conftest import docker_exec, docker_exec_sh, start_container
+from tests.docker.conftest import (
+    docker_exec,
+    docker_exec_sh,
+    restart_container,
+    start_container,
+    wait_for_docker_logs,
+)
 
 
 def test_dashboard_not_running_by_default(
@@ -269,3 +275,99 @@ def test_dashboard_insecure_env_var_no_longer_bypasses_gate(
         "/api/status must report auth_required=True with --insecure on a "
         f"non-loopback bind. Got: {status!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# tier-3 credential seeding — regression guards for the shared-default hole.
+# Before this, 04-dashboard-auth fell back to the literal `kopi-admin`, so
+# every instance of the published image sat behind one publicly-known password
+# on a dashboard that binds 0.0.0.0 by default. tier 3 now generates a
+# per-instance password on first boot and prints it once to the container log.
+#
+# Both tests wait on docker logs rather than reading files immediately:
+# start_container's readiness signal (profile=default) is written by
+# 02-reconcile-profiles, which sorts BEFORE 04 — the same cont-init race that
+# produced test_model_base_url.py's impossible-looking first CI round.
+# ---------------------------------------------------------------------------
+
+
+def test_generated_password_is_per_instance_and_logged_once(
+    built_image: str, container_name: str,
+) -> None:
+    start_container(built_image, container_name, cmd="sleep 240")
+
+    logs = wait_for_docker_logs(
+        container_name, "generated dashboard password:", deadline_s=180,
+    )
+
+    line = next(
+        ln for ln in logs.splitlines() if "generated dashboard password:" in ln
+    )
+    password = line.split("generated dashboard password:", 1)[1].split()[0]
+
+    assert password != "kopi-admin", (
+        "tier 3 must generate, not fall back to the old shared literal"
+    )
+    assert len(password) >= 12, f"generated password too short: {password!r}"
+
+    env = docker_exec_sh(container_name, "cat /opt/data/.env").stdout
+    assert "KOPI_DASHBOARD_BASIC_AUTH_USERNAME=" in env
+    assert "KOPI_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=scrypt$" in env
+    assert password not in env, (
+        "only the scrypt hash may be persisted, never the plaintext"
+    )
+
+    # The hash must actually verify against the logged password — otherwise
+    # the operator copies a value from the logs that the dashboard rejects.
+    check = docker_exec_sh(
+        container_name,
+        "PYTHONPATH=/opt/kopi /opt/kopi/.venv/bin/python - <<'PY'\n"
+        "from plugins.dashboard_auth.basic import _verify_password\n"
+        "import re\n"
+        "env = open('/opt/data/.env').read()\n"
+        "hash_ = re.search(r'^KOPI_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=(.+)$', env, re.M).group(1)\n"
+        f"print(_verify_password({password!r}, hash_))\n"
+        "PY",
+    )
+    assert check.stdout.strip() == "True", (
+        f"logged password does not verify against the persisted hash: "
+        f"{check.stdout!r} {check.stderr!r}"
+    )
+
+    # tier 1 idempotence: a restart must neither regenerate nor re-log the
+    # password. docker logs accumulate across restarts, so after boot #2 the
+    # "already present" line exists and "generated" still appears exactly once.
+    restart_container(container_name)
+    logs = wait_for_docker_logs(
+        container_name, "dashboard credential already present", deadline_s=180,
+    )
+    assert logs.count("generated dashboard password:") == 1, (
+        "the generated password must be logged exactly once, on first boot"
+    )
+
+
+def test_env_password_override_beats_generation(
+    built_image: str, container_name: str,
+) -> None:
+    """tier 2: an injected password is used as-is — nothing is generated,
+    nothing plaintext lands in .env."""
+    start_container(
+        built_image, container_name,
+        "KOPI_DASHBOARD_BASIC_AUTH_PASSWORD=operator-chosen-pw",
+        cmd="sleep 120",
+    )
+
+    logs = wait_for_docker_logs(
+        container_name, "seeded dashboard credential", deadline_s=180,
+    )
+
+    assert "source=env" in logs, "injected password should be tier 2 (source=env)"
+    assert "generated dashboard password:" not in logs, (
+        "tier 3 generation must not run when a password is injected"
+    )
+
+    env = docker_exec_sh(container_name, "cat /opt/data/.env").stdout
+    assert "operator-chosen-pw" not in env, (
+        "the injected plaintext must never be persisted — only its hash"
+    )
+    assert "KOPI_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=scrypt$" in env

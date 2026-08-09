@@ -34,6 +34,48 @@ commit `50d65583`），默认端点已指向 `kopiaiagent.com`
 **做法建议**：一个 PR，逐 URL 给出去向决定；每处改动跑
 `grep -rn 'nousresearch' tests/` 找配套断言一起改。
 
+### 1a. 网关侧能提供什么（2026-08-10 对照 Kopi-TokenMax 核对）
+
+> 证据来源：`/Users/zhaokunming/1_code/kopi-proxy/Kopi-TokenMax` 的
+> `docs/OPERATIONS.md` §七（全部线上路径，2026-08-05 逐个实测）、
+> `docs/SAAS_INTEGRATION.md`、`litellm/proxy/kopi_billing/router.py`。
+
+**🔴 先于一切的发现：`kopiaiagent.com` 已下线。** 本 CLI 的默认端点
+（`kopi_cli/auth.py:80-81`）指向它，但网关侧文档明确记载
+"旧默认指向**已下线**的 kopiaiagent.com"（SAAS_INTEGRATION.md，SaaS 侧因此
+删光了该域名的所有代码默认值）。真实生产网关是 **`https://bill.kopiagent.ai`**
+（Let's Encrypt，2026-08-05 上线实测）。也就是说第 1 项的前置条件今天不成立
+不止于"第三方 URL"——**我们自己的默认端点也是死的**（DNS/证书现状须核实）。
+先决策：把 `kopiaiagent.com` 指到网关，还是 CLI 默认端点改成 `bill.kopiagent.ai`。
+
+逐 URL 对照（网关今天真实存在、实测过的替代品）：
+
+| 现硬编码 URL | 能否替代 | 网关/生态现状 |
+|---|---|---|
+| `inference-api.nousresearch.com` | ✅ 现成 | `https://bill.kopiagent.ai/v1`（OpenAI 兼容，流式/非流式实测 200；存量老 key 走 `/kp/v1`）。鉴权用 `kopi_` 前缀 virtual key；对外模型名 `kopi-o` / `kopi-siew-dai` / `kopi-o-flash` / `kopi-siew-dai-flash`（MiMo）+ 3 个 `kopi-grok-*`（2026-08-06 加），`GET /v1/models` 为准 |
+| `portal.nousresearch.com/manage-subscription` | ⚠️ 只有 API，没有页面 | 网关有 `POST /kopi/subscribe/checkout`（客户 key + `price_id` → Stripe 订阅支付页 URL，router.py:204）；订阅入账/退款/争议/fair-use 上限均已实现（近期 commits）。但"查看/退订已有订阅"的**用户页面不存在**——退订目前是 SaaS 服务端调 `/kopi/admin/suspend` 的动作。页面归 Kopi-Web（本地 4002），**Kopi-Web 尚无生产域名** |
+| `portal.nousresearch.com/billing` | ⚠️ 只有 API，没有页面 | 数据全齐且实测 200：`GET /kopi/usage/balance`、`GET /kopi/usage/summary?days=N`（客户 key，含日曲线/模型分布/充值记录）；充值 `POST /kopi/topup/checkout {"amount_usd": N}` → Stripe 支付页 URL（验签/入账/幂等全在网关）。账单**页面**同样归 Kopi-Web，无生产域名 |
+| `kopi-ai-agent.nousresearch.com`（文档/安装站） | ❌ 不存在 | 网关只有 `/redoc`（API 文档，实测 200；注意 `/docs` 是 404）。产品文档站/安装站在整个生态里还没有 |
+
+**对本仓库的直接推论：**
+
+1. **TUI `/topup`（第 6 项提到的待验证项）今天就能接真后端**：用户自己的
+   key 调 `POST /kopi/topup/checkout` 拿 Stripe URL 开浏览器即可，无需 admin
+   权限。⚠️ 支付完成的回跳目前指向网关 `/ui/` 登录页（`KOPI_TOPUP_SUCCESS_URL`
+   等 SaaS 有生产域名后才会改）——体验上要有预期。Stripe live key 已配置、
+   checkout 已能创建 `cs_live_` session；按 OPERATIONS.md §二，仅剩一笔真卡
+   付款验证服务端投递。
+2. **`kopi setup` 的注册引导暂时没有可指的真实地址**：发卡是服务端动作
+   （`POST /kopi/admin/provision`，admin token，终端用户不可直调），正确去向
+   是 Kopi-Web 注册页（其服务端注册时调 provision 发 `kopi_` key）——而
+   Kopi-Web 没有生产域名。结论：第 1 项里 setup.py 的 3 处注册 URL **现在改
+   等于换成我们自己的 404**，被前置条件卡死，先解 Kopi-Web 域名。
+3. billing_links.py 的 3 处账单链接同理被卡；但如果接受"CLI 内直接渲染余额/
+   用量而不是丢一个网页链接"，`/kopi/usage/balance` + `/kopi/usage/summary`
+   今天就够用（注意 spend 异步落账，调用后 10–15s 才可见）。
+4. 网关另有管理面 MCP（`POST /kopi/mcp/`，7 tools，admin token）——那是运营
+   侧工具，**不要**进 C 端 CLI。
+
 ---
 
 ## 2. Docker 镜像的默认安全姿态
@@ -50,16 +92,20 @@ commit `50d65583`），默认端点已指向 `kopiaiagent.com`
 MCP-persistence 攻击活动）；我们的现状是"**公开可知口令保护的公开 dashboard**"。
 镜像现已发布到 GHCR（虽然还是 private），一旦转 Public 这个面直接暴露。
 
-**候选方案**（当时给过，未决）：
+**✅ 已定并实现（2026-08-10）：方案 B。** tier 3 从共享字面量 `kopi-admin`
+改为首启生成每实例随机口令（`secrets.token_urlsafe(12)`），打进容器日志一次；
+`.env` 只存 scrypt 哈希。tier 1（幂等）/ tier 2（env 注入）语义不变。
 
-| 方案 | 代价 |
-|---|---|
-| A. 默认绑 `127.0.0.1` | 开箱仍可用（端口映射可达），但改变现有部署方式 |
-| B. tier 3 改为首启生成随机口令并打到启动日志 | 消除共享口令，仍开箱可用；很多镜像的通行做法 |
-| C. 保持现状，只文档警示 | 零改动；暴露面照旧 |
+**方案 A 被否的原因**：portal 供给的实例依赖 `0.0.0.0` 绑定 + OAuth 门
+（`test_dashboard_oauth_gate_engages_on_non_loopback_bind` 注释明写
+"every portal-provisioned agent binds 0.0.0.0"），改绑 loopback 破坏产品
+自己的部署模型。
 
-**测试牵连**：`tests/docker/test_dashboard.py` 已按"provider 永远存在"改写
-（4c277213），方案 A/B 落地时它的三条断言需要同步审一遍。
+行为守卫：`tests/docker/test_dashboard.py` 新增两个 tier-3 测试
+（生成口令可验证哈希、重启只记录一次、env 注入压过生成、明文永不落盘）。
+
+原候选方案存档：A. 默认绑 `127.0.0.1`（破坏 portal 部署）；
+B. 首启随机口令（已采纳）；C. 保持现状仅文档警示。
 
 ---
 

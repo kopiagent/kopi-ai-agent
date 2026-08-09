@@ -522,13 +522,13 @@ for p in pathlib.Path('tests').rglob('test_*.py'):
    **永远走不到**。任何上游测试若以"没有 provider"为前提,在这里都不成立 ——
    改写成"门仍然拦截受保护路由(401)",不要 skip(见 `tests/docker/test_dashboard.py`)。
 
-   📌 **已知安全姿态,尚未决定是否改(2026-08-05 记录)**:镜像默认
-   `KOPI_DASHBOARD=1`(Dockerfile)+ `dash_host="${KOPI_DASHBOARD_HOST:-0.0.0.0}"`
-   (`docker/s6-rc.d/dashboard/run:30`),tier 3 口令回退到 `kopi-admin`,
-   **该镜像所有实例共享同一口令**直到有人改(Dockerfile 注释自己写明了)。
-   上游那次硬化是为了堵"未认证的公开 dashboard";我们变成了"公开可知口令保护的公开 dashboard"。
-   缓解:`KOPI_DASHBOARD_BASIC_AUTH_PASSWORD`(tier 2)/ 改 volume 的 `.env` / `KOPI_DASHBOARD=0`。
-   要动的话是产品决策,别夹在同步 PR 里。
+   📌 **安全姿态已定(2026-08-10)**:tier 3 不再回退到共享字面量 `kopi-admin`,
+   改为**首启生成每实例随机口令并打进容器日志一次**(tier 1 幂等,后续 boot 不再出现;
+   `.env` 只存 scrypt 哈希)。tier 1/tier 2 语义未变;`KOPI_DASHBOARD=1` + 默认
+   `0.0.0.0` 绑定**保留** —— portal 供给的实例依赖公网绑定 + OAuth 门
+   (见 `test_dashboard_oauth_gate_engages_on_non_loopback_bind` 的注释),
+   改绑 loopback 会破坏产品自己的部署模型。行为守卫在
+   `tests/docker/test_dashboard.py` 的两个 tier-3 测试里。
 
 5. **容器镜像发到 GHCR,不是 Docker Hub(v17 起)**:`ghcr.io/kopiagent/kopi-ai-agent`。
    用内置 `GITHUB_TOKEN` + job 级 `permissions: packages: write` 认证,
