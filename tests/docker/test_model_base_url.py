@@ -28,6 +28,7 @@ corresponds to a way it has broken or could break silently:
 from __future__ import annotations
 
 import subprocess
+import time
 
 from tests.docker.conftest import (
     docker_exec_sh,
@@ -48,16 +49,10 @@ def _read(container: str, path: str) -> str:
 def _script_log(container: str) -> str:
     """The 05-model-base-url lines from ``docker logs``.
 
-    The first CI run of these tests failed in a way static analysis could not
-    close: `.env` carried the injected value (so the script's persist block
-    ran) while config.yaml kept the baked default (so the rewrite apparently
-    did not) — and the Dockerfile installs the script correctly, the example
-    config's `base_url:` line is clean and uncommented, and nothing else
-    writes KOPI_PROXY_BASE_URL. The script's own echo lines are the only
-    record of which branch it took. Under s6-overlay, cont-init stdout goes to
-    the container's stdout — i.e. ``docker logs``, read from the host —
-    nothing in docker/ writes a boot log file. Attach them to every assertion
-    instead of guessing.
+    Under s6-overlay, cont-init stdout is the container's stdout — ``docker
+    logs``, read from the host. (`/opt/data/logs/container-boot.log` is NOT a
+    general boot log: it is written by ``kopi_cli/container_boot.py`` from
+    02-reconcile-profiles and carries only profile lines.)
     """
     r = subprocess.run(
         ["docker", "logs", container],
@@ -69,6 +64,61 @@ def _script_log(container: str) -> str:
     ]
 
     return "\n".join(lines) or "(no 05-model-base-url lines in docker logs)"
+
+
+# Every branch of the script ends in exactly one of these lines. Matching the
+# terminal line — rather than any script output — matters: "persisted ..." is
+# echoed BEFORE the config rewrite, so waiting on just any line would leave a
+# window where .env is written and config.yaml is not yet.
+_TERMINAL = (
+    "keeping the config's baked default",
+    "ignoring malformed KOPI_PROXY_BASE_URL",
+    "env alone will apply",
+    "config already points at",
+    "model.base_url:",
+    "could not rewrite",
+)
+
+
+def _wait_for_script(container: str, *, min_count: int = 1, deadline_s: float = 180.0) -> None:
+    """Block until 05-model-base-url has COMPLETED ``min_count`` times.
+
+    The first CI run of these tests produced impossible-looking failures —
+    config.yaml unrewritten while .env had the value, an operator edit
+    "clobbered on restart", `sed: can't read /opt/data/.env` — and every one
+    of them was this race, not the script:
+
+    ``start_container`` returns when ``profile=default`` appears in the boot
+    log. That line is written by 02-reconcile-profiles — which sorts BEFORE
+    03-kopi-key, 04-dashboard-auth and 05-model-base-url. So "ready" fires
+    three cont-init scripts early, and 03 can stall for seconds on
+    auto-provision curls against the (deliberately unreachable) test gateway.
+    A test that reads config.yaml or .env immediately is reading a container
+    that has not finished booting. Two of the "passing" tests only passed
+    because they assert absence, which a half-booted container satisfies
+    vacuously.
+
+    ``min_count=2`` after a restart: ``docker logs`` accumulates across
+    restarts, so completion of the second boot means two terminal lines.
+    """
+    end = time.monotonic() + deadline_s
+
+    while time.monotonic() < end:
+        log = _script_log(container)
+        done = sum(
+            1 for line in log.splitlines()
+            if any(marker in line for marker in _TERMINAL)
+        )
+
+        if done >= min_count:
+            return
+
+        time.sleep(1.0)
+
+    raise AssertionError(
+        f"05-model-base-url did not complete {min_count}x within {deadline_s}s.\n"
+        f"script log so far:\n{_script_log(container)}"
+    )
 
 
 def _first_base_url(config_text: str) -> str | None:
@@ -98,6 +148,7 @@ def test_env_var_rewrites_config_and_persists(built_image, container_name):
         f"KOPI_PROXY_BASE_URL={GATEWAY}",
         cmd="sleep 120",
     )
+    _wait_for_script(container_name)
 
     assert _first_base_url(_read(container_name, CONFIG)) == GATEWAY, (
         "model.base_url should have been rewritten to the injected gateway\n"
@@ -116,6 +167,10 @@ def test_unset_leaves_the_baked_default_alone(built_image, container_name):
     must keep booting against the baked-in default.
     """
     start_container(built_image, container_name, cmd="sleep 120")
+    # Absence assertions are vacuously true on a half-booted container, so this
+    # test NEEDS the completion wait more than any other — without it, it
+    # passes before the script has had the chance to misbehave.
+    _wait_for_script(container_name)
 
     config = _read(container_name, CONFIG)
 
@@ -145,6 +200,7 @@ def test_persisted_value_survives_a_restart_with_a_different_env(
         f"KOPI_PROXY_BASE_URL={GATEWAY}",
         cmd="sleep 120",
     )
+    _wait_for_script(container_name)
 
     # The operator edits the persisted value; the -e flag still says GATEWAY.
     edited = "https://edited.example.com/v3"
@@ -164,6 +220,7 @@ def test_persisted_value_survives_a_restart_with_a_different_env(
     )
 
     restart_container(container_name)
+    _wait_for_script(container_name, min_count=2)
 
     assert f"KOPI_PROXY_BASE_URL={edited}" in _read(container_name, ENV_FILE), (
         "the operator's edit was overwritten by the environment on restart\n"
@@ -187,6 +244,7 @@ def test_malformed_value_is_ignored_not_written(built_image, container_name):
         "KOPI_PROXY_BASE_URL=not-a-url",
         cmd="sleep 120",
     )
+    _wait_for_script(container_name)
 
     assert "not-a-url" not in _read(container_name, CONFIG), (
         "a malformed base_url must never reach the config"
@@ -204,6 +262,7 @@ def test_trailing_slash_is_stripped(built_image, container_name):
         f"KOPI_PROXY_BASE_URL={GATEWAY}/",
         cmd="sleep 120",
     )
+    _wait_for_script(container_name)
 
     assert _first_base_url(_read(container_name, CONFIG)) == GATEWAY
     assert f"KOPI_PROXY_BASE_URL={GATEWAY}\n" in _read(container_name, ENV_FILE)
@@ -225,6 +284,7 @@ def test_commented_provider_examples_are_left_untouched(built_image, container_n
         f"KOPI_PROXY_BASE_URL={GATEWAY}",
         cmd="sleep 120",
     )
+    _wait_for_script(container_name)
 
     config = _read(container_name, CONFIG)
     commented = [
