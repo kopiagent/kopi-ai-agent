@@ -27,6 +27,8 @@ corresponds to a way it has broken or could break silently:
 """
 from __future__ import annotations
 
+import subprocess
+
 from tests.docker.conftest import (
     docker_exec_sh,
     restart_container,
@@ -41,6 +43,32 @@ ENV_FILE = "/opt/data/.env"
 def _read(container: str, path: str) -> str:
     """Return a file's contents, or '' when it does not exist."""
     return docker_exec_sh(container, f"cat {path} 2>/dev/null || true").stdout
+
+
+def _script_log(container: str) -> str:
+    """The 05-model-base-url lines from ``docker logs``.
+
+    The first CI run of these tests failed in a way static analysis could not
+    close: `.env` carried the injected value (so the script's persist block
+    ran) while config.yaml kept the baked default (so the rewrite apparently
+    did not) — and the Dockerfile installs the script correctly, the example
+    config's `base_url:` line is clean and uncommented, and nothing else
+    writes KOPI_PROXY_BASE_URL. The script's own echo lines are the only
+    record of which branch it took. Under s6-overlay, cont-init stdout goes to
+    the container's stdout — i.e. ``docker logs``, read from the host —
+    nothing in docker/ writes a boot log file. Attach them to every assertion
+    instead of guessing.
+    """
+    r = subprocess.run(
+        ["docker", "logs", container],
+        capture_output=True, text=True, timeout=15,
+    )
+    lines = [
+        line for line in (r.stdout + r.stderr).splitlines()
+        if "05-model-base-url" in line
+    ]
+
+    return "\n".join(lines) or "(no 05-model-base-url lines in docker logs)"
 
 
 def _first_base_url(config_text: str) -> str | None:
@@ -72,10 +100,12 @@ def test_env_var_rewrites_config_and_persists(built_image, container_name):
     )
 
     assert _first_base_url(_read(container_name, CONFIG)) == GATEWAY, (
-        "model.base_url should have been rewritten to the injected gateway"
+        "model.base_url should have been rewritten to the injected gateway\n"
+        f"script log:\n{_script_log(container_name)}"
     )
     assert f"KOPI_PROXY_BASE_URL={GATEWAY}" in _read(container_name, ENV_FILE), (
-        "the value must be persisted to the data volume, or it is lost on upgrade"
+        "the value must be persisted to the data volume, or it is lost on upgrade\n"
+        f"script log:\n{_script_log(container_name)}"
     )
 
 
@@ -118,18 +148,30 @@ def test_persisted_value_survives_a_restart_with_a_different_env(
 
     # The operator edits the persisted value; the -e flag still says GATEWAY.
     edited = "https://edited.example.com/v3"
-    docker_exec_sh(
+    sed = docker_exec_sh(
         container_name,
         f"sed -i 's#^KOPI_PROXY_BASE_URL=.*#KOPI_PROXY_BASE_URL={edited}#' {ENV_FILE}",
         user="root",
     )
+
+    # Prove the edit landed BEFORE restarting. docker_exec_sh does not check
+    # return codes, so a silently failing sed would otherwise be reported as
+    # "the edit was overwritten on restart" — a different (and scarier) bug
+    # than the one that actually happened.
+    assert sed.returncode == 0, f"sed failed: {sed.stderr!r}"
+    assert f"KOPI_PROXY_BASE_URL={edited}" in _read(container_name, ENV_FILE), (
+        "the sed edit never landed in .env — test harness problem, not the script"
+    )
+
     restart_container(container_name)
 
     assert f"KOPI_PROXY_BASE_URL={edited}" in _read(container_name, ENV_FILE), (
-        "the operator's edit was overwritten by the environment on restart"
+        "the operator's edit was overwritten by the environment on restart\n"
+        f"script log:\n{_script_log(container_name)}"
     )
     assert _first_base_url(_read(container_name, CONFIG)) == edited, (
-        "config should follow the persisted value, not the stale -e flag"
+        "config should follow the persisted value, not the stale -e flag\n"
+        f"script log:\n{_script_log(container_name)}"
     )
 
 
@@ -196,5 +238,6 @@ def test_commented_provider_examples_are_left_untouched(built_image, container_n
         )
 
     assert config.count(GATEWAY) == 1, (
-        f"expected exactly one rewrite, found {config.count(GATEWAY)}"
+        f"expected exactly one rewrite, found {config.count(GATEWAY)}\n"
+        f"script log:\n{_script_log(container_name)}"
     )
