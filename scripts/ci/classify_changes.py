@@ -42,7 +42,11 @@ import sys
 
 _FRONTEND = ("ui-tui/", "web/", "apps/")  # TS typecheck-matrix packages
 _ROOT_NPM = {"package.json", "package-lock.json"}  # shifts every package's tree
-_DOCKER_META = ("docker/", ".hadolint.yml", "Dockerfile") # docker setup
+# docker setup. `tests/docker/` belongs here too: those tests only run inside
+# the Docker lane (they need the `built_image` fixture), so a change confined to
+# them would otherwise classify as `python` alone, get collected by the Python
+# lane, and skip for want of an image — landing untested while reporting green.
+_DOCKER_META = ("docker/", ".hadolint.yml", "Dockerfile", "tests/docker/")
 _SITE = ("website/", "skills/", "optional-skills/")  # docs site + skill pages
 # Prose/frontend trees that can't touch Python. skills/ is excluded on purpose.
 _PY_SKIP = ("docs/", "website/") + _FRONTEND
