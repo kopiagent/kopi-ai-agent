@@ -393,11 +393,13 @@ ENV KOPI_HOME=/opt/data
 # The dashboard auth gate engages automatically on non-loopback binds and
 # fails closed without a provider. cont-init.d/04-dashboard-auth seeds a basic-
 # auth credential into the volume .env so the web UI works out of the box.
-# The default PASSWORD is a shell fallback inside that script (kopi-admin) --
-# NOT baked into ENV (avoids the SecretsUsedInArgOrEnv footgun). It is SHARED
-# across instances until changed: override per customer with
-# KOPI_DASHBOARD_BASIC_AUTH_PASSWORD (k8s Secret), edit the volume .env, or set
-# KOPI_DASHBOARD=0 to disable the dashboard. Username is not a secret:
+# When no password is injected, that script GENERATES a per-instance one on
+# first boot and prints it once to the container log (there is no shared
+# literal default any more -- the old `kopi-admin` fallback meant every
+# instance of the published image sat behind one publicly-known password on a
+# 0.0.0.0 bind). Override per customer with KOPI_DASHBOARD_BASIC_AUTH_PASSWORD
+# (k8s Secret), edit the volume .env, or set KOPI_DASHBOARD=0 to disable the
+# dashboard entirely. Username is not a secret:
 ENV KOPI_DASHBOARD=1 \
     KOPI_DASHBOARD_DEFAULT_USERNAME=admin
 EXPOSE 9119
