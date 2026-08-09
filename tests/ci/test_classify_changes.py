@@ -67,6 +67,14 @@ CASES = {
     # skill edit must still run Python.
     "skill md → python + site": (["skills/github/SKILL.md"], _lanes(python=True, site=True)),
     "dockerfile → docker meta": (["Dockerfile"], _lanes(docker_meta=True)),
+    # tests/docker/ only executes inside the Docker lane — those tests need the
+    # `built_image` fixture. Classified as plain `python` it would be collected
+    # by the Python lane, skip for want of an image, and land untested while the
+    # PR reported green. That is how the 05-model-base-url script shipped with
+    # no coverage at all.
+    "docker tests → docker meta": (
+        ["tests/docker/test_model_base_url.py"], _lanes(docker_meta=True, scan=True),
+    ),
     # Unknown top-level file keeps Python on rather than risk a silent skip.
     "unknown toplevel → python": (["Makefile"], _lanes(python=True)),
     "mixed docs+python → python": (["README.md", "agent/x.py"], _lanes(python=True, scan=True)),
