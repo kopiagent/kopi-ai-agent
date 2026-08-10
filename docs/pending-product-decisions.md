@@ -145,27 +145,43 @@ B. 首启随机口令（已采纳）；C. 保持现状仅文档警示。
 - 无诊断数据 → 后端日志 + 全链路计时齐备（#33/#35）
 - 每 PR 白烧 45 分钟 → fail-fast 降回 20 分钟（#38）
 
-**未解决的**：约 **28 个 spec 在 CI 上失败**。机制已实测定案：
+**机制（已实测定案）**：
 
 > 每次测试失败后 Playwright 丢弃 worker，重建一次付 60–90 秒编排开销
 > （worker index 在 2 并发配置下涨到 23；新进程本身 1.0s 起来）。
 > 我们可控的全部阶段合计 ~2.5 分钟；其余 ~33 分钟全是这个乘法。
 > **失败数量是根，超时是果** —— 修 spec 是唯一根治。
 
-**已知的真 bug（起点）**：
+**✅ 本地一侧已清零（2026-08-10）**：`npx playwright test e2e/` 在 main 上
+**36 passed / 0 failed / 9 skipped，1.7 分钟**。逐个消化的结果：
 
-- ✅ 已定性并立案 **#41**：resume 一个带在途后台推理的会话时，**整个先前历史
-  从 transcript 消失**，只渲染在途回合（数据无损 —— SessionDB 直接探得全部
-  54 行；首次打开正常渲染 —— 是 live-session resume 路径的缺陷）。两个测试
-  变体已标 `test.fixme` 引用 #41，止住每轮 ~3 分钟的失败烧耗；修复归后端
-  `session.resume` 快路径（线索与排除项全在 issue 里）
-- `interim-messages.spec.ts:190` — flag OFF 分支，本地也失败（尚未定性）
+- `worktree-branch-status:71` — **真 bug，已修（#43）**。测试硬编码
+  `Control+Shift+B`，但 `mod` 在 macOS = Cmd（`combo.ts:118`），本地不触发、
+  Linux CI 触发 —— 长期被误判为"git/macOS 差异"。按 `warm-resume-jitter:287`
+  的先例改成平台判断。
+- `large-session-resume` ×2 — **真后端 bug，fixme + 立案 #41**（见下）。
+- `interim-messages:190` — **假警报**：本就绿（单跑 + 全量都过），早前"本地
+  失败"记录已陈旧，无需动作。
+- 9 skipped = #41 的 2 个 + `:198` 第三次重绘 fixme + 其余既有 skip。
+
+**⚠️ 本地清零 ≠ CI 全绿**：本地只有 ~10 个 spec 会失败，CI 侧的失败集合更大
+（视觉基线比对、Linux 特有时序 —— 本地跑不到）。下一步是**对比 CI 失败清单**：
+本地已修的部分 CI 应同步减少，剩下的 CI 特有失败大概率是视觉基线（见下第 2 点）。
+
+**已立案的真 bug**：
+
+- **#41**：resume 一个带在途后台推理的会话时，**整个先前历史从 transcript
+  消失**，只渲染在途回合（数据无损 —— SessionDB 直接探得全部 54 行；首次打开
+  正常 —— 是 live-session resume 路径的缺陷）。2 个变体已 `test.fixme` 引用
+  #41；修复归后端 `session.resume` 快路径（`_reuse_live_payload` →
+  `_live_visible_history`，线索与探针盲区全在 issue 里）。
 
 **顺序约束**：
 
-1. 修 spec → 失败数降 → worker 重建随之降 → 套件自然回到 ~15 分钟内
+1. ✅ 修 spec 降失败数 —— 本地已完成；CI 侧待对比后收尾
 2. 基线策略二选一：**提交进仓库**（可 review、本地可用；需删 `.gitignore:67`
-   的 `*-snapshots/`）或维持缓存方案（已修好但依旧不可见）
+   的 `*-snapshots/`）或维持缓存方案（#34 已修好但依旧不可见）。这是 CI 特有
+   失败的大头，本地根本触发不到
 3. **最后**才把聚合器改成 `cancelled` 也阻塞（`ci.yml` 的
    `result == 'failure'` 判据，CLAUDE.md §3）—— 提前改会卡死所有 PR
 
