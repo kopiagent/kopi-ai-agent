@@ -1627,6 +1627,145 @@ describe('resumeSession warm-cache mapping integrity', () => {
   })
 })
 
+// Re-opening a session while one of its turns is still streaming used to blank
+// the entire prior transcript, leaving only the in-flight turn on screen (#41).
+// Both resume paths reconciled the live projection against an EMPTY authoritative
+// list — resume/activate run with omit_messages — and reconcileResumeMessages maps
+// over that near-empty spine, so every history row was dropped. The history is the
+// warm cache (fast path) or the REST prefetch (cold path); the live projection must
+// be layered ON TOP of it, never replace it.
+describe('resumeSession keeps history when a turn is in flight (#41)', () => {
+  afterEach(() => {
+    cleanup()
+    setActiveSessionId(null)
+    setResumeFailedSessionId(null)
+    setMessages([])
+    setSessions([])
+    vi.restoreAllMocks()
+  })
+
+  it('cold resume: the REST history survives an in-flight live projection', async () => {
+    setSessions([storedSession({ message_count: 6 })])
+
+    // REST is the committed-transcript authority. The still-running turn is not
+    // committed yet, so it is deliberately absent from this payload.
+    const history = [
+      { content: 'history question 1', role: 'user', timestamp: 1 },
+      { content: 'history answer 1', role: 'assistant', timestamp: 2 },
+      { content: 'history question 2', role: 'user', timestamp: 3 },
+      { content: 'history answer 2', role: 'assistant', timestamp: 4 }
+    ]
+    vi.mocked(getSessionMessages).mockResolvedValue({ messages: history, session_id: 'stored-1' } as never)
+
+    // The real cold resume runs with omit_messages -> empty transcript, only the
+    // live projection. This empty payload is exactly what used to collapse the
+    // transcript to just the in-flight turn.
+    const requestGateway = vi.fn(async (method: string) => {
+      if (method === 'session.resume') {
+        return {
+          session_id: 'runtime-1',
+          session_key: 'stored-1',
+          resumed: 'stored-1',
+          messages: [],
+          running: true,
+          inflight: { user: 'background prompt', assistant: 'partial answer', streaming: true },
+          info: {}
+        } as never
+      }
+
+      return {} as never
+    })
+
+    let resumedState: ClientSessionState | undefined
+    let resume: ((storedSessionId: string, replaceRoute?: boolean) => Promise<unknown>) | null = null
+    render(
+      <ResumeHarness
+        onReady={r => (resume = r)}
+        onStateUpdate={(_sessionId, state) => (resumedState = state)}
+        requestGateway={requestGateway}
+      />
+    )
+    await waitFor(() => expect(resume).not.toBeNull())
+    await resume!('stored-1', true)
+
+    const rendered = JSON.stringify(resumedState?.messages)
+    // Both ends of the prior history are still present...
+    expect(rendered).toContain('history question 1')
+    expect(rendered).toContain('history answer 2')
+    // ...and the in-flight turn is layered on top, not in place of it.
+    expect(rendered).toContain('background prompt')
+    expect(rendered).toContain('partial answer')
+    // 4 committed rows + the projected in-flight user/assistant pair.
+    expect(resumedState?.messages.length).toBe(history.length + 2)
+  })
+
+  it('warm resume: the cached history survives an in-flight session.activate', async () => {
+    // The warm cache already holds the full transcript PLUS the in-flight turn:
+    // it was the live view when the background prompt was submitted, and stayed
+    // attached while backgrounded.
+    const cached = createClientSessionState('stored-A', [
+      { id: 'h1', role: 'user', parts: [{ type: 'text', text: 'history question 1' }] },
+      { id: 'h2', role: 'assistant', parts: [{ type: 'text', text: 'history answer 1' }] },
+      { id: 'h3', role: 'user', parts: [{ type: 'text', text: 'history question 2' }] },
+      { id: 'h4', role: 'assistant', parts: [{ type: 'text', text: 'history answer 2' }] },
+      { id: 'user-background', role: 'user', parts: [{ type: 'text', text: 'background prompt' }] },
+      { id: 'assistant-stream-rt-A', role: 'assistant', pending: true, parts: [{ type: 'text', text: 'partial answer' }] }
+    ])
+    cached.busy = true
+
+    const runtimeIdByStoredSessionIdRef: MutableRefObject<Map<string, string>> = {
+      current: new Map([['stored-A', 'rt-A']])
+    }
+    const sessionStateByRuntimeIdRef: MutableRefObject<Map<string, ClientSessionState>> = {
+      current: new Map([['rt-A', cached]])
+    }
+
+    setSessions([storedSession({ id: 'stored-A', message_count: 6 })])
+
+    // session.activate mirrors the cold RPC: omit_messages -> empty transcript,
+    // running turn reported only through the live projection.
+    const requestGateway = vi.fn(async (method: string) => {
+      if (method === 'session.activate') {
+        return {
+          session_id: 'rt-A',
+          session_key: 'stored-A',
+          resumed: 'stored-A',
+          messages: [],
+          running: true,
+          inflight: { user: 'background prompt', assistant: 'partial answer', streaming: true },
+          info: {}
+        } as never
+      }
+
+      return {} as never
+    })
+    vi.mocked(getSessionMessages).mockResolvedValue({ messages: [], session_id: 'stored-A' } as never)
+
+    let resumedState: ClientSessionState | undefined
+    let resume: ((storedSessionId: string, replaceRoute?: boolean) => Promise<unknown>) | null = null
+    render(
+      <ResumeHarness
+        onReady={r => (resume = r)}
+        onStateUpdate={(_sessionId, state) => (resumedState = state)}
+        requestGateway={requestGateway}
+        runtimeIdByStoredSessionIdRef={runtimeIdByStoredSessionIdRef}
+        sessionStateByRuntimeIdRef={sessionStateByRuntimeIdRef}
+      />
+    )
+    await waitFor(() => expect(resume).not.toBeNull())
+    await resume!('stored-A', true)
+
+    // The fast path served from cache (no full resume RPC) and kept the whole
+    // cached transcript instead of collapsing to the in-flight turn.
+    expect(requestGateway.mock.calls.map(([method]) => method)).not.toContain('session.resume')
+    const rendered = JSON.stringify(resumedState?.messages)
+    expect(rendered).toContain('history question 1')
+    expect(rendered).toContain('history answer 2')
+    expect(rendered).toContain('background prompt')
+    expect(resumedState?.messages.length).toBe(6)
+  })
+})
+
 describe('createBackendSessionForSend workspace target', () => {
   afterEach(() => {
     cleanup()

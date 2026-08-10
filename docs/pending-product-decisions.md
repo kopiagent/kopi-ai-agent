@@ -114,13 +114,18 @@ B. 首启随机口令（已采纳）；C. 保持现状仅文档警示。
 **现状**：镜像已发布 `ghcr.io/kopiagent/kopi-ai-agent:main` / `:latest`
 （multi-arch manifest 验证过），但 package 是 **private**（匿名拉取 403）。
 
-**改 Public 只能在网页操作** —— GitHub 的 packages REST API 没有改可见性的
+**✅ 已定（2026-08-10）：保持 private，暂不转 Public。** 转 Public 会把镜像变成
+任何人可匿名拉取；即便第 2 项已把 dashboard 口令改成每实例随机，镜像默认仍是
+`KOPI_DASHBOARD=1` + `0.0.0.0` 绑定，公开分发一个默认开放管理面的镜像属于产品级
+对外决策，不该由技术侧顺手翻。要对外发布时再单独评估（连带下面的 pull 提示改动
+一起做）。私有状态不影响 CI/CD —— build/test/publish 用内置 `GITHUB_TOKEN`
+（CLAUDE.md 上游同步章§6 第 5 条），也不影响我们自己的部署（认证拉取）。
+
+**若将来转 Public**：只能在网页操作 —— GitHub 的 packages REST API 没有改可见性的
 端点（GET 200 / PATCH 404 / OPTIONS 无 PATCH，已验证）：
 `https://github.com/orgs/kopiagent/packages/container/package/kopi-ai-agent`
-→ Package settings → Danger Zone → Change visibility。
-
-**转 Public 前建议先做第 2 项**（共享口令 + 0.0.0.0 的镜像公开可拉，
-等于把已知口令的公开 dashboard 分发出去）。
+→ Package settings → Danger Zone → Change visibility。前置条件是第 2 项已完成
+（已完成），并接受镜像默认开放 dashboard 的对外姿态。
 
 **转 Public 后的配套改动**（一个 PR）：以下 4 处给用户看的 pull 命令仍指向
 上游命名空间，今天就是错的（我们从未在那发布过），但改动牵连 **5 个测试文件**
@@ -136,7 +141,7 @@ B. 首启随机口令（已采纳）；C. 保持现状仅文档警示。
 
 ---
 
-## 4. Desktop E2E 变绿（#32）—— 唯一未解的技术主线
+## 4. Desktop E2E 变绿（#32）
 
 **已解决的部分**（全在 main）：
 
@@ -164,26 +169,55 @@ B. 首启随机口令（已采纳）；C. 保持现状仅文档警示。
   失败"记录已陈旧，无需动作。
 - 9 skipped = #41 的 2 个 + `:198` 第三次重绘 fixme + 其余既有 skip。
 
-**⚠️ 本地清零 ≠ CI 全绿**：本地只有 ~10 个 spec 会失败，CI 侧的失败集合更大
-（视觉基线比对、Linux 特有时序 —— 本地跑不到）。下一步是**对比 CI 失败清单**：
-本地已修的部分 CI 应同步减少，剩下的 CI 特有失败大概率是视觉基线（见下第 2 点）。
+**⚠️ 本地清零 ≠ CI 全绿**：CI 侧还有 Linux 特有时序等本地跑不到的差异。
+**但视觉基线不在其中** —— 见下第 2 点，视觉快照是软失败、从不 gate CI。
+下一步是把 #41/#43 修入库后**对比 CI 失败清单**：本地已修的部分 CI 应同步减少，
+剩下的才是真正的 Linux 特有失败。
 
-**已立案的真 bug**：
+**已修的真 bug**：
 
-- **#41**：resume 一个带在途后台推理的会话时，**整个先前历史从 transcript
-  消失**，只渲染在途回合（数据无损 —— SessionDB 直接探得全部 54 行；首次打开
-  正常 —— 是 live-session resume 路径的缺陷）。2 个变体已 `test.fixme` 引用
-  #41；修复归后端 `session.resume` 快路径（`_reuse_live_payload` →
-  `_live_visible_history`，线索与探针盲区全在 issue 里）。
+- **#41 —— ✅ 已修（2026-08-10，分支 `fix/resume-inflight-history`）**：resume
+  一个带在途后台推理的会话时，**整个先前历史从 transcript 消失**，只渲染在途回合
+  （数据无损 —— SessionDB 直接探得全部 54 行；首次打开正常）。
+  - **真根因不在后端**（早前 issue 里怀疑的 `_live_visible_history` 是错方向），
+    而在前端 `use-session-actions/index.ts` 的 resume 消息对账：warm 快路径走
+    `session.activate`、cold 路径走 `session.resume`，**两者都带 `omit_messages`**，
+    所以权威 payload 是空的。`reconcileResumeMessages` 以第一个参数（权威列表）为
+    骨架 `.map()`，把空权威 + live projection 对账后**塌缩成只剩在途回合**，缓存/
+    REST 里的历史全被丢弃。
+  - **修法**：把 live projection **叠加在历史之上**而非替换 —— warm 路径 payload 空
+    时直接保留缓存（缓存本已含完整历史+在途行），cold 路径用
+    `appendLiveSessionProjection(localSnapshot, resumed)` 把在途尾追加到 REST 历史上。
+  - **覆盖**：单测 `use-session-actions.test.tsx` "keeps history when a turn is in
+    flight (#41)"（cold + warm 两例，修复前红、修复后绿）；E2E
+    `large-session-resume.spec.ts` 两个变体（fast/cold）已解除 `test.fixme`、本地实跑
+    全绿（含 build 47.8s）。
 
-**顺序约束**：
+**✅ 基线策略已定（2026-08-10）：维持 cache + artifact，不提交进仓库。**
+先前把"基线策略"当成 CI 变红的大头是**误判** —— 读代码后确认视觉基线**根本不 gate CI**：
 
-1. ✅ 修 spec 降失败数 —— 本地已完成；CI 侧待对比后收尾
-2. 基线策略二选一：**提交进仓库**（可 review、本地可用；需删 `.gitignore:67`
-   的 `*-snapshots/`）或维持缓存方案（#34 已修好但依旧不可见）。这是 CI 特有
-   失败的大头，本地根本触发不到
+- `apps/desktop/e2e/visual-snapshot.ts` 的 `expectVisualSnapshot` 是**软失败**设计
+  （docstring 原话 "reported without failing the test suite"、"does NOT fail"）：
+  它不调用 `expect().toHaveScreenshot()`，而是手动比对后写 `*-diff.png` 并 `console.log`，
+  差异**从不让测试失败**。
+- CI 的 "Generate visual diff summary" 步骤是 `if: always()` 的纯信息汇总，
+  `DIFF_COUNT>0` 只往 step summary 打一张表，**不 exit 1**。
+- 所以基线新旧、可不可 review，都不影响 CI 红绿。#34 已修掉唯一的真缺陷
+  （cache key 不轮转导致基线冻结）。可 review 的诉求也已被现有 artifact 上传满足
+  （每次 main run 传 `visual-baselines-<sha>` + `visual-diffs`，可下载眼看）。
+
+**为什么不提交进仓库**：基线是 **Linux 像素**基线（CI 平台），在 macOS 本地
+`--update-snapshots` 生成的是 darwin 像素，提交进去对 CI 毫无意义；要提交 Linux 基线
+得走一遍 CI 回传，而这些 PNG 是**软失败检查**、没有任何 gating 价值 —— 纯属二进制
+仓库膨胀。故保留 `.gitignore:67` 的 `*-snapshots/`。
+
+**顺序约束（更新）**：
+
+1. ✅ 修 spec 降失败数 —— 本地已完成；#41、#43 已修入库后 CI 真实失败集应显著收敛
+2. ✅ 基线策略 —— 见上，维持现状，无代码改动
 3. **最后**才把聚合器改成 `cancelled` 也阻塞（`ci.yml` 的
-   `result == 'failure'` 判据，CLAUDE.md §3）—— 提前改会卡死所有 PR
+   `result == 'failure'` 判据，CLAUDE.md §3）—— 提前改会卡死所有 PR。
+   这一步仍是待决项：先让 #41/#43 进 main、观察几轮 CI 真实红绿后再评估
 
 ---
 

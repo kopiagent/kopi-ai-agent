@@ -212,20 +212,17 @@ test.describe('large session resume', () => {
 
   for (const resumeKind of ['fast', 'cold'] as const) {
     test(`${resumeKind} resume keeps background inference attached without duplicate messages`, async ({}, testInfo) => {
-      // Known RED — #41. Re-opening a session while its background turn is in
-      // flight renders ONLY the in-flight turn; the 27 seeded turns vanish
-      // from the transcript. The data is intact (SessionDB returns all 54
-      // rows, probed directly) and the first open renders fine, so this is
-      // the live-session resume path, not the seed or the harness. Captured
-      // viewport at failure:
-      //
-      //   "E2E background inference must remain attached across resume
-      //    Hello now Hello 30s now"
-      //
-      // fixme, not skip: keeps the regression on the report without paying
-      // Playwright's discard-worker-per-failure cost (60-90s per rebuild,
-      // twice per run, plus retries) — same treatment as the :198 fixme.
-      test.fixme(true, 'Resume with an in-flight background turn drops prior history — #41')
+      // Regression guard for #41. Re-opening a session while its background turn
+      // was in flight used to render ONLY the in-flight turn — the 27 seeded
+      // turns vanished from the transcript even though SessionDB still held all
+      // 54 rows. Root cause was in the resume message reconcile: both the warm
+      // (session.activate) and cold (session.resume) paths run with
+      // omit_messages, so their authoritative payload is empty; reconciling the
+      // live projection against that empty list collapsed the transcript to the
+      // in-flight turn. Fixed by layering the projection ON TOP of the history
+      // source (warm cache / REST prefetch) instead of replacing it. Unit
+      // coverage: use-session-actions.test.tsx "keeps history when a turn is in
+      // flight (#41)".
 
       fixture = await setupSeededDesktop({ holdFirstStreamForPrompt: BACKGROUND_PROMPT })
       await waitForAppReady(fixture, 120_000)
