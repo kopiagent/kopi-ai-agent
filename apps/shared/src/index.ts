@@ -16,6 +16,7 @@ export type {
   BillingPaymentMethod,
   BillingRefusalCode,
   BillingStateResponse,
+  BillingTopupCheckoutResponse,
   ChargeFailureReason,
   KnownBillingRefusalCode,
   KnownChargeFailureReason,

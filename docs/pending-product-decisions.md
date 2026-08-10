@@ -11,9 +11,16 @@
 ## 1. 第三方 URL：用户会被导去谁的网站
 
 **现状**：内置 provider 的显示名已全部改为 "Kopi Official"（56 处，
-commit `50d65583`），默认端点已指向 `kopiaiagent.com`
-（`kopi_cli/auth.py:80-81`）。但**硬编码的第三方 URL 仍在**，它们决定用户
-在哪个网站注册、付费、看文档：
+commit `50d65583`）。但**硬编码的第三方 URL 仍在**，它们决定用户
+在哪个网站注册、付费、看文档。⚠️ **默认端点其实分两个,别混**
+（[kopi_cli/auth.py:80-81](../kopi_cli/auth.py#L80-L81)）：
+
+- `DEFAULT_NOUS_PORTAL_URL = https://kopiaiagent.com/portal`（portal：注册/账单）
+- `DEFAULT_NOUS_INFERENCE_URL = https://inference-api.nousresearch.com/v1`（推理）
+
+**两个默认对 kopi 用户实际都不通**：portal 域名已下线（§1a），推理端点是上游
+Nous 主机、kopi fork 的用户没有对它有效的 key。真正活着的替代是网关
+`https://bill.kopiagent.ai/v1`（§1a）。
 
 | URL | 处数 | 出口 |
 |---|---|---|
@@ -36,24 +43,32 @@ commit `50d65583`），默认端点已指向 `kopiaiagent.com`
 
 ### 1a. 网关侧能提供什么（2026-08-10 对照 Kopi-TokenMax 核对）
 
-> 证据来源：`/Users/zhaokunming/1_code/kopi-proxy/Kopi-TokenMax` 的
-> `docs/OPERATIONS.md` §七（全部线上路径，2026-08-05 逐个实测）、
-> `docs/SAAS_INTEGRATION.md`、`litellm/proxy/kopi_billing/router.py`。
+> 证据来源：网关侧交付的对接文档
+> `/Users/zhaokunming/1_code/kopi-proxy/Kopi-TokenMax/docs/integrations/KOPI_AGENT_INTEGRATION.md`
+> （2026-08-10，逐 URL 对照 + 线上 `GET /openapi.json` 537 条路径核对），
+> 上游依据 `docs/ops/OPERATIONS.md` §七（线上路径逐个实测）、
+> `docs/integrations/SAAS_INTEGRATION.md`、`litellm/proxy/kopi_billing/router.py`。
 
-**🔴 先于一切的发现：`kopiaiagent.com` 已下线。** 本 CLI 的默认端点
-（`kopi_cli/auth.py:80-81`）指向它，但网关侧文档明确记载
+**🔴 先于一切的发现：portal 默认域名 `kopiaiagent.com` 已下线。** 网关侧文档明确记载
 "旧默认指向**已下线**的 kopiaiagent.com"（SAAS_INTEGRATION.md，SaaS 侧因此
 删光了该域名的所有代码默认值）。真实生产网关是 **`https://bill.kopiagent.ai`**
-（Let's Encrypt，2026-08-05 上线实测）。也就是说第 1 项的前置条件今天不成立
-不止于"第三方 URL"——**我们自己的默认端点也是死的**（DNS/证书现状须核实）。
-先决策：把 `kopiaiagent.com` 指到网关，还是 CLI 默认端点改成 `bill.kopiagent.ai`。
+（Let's Encrypt，2026-08-05 上线实测）。结合 §1 的两个默认端点：portal 死、
+推理默认（Nous 主机）对 kopi 用户也不通 —— **第 1 项前置条件今天不成立**。
+先决策（网关侧清单 #1）：把 `kopiaiagent.com` DNS 指到网关，还是 CLI 默认端点
+改成 `bill.kopiagent.ai`。
+
+⚠️ **本机验证不了域名死活（clash fake-IP）**：本地 clash 开着，
+`kopiaiagent.com` / `bill.kopiagent.ai` / `inference-api.nousresearch.com`
+三个都解析到 `198.18.x.x`（fake-IP 段），curl 出来的 HTTP 码是代理伪造的
+（connect 亚毫秒）。**域名死活以网关侧实测为准**，动手改端点前在无代理环境
+再 curl 一次确认。
 
 逐 URL 对照（网关今天真实存在、实测过的替代品）：
 
 | 现硬编码 URL | 能否替代 | 网关/生态现状 |
 |---|---|---|
 | `inference-api.nousresearch.com` | ✅ 现成 | `https://bill.kopiagent.ai/v1`（OpenAI 兼容，流式/非流式实测 200；存量老 key 走 `/kp/v1`）。鉴权用 `kopi_` 前缀 virtual key；对外模型名 `kopi-o` / `kopi-siew-dai` / `kopi-o-flash` / `kopi-siew-dai-flash`（MiMo）+ 3 个 `kopi-grok-*`（2026-08-06 加），`GET /v1/models` 为准 |
-| `portal.nousresearch.com/manage-subscription` | ⚠️ 只有 API，没有页面 | 网关有 `POST /kopi/subscribe/checkout`（客户 key + `price_id` → Stripe 订阅支付页 URL，router.py:204）；订阅入账/退款/争议/fair-use 上限均已实现（近期 commits）。但"查看/退订已有订阅"的**用户页面不存在**——退订目前是 SaaS 服务端调 `/kopi/admin/suspend` 的动作。页面归 Kopi-Web（本地 4002），**Kopi-Web 尚无生产域名** |
+| `portal.nousresearch.com/manage-subscription` | ⚠️ 只有 API，没有页面 | 网关有 `POST /kopi/subscribe/checkout`（客户 key + `price_id` → Stripe 订阅支付页 URL，router.py:204）；订阅入账/退款/争议/fair-use 上限已实现且 **2026-08-10 已部署上线**（镜像 `8ef54f35…`，此前因线上镜像落后而 404，现线上 401 fail-closed、资金冒烟 11/11）。但"查看/退订已有订阅"的**用户页面不存在**——退订目前是 SaaS 服务端调 `/kopi/admin/suspend` 的动作。页面归 Kopi-Web（本地 4002），**Kopi-Web 尚无生产域名** |
 | `portal.nousresearch.com/billing` | ⚠️ 只有 API，没有页面 | 数据全齐且实测 200：`GET /kopi/usage/balance`、`GET /kopi/usage/summary?days=N`（客户 key，含日曲线/模型分布/充值记录）；充值 `POST /kopi/topup/checkout {"amount_usd": N}` → Stripe 支付页 URL（验签/入账/幂等全在网关）。账单**页面**同样归 Kopi-Web，无生产域名 |
 | `kopi-ai-agent.nousresearch.com`（文档/安装站） | ❌ 不存在 | 网关只有 `/redoc`（API 文档，实测 200；注意 `/docs` 是 404）。产品文档站/安装站在整个生态里还没有 |
 
@@ -75,6 +90,26 @@ commit `50d65583`），默认端点已指向 `kopiaiagent.com`
    今天就够用（注意 spend 异步落账，调用后 10–15s 才可见）。
 4. 网关另有管理面 MCP（`POST /kopi/mcp/`，7 tools，admin token）——那是运营
    侧工具，**不要**进 C 端 CLI。
+
+**现在就能落地的一小块（不依赖任何未定域名）：**
+
+- ✅ **TUI/CLI `/topup` 接真后端**（PR #46）：用户自己的 kopi_ 虚拟 key →
+  `POST /kopi/topup/checkout` → 开 Stripe URL。新增 gateway-mode 分支
+  （`kopi_cli/kopi_topup.py` + `billing.topup_checkout` RPC），portal overlay 原样保留；
+  base 配置驱动、默认 `bill.kopiagent.ai`。⚠️ 回跳暂落网关 `/ui/`；且 clash fake-IP
+  下本机验证不了线上网关，只有 mock 单测 + 网关侧文档兜底，**待无代理环境补一次真连冒烟**。
+- 🟢 **账单改 CLI 内渲染**：`/kopi/usage/balance` + `/summary` 代替网页链接
+  （spend 异步落账，10–15s 可见）。尚未做。
+- 🟡 **推理默认端点改 `bill.kopiagent.ai/v1`**：技术上现成，但改哪个是网关侧清单 #1
+  的产品决策，等拍板。
+
+**仍卡死（产品/基建决策，非缺信息）：** `kopi setup` 注册 URL（3 处）、账单页链接
+（3 处，除非改 CLI 内渲染）、文档/安装站（5+ 处）—— 全卡在 **Kopi-Web 无生产域名**
++ **产品文档站尚不存在**。
+
+⚠️ **发版协同注意**：网关侧记录其 **GitHub 组织自 2026-08-05 起因付款失败全部
+构建挂掉**，镜像靠本地 buildx 手推。那是**网关仓库的组织**，不是我们
+`kopiagent/kopi-ai-agent`（本仓 CI 今天正常）；但若发版牵扯共享结算主体，需确认。
 
 ---
 

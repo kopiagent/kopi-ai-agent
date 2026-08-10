@@ -64,6 +64,19 @@ export no_proxy='127.0.0.1,localhost,::1' NO_PROXY='127.0.0.1,localhost,::1'
 python3 -c "import urllib.request; print(urllib.request.getproxies())"
 ```
 
+🔴 **这套 `unset` + `no_proxy` 只救得了本机 `127.0.0.1`/`localhost`,救不了外部真实域名(v18)。**
+`no_proxy` 里列的就是环回地址 —— 它让测试自己起的本地 server 不走代理。但对**外部域名**
+(如线上网关 `bill.kopiagent.ai`、`kopiaiagent.com`)无能为力:clash 的 fake-IP 劫持发生在
+**系统 DNS 解析层**,`socket.gethostbyname('bill.kopiagent.ai')` 直接返回 `198.18.x.x`,
+根本没到"要不要走代理"那一步。后果是**本机 curl 外部域名拿到的 HTTP 码是假的**
+(connect 亚毫秒 = 命中 fake-IP,不是真连上)——200/401 都不可信。
+
+**判据**:`python3 -c "import socket;print(socket.gethostbyname('<域名>'))"` 若是 `198.18.*`
+就是被劫持了。**结论**:凡是"验证某个外部/线上域名死活"的动作,clash 开着时本机做不了,
+只能① 关 clash / 换无代理环境再 curl,或 ② 采信对方(网关/运维)侧的线上实测数据。
+v18 的 `/topup` 接网关就栽在这:三个域名全解析到 `198.18.x.x`,只能靠 mock 单测 +
+网关侧文档兜底,没做成端到端真连冒烟。
+
 ### 1.1 Python 全量(必跑)
 
 ```bash

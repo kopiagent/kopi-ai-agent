@@ -59,6 +59,7 @@ export type {
   BillingMonthlyCap,
   BillingMutationResponse,
   BillingStateResponse,
+  BillingTopupCheckoutResponse,
   SubscriptionPreviewResponse,
   SubscriptionStateResponse,
   SubscriptionTierOption,

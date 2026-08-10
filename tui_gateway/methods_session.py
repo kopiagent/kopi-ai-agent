@@ -2015,14 +2015,55 @@ def _(rid, params: dict) -> dict:
 
     Fail-open like the other billing RPCs: a logged-out / unreachable portal yields
     {ok:true, logged_in:false}. No scope required for this endpoint.
+
+    Also reports ``gateway_topup_available``: gateway-mode deployments hold a
+    kopi_ virtual key instead of a portal login, so a logged-out state there is
+    not a dead end — the client can offer the one-shot gateway checkout
+    (billing.topup_checkout) instead of routing to /portal.
     """
+    try:
+        from kopi_cli.kopi_topup import gateway_topup_available
+
+        gateway = bool(gateway_topup_available())
+    except Exception:
+        gateway = False
     try:
         from agent.billing_view import build_billing_state
 
         state = build_billing_state()
-        return _ok(rid, _serialize_billing_state(state))
+        env = _serialize_billing_state(state)
+        if isinstance(env, dict):
+            env["gateway_topup_available"] = gateway
+        return _ok(rid, env)
     except Exception:
-        return _ok(rid, {"ok": True, "logged_in": False, "error": "could not load billing state"})
+        return _ok(
+            rid,
+            {"ok": True, "logged_in": False, "gateway_topup_available": gateway, "error": "could not load billing state"},
+        )
+
+
+@method("billing.topup_checkout")
+def _(rid, params: dict) -> dict:
+    """POST /kopi/topup/checkout → {ok, checkout_url} or a typed error envelope.
+
+    Gateway-mode funding: a kopi_ virtual key buys credits via a Stripe hosted
+    checkout URL (opened in the user's browser) — the one-shot alternative to the
+    portal charge overlay, which the gateway does not implement. params:
+    {amount_usd: str|number}. Fail-soft: transport/HTTP failures come back as a
+    typed {ok:false} envelope, never a raised exception.
+    """
+    from kopi_cli.kopi_topup import TopupError, create_topup_checkout
+
+    amount = params.get("amount_usd")
+    if amount is None:
+        return _ok(rid, {"ok": False, "error": "invalid_request", "message": "amount_usd is required"})
+    try:
+        url = create_topup_checkout(amount)
+        return _ok(rid, {"ok": True, "checkout_url": url})
+    except TopupError as exc:
+        return _ok(rid, {"ok": False, "error": exc.code, "message": exc.message})
+    except Exception as exc:  # noqa: BLE001 — fail-soft envelope, never crash the RPC
+        return _ok(rid, {"ok": False, "error": "error", "message": str(exc)})
 
 
 @method("usage.bars")

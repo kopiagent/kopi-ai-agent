@@ -207,6 +207,10 @@ export interface BillingStateResponse {
   charge_presets_display: string[]
   cli_billing_enabled: boolean
   error?: string | null
+  // True when a kopi_ virtual key is configured (gateway mode). A logged-out
+  // state is then NOT a dead end: the client offers the one-shot gateway
+  // checkout (billing.topup_checkout) instead of routing to /portal.
+  gateway_topup_available?: boolean
   is_admin: boolean
   logged_in: boolean
   max_usd: string | null
@@ -243,6 +247,19 @@ export interface BillingChargeResponse {
   portal_url?: string | null
   recovery?: string
   retry_after?: number | null
+}
+
+/**
+ * Response from `billing.topup_checkout` — gateway-mode funding. On success the
+ * client opens `checkout_url` (a Stripe hosted-checkout page) in the browser; on
+ * failure `error` is the stable TopupError slug (`not_configured`, `http_401`,
+ * `unreachable`, `bad_response`, …) and `message` is human-facing.
+ */
+export interface BillingTopupCheckoutResponse {
+  checkout_url?: string
+  error?: string
+  message?: string
+  ok: boolean
 }
 
 export interface BillingChargeStatusResponse {

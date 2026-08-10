@@ -817,6 +817,12 @@ class CLIBillingMixin:
 
         state = build_billing_state()
         if not state.logged_in:
+            # Gateway mode: a kopi_ virtual key funds credits via a one-shot
+            # Stripe checkout (POST /kopi/topup/checkout), not the portal overlay
+            # (which the gateway doesn't implement). Only reached when NOT logged
+            # into the portal, so it never shadows the portal flow.
+            if self._maybe_gateway_topup(command):
+                return
             print()
             if state.error:
                 _msg = f"Couldn't load billing: {state.error}"
@@ -828,6 +834,53 @@ class CLIBillingMixin:
 
         # Any sub-arg is intentionally ignored — always open the menu.
         self._billing_overview(state)
+
+    def _maybe_gateway_topup(self, command: str = "/topup") -> bool:
+        """Gateway-mode ``/topup`` — returns True when it handled the command.
+
+        Fires only when a kopi_ virtual key is configured (gateway mode) and the
+        portal is not logged in. ``/topup <amount>`` creates a Stripe checkout and
+        prints/opens the URL; bare ``/topup`` prints usage. Returns False when not
+        in gateway mode so the caller falls through to the portal-login hint.
+        """
+        try:
+            from kopi_cli.kopi_topup import TopupError, create_topup_checkout, gateway_topup_available
+        except Exception:
+            return False
+
+        if not gateway_topup_available():
+            return False
+
+        # Parse an optional amount from the raw command ("/topup 100").
+        parts = (command or "").strip().split()
+        raw = parts[1].strip().lstrip("$") if len(parts) > 1 else ""
+        import re
+
+        if not (raw and re.fullmatch(r"\d+(\.\d{1,2})?", raw) and float(raw) > 0):
+            print()
+            print("  💳 Gateway top-up — run `/topup <amount>` to add funds, e.g. `/topup 100`.")
+            return True
+
+        print()
+        print(f"  💳 Creating a checkout for ${raw}…")
+        try:
+            url = create_topup_checkout(raw)
+        except TopupError as exc:
+            print(f"  🔴 Could not start the top-up — {exc.message}")
+            return True
+        except Exception as exc:  # noqa: BLE001 — never crash the slash handler
+            print(f"  🔴 Could not start the top-up — {exc}")
+            return True
+
+        print(f"  Opening checkout in your browser: {url}")
+        try:
+            import webbrowser
+
+            webbrowser.open(url)
+        except Exception:
+            pass  # printing the URL is the affordance; opening is best-effort
+        print("  Complete the payment on the Stripe page; your balance updates a few seconds after.")
+        return True
 
     def _billing_portal_hint(self, state, *, reason: str = "") -> None:
         """Print a portal deep-link line (the funnel for portal-only actions)."""
