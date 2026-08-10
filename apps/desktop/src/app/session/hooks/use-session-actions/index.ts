@@ -735,8 +735,17 @@ export function useSessionActions({
             } else {
               const runtimeInfo = applyRuntimeInfo(activated.info)
 
+              // session.activate always omits messages (omit_messages above), so
+              // activated.messages is empty here — the warm cache IS the
+              // transcript authority. Only reconcile when the RPC actually
+              // carried rows. Reconciling an empty authoritative list against a
+              // live projection collapses the whole transcript to just the
+              // in-flight turn, because reconcileResumeMessages maps over the
+              // (near-empty) authoritative spine and drops every cached history
+              // row (#41). The cache already holds the live turn and keeps
+              // updating from stream events after activate, so keep it as-is.
               let activatedMessages =
-                activated.messages.length || activated.inflight || activated.queued
+                activated.messages.length
                   ? reconcileAuthoritativeMessages(activated.messages, cachedViewState.messages, activated)
                   : cachedViewState.messages
 
@@ -926,8 +935,18 @@ export function useSessionActions({
         const hasLiveProjection = Boolean(resumed.inflight || resumed.queued)
 
         const preferredMessages =
-          prefetchApplied && prefetchMatchesResumedSession && !hasLiveProjection
-            ? localSnapshot
+          prefetchApplied && prefetchMatchesResumedSession
+            ? // The REST prefetch is the transcript authority. A live projection
+              // must be APPENDED onto that history, not used to replace it: the
+              // resume RPC ran with omit_messages, so reconciling its empty
+              // payload against the projection collapses the transcript to just
+              // the in-flight turn and drops all prefetched history (#41). REST
+              // only carries committed turns, so the still-uncommitted in-flight
+              // pair isn't already in localSnapshot — append it (dedup-safe: no
+              // assistant-stream row exists in the committed history yet).
+              hasLiveProjection
+              ? appendLiveSessionProjection(localSnapshot, resumed)
+              : localSnapshot
             : (() => {
                 const previousMessages = resumedSameSelectedSession
                   ? preserveLocalPendingTurnMessages(currentMessages, resumeStartMessages)
