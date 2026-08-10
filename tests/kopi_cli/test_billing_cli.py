@@ -46,6 +46,87 @@ def _scripted(*responses):
     return _modal
 
 
+# ── Gateway mode (kopi_ virtual key, no portal login) ────────────────────────
+
+
+def _logged_out(monkeypatch):
+    """Stub build_billing_state → a logged-out state (drives the gateway branch)."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(bv, "build_billing_state", lambda *a, **kw: SimpleNamespace(logged_in=False, error=None))
+
+
+def test_gateway_topup_creates_checkout_and_opens_url(cli, monkeypatch, capsys):
+    _logged_out(monkeypatch)
+    import kopi_cli.kopi_topup as ktm
+
+    monkeypatch.setattr(ktm, "gateway_topup_available", lambda: True)
+    seen = {}
+
+    def _checkout(amount, **kw):
+        seen["amount"] = amount
+        return "https://checkout.stripe.com/c/pay/xyz"
+
+    monkeypatch.setattr(ktm, "create_topup_checkout", _checkout)
+    import webbrowser
+
+    opened = {}
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.setdefault("url", url))
+
+    cli._show_billing("/topup 100")
+    out = capsys.readouterr().out
+
+    assert seen["amount"] == "100"
+    assert "https://checkout.stripe.com/c/pay/xyz" in out
+    assert opened["url"] == "https://checkout.stripe.com/c/pay/xyz"
+    # Never falls through to the portal-login hint.
+    assert "Not logged into Nous Portal" not in out
+
+
+def test_gateway_topup_bare_command_prints_usage_and_makes_no_call(cli, monkeypatch, capsys):
+    _logged_out(monkeypatch)
+    import kopi_cli.kopi_topup as ktm
+
+    monkeypatch.setattr(ktm, "gateway_topup_available", lambda: True)
+
+    def _boom(*a, **kw):
+        raise AssertionError("create_topup_checkout must not run without an amount")
+
+    monkeypatch.setattr(ktm, "create_topup_checkout", _boom)
+
+    cli._show_billing("/topup")
+    out = capsys.readouterr().out
+    assert "/topup <amount>" in out
+
+
+def test_gateway_topup_error_surfaces_message(cli, monkeypatch, capsys):
+    _logged_out(monkeypatch)
+    import kopi_cli.kopi_topup as ktm
+
+    monkeypatch.setattr(ktm, "gateway_topup_available", lambda: True)
+
+    def _raise(*a, **kw):
+        raise ktm.TopupError("Gateway rejected the top-up (HTTP 401).", code="http_401")
+
+    monkeypatch.setattr(ktm, "create_topup_checkout", _raise)
+
+    cli._show_billing("/topup 50")
+    out = capsys.readouterr().out
+    assert "Could not start the top-up" in out
+    assert "HTTP 401" in out
+
+
+def test_not_gateway_falls_through_to_portal_hint(cli, monkeypatch, capsys):
+    _logged_out(monkeypatch)
+    import kopi_cli.kopi_topup as ktm
+
+    monkeypatch.setattr(ktm, "gateway_topup_available", lambda: False)
+
+    cli._show_billing("/topup 100")
+    out = capsys.readouterr().out
+    assert "Not logged into Nous Portal" in out
+
+
 def test_topup_overview_splits_onetime_from_automatic_copy(cli, monkeypatch, capsys):
     # (c): the interactive /topup overview states the one-time-vs-automatic
     # distinction up front in each first sentence, and keeps "credits" out of the

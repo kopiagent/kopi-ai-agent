@@ -5,7 +5,8 @@ import type {
   BillingChargeStatusResponse,
   BillingErrorPayload,
   BillingMutationResponse,
-  BillingStateResponse
+  BillingStateResponse,
+  BillingTopupCheckoutResponse
 } from '../../../gatewayTypes.js'
 import { openExternalUrl } from '../../../lib/openExternalUrl.js'
 import type { BillingChargeOutcome, BillingOverlayCtx } from '../../interfaces.js'
@@ -385,13 +386,55 @@ const buildOverlayCtx = (ctx: SlashRunCtx, sys: Sys, s: BillingStateResponse): B
   validate: (raw: string) => validateAmount(raw, s)
 })
 
+/** Lightweight amount parse for gateway mode (no portal bounds available). */
+const parseGatewayAmount = (raw: string): string | null => {
+  const cleaned = raw.trim().replace(/^\$/, '').trim()
+
+  return cleaned && /^\d+(\.\d{1,2})?$/.test(cleaned) && Number(cleaned) > 0 ? cleaned : null
+}
+
+/**
+ * Gateway-mode top-up: no portal login, a kopi_ virtual key funds credits via a
+ * single Stripe hosted-checkout URL (billing.topup_checkout). No overview/auto-
+ * reload overlay — the gateway doesn't implement that surface. `/topup <amount>`
+ * opens the checkout; bare `/topup` prints how to use it.
+ */
+const runGatewayTopup = (arg: string, ctx: SlashRunCtx, sys: Sys): void => {
+  const amount = parseGatewayAmount(arg)
+
+  if (!amount) {
+    sys('💳 Gateway top-up — run /topup <amount> to add funds, e.g. /topup 100.')
+
+    return
+  }
+
+  sys(`💳 Creating a checkout for $${amount}…`)
+  ctx.gateway
+    .rpc<BillingTopupCheckoutResponse>('billing.topup_checkout', { amount_usd: amount })
+    .then(
+      ctx.guarded<BillingTopupCheckoutResponse>(r => {
+        if (r?.ok && r.checkout_url) {
+          openExternalUrl(r.checkout_url)
+          sys(`Opening checkout in your browser: ${r.checkout_url}`)
+          sys('Complete the payment on the Stripe page; your balance updates a few seconds after.')
+
+          return
+        }
+
+        sys(`🔴 Could not start the top-up${r?.message ? ` — ${r.message}` : '.'}`)
+      })
+    )
+    .catch(ctx.guardedErr)
+}
+
 export const topupCommands: SlashCommand[] = [
   {
     help: 'Show your balance and manage billing — add funds, auto-reload, limits',
     name: 'topup',
-    // ZERO sub-commands (plan §0.4): any arg is ignored. Bare `/topup`
-    // fetches state and opens the interactive overlay (CLI/TUI parity).
-    run: (_arg, ctx) => {
+    // Portal mode ignores args and opens the interactive overlay (plan §0.4).
+    // Gateway mode (kopi_ virtual key, no portal login) has no overlay — it
+    // takes `/topup <amount>` and opens a Stripe checkout URL instead.
+    run: (arg, ctx) => {
       const sys: Sys = ctx.transcript.sys
 
       ctx.gateway
@@ -399,6 +442,12 @@ export const topupCommands: SlashCommand[] = [
         .then(
           ctx.guarded<BillingStateResponse>(s => {
             if (!s.logged_in) {
+              if (s.gateway_topup_available) {
+                runGatewayTopup(arg ?? '', ctx, sys)
+
+                return
+              }
+
               sys('💳 Not logged into Nous Portal — run /portal to log in, then /topup.')
 
               return

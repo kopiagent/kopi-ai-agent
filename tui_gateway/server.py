@@ -196,6 +196,9 @@ _LONG_HANDLERS = frozenset(
         # is two serial round-trips); keep them off the main stdin loop so a slow
         # portal can't stall approval.respond / session.interrupt / other RPCs.
         "billing.state",
+        # Gateway top-up POSTs to /kopi/topup/checkout and can block for seconds
+        # while the proxy talks to Stripe — keep it off the main stdin loop.
+        "billing.topup_checkout",
         "subscription.state",
         # Subscription change (V3): preview + the pending-change mutations + upgrade
         # each do a blocking portal round-trip (preview + upgrade also hit Stripe,

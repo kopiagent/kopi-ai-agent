@@ -465,3 +465,65 @@ describe('/billing slash command (overlay-driven)', () => {
     expect(printed(sys)).toContain('Opening portal: https://portal/x')
   })
 })
+
+describe('/topup gateway mode (no portal login, kopi_ virtual key)', () => {
+  beforeEach(() => {
+    resetOverlayState()
+  })
+
+  // Flush the SECOND rpc (billing.topup_checkout) chained inside billing.state's
+  // .then — the shared run() only awaits the first call.
+  const settle = async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+  }
+
+  const gatewayLoggedOut = () => ({ ...ownerState(), logged_in: false, gateway_topup_available: true, ok: true })
+
+  it('not logged in, gateway available, no amount → usage hint, no checkout, no overlay', async () => {
+    const { run, sys, calls } = buildCtx({ 'billing.state': gatewayLoggedOut() })
+    await run('')
+    await settle()
+    expect(printed(sys)).toContain('run /topup <amount>')
+    expect(calls.some(c => c.method === 'billing.topup_checkout')).toBe(false)
+    expect(getOverlayState().billing).toBeNull()
+  })
+
+  it('/topup 100 → calls billing.topup_checkout, opens the checkout URL', async () => {
+    const { run, sys, calls } = buildCtx({
+      'billing.state': gatewayLoggedOut(),
+      'billing.topup_checkout': { ok: true, checkout_url: 'https://checkout.stripe.com/c/pay/abc' }
+    })
+
+    await run('100')
+    await settle()
+
+    const call = calls.find(c => c.method === 'billing.topup_checkout')
+    expect(call?.params).toEqual({ amount_usd: '100' })
+    const { openExternalUrl } = await import('../lib/openExternalUrl.js')
+    expect(openExternalUrl).toHaveBeenCalledWith('https://checkout.stripe.com/c/pay/abc')
+    expect(printed(sys)).toContain('https://checkout.stripe.com/c/pay/abc')
+    expect(getOverlayState().billing).toBeNull()
+  })
+
+  it('gateway checkout failure surfaces the server message', async () => {
+    const { run, sys } = buildCtx({
+      'billing.state': gatewayLoggedOut(),
+      'billing.topup_checkout': { ok: false, error: 'http_401', message: 'Gateway rejected the top-up (HTTP 401).' }
+    })
+
+    await run('100')
+    await settle()
+    expect(printed(sys)).toContain('Could not start the top-up')
+    expect(printed(sys)).toContain('HTTP 401')
+  })
+
+  it('portal login still wins when gateway flag is absent', async () => {
+    const { run, sys, calls } = buildCtx({ 'billing.state': { ...ownerState(), logged_in: false, ok: true } })
+    await run('100')
+    await settle()
+    expect(printed(sys)).toContain('Not logged into Nous Portal')
+    expect(calls.some(c => c.method === 'billing.topup_checkout')).toBe(false)
+  })
+})
