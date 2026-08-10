@@ -93,10 +93,13 @@ Nous 主机、kopi fork 的用户没有对它有效的 key。真正活着的替�
 
 **现在就能落地的一小块（不依赖任何未定域名）：**
 
-- 🟢 **TUI `/topup` 接真后端**（进行中）：用户自己的 key → `POST /kopi/topup/checkout`
-  → 开 Stripe URL。独立、可验证、不碰注册/文档站那些卡死项。回跳暂落网关 `/ui/`。
+- ✅ **TUI/CLI `/topup` 接真后端**（PR #46）：用户自己的 kopi_ 虚拟 key →
+  `POST /kopi/topup/checkout` → 开 Stripe URL。新增 gateway-mode 分支
+  （`kopi_cli/kopi_topup.py` + `billing.topup_checkout` RPC），portal overlay 原样保留；
+  base 配置驱动、默认 `bill.kopiagent.ai`。⚠️ 回跳暂落网关 `/ui/`；且 clash fake-IP
+  下本机验证不了线上网关，只有 mock 单测 + 网关侧文档兜底，**待无代理环境补一次真连冒烟**。
 - 🟢 **账单改 CLI 内渲染**：`/kopi/usage/balance` + `/summary` 代替网页链接
-  （spend 异步落账，10–15s 可见）。
+  （spend 异步落账，10–15s 可见）。尚未做。
 - 🟡 **推理默认端点改 `bill.kopiagent.ai/v1`**：技术上现成，但改哪个是网关侧清单 #1
   的产品决策，等拍板。
 
