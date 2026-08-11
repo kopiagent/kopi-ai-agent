@@ -173,6 +173,16 @@ jobs:
           fi
         env:
           CI: 'true'
+          # The stalls in #32 sit entirely inside Playwright: our markers
+          # bracket them (`hook.afterEach.end` on one side, `test.start` on the
+          # other), the heartbeats keep ticking through them, and the runner is
+          # idle — loadavg decaying from 2.0 to 0.5, memory at 2.3 of 16 GB,
+          # `procs_blocked` zero. Nothing is starved and nothing is blocked on
+          # I/O; the run resumes only when a timeout fires. `pw:api` logs each
+          # internal call, so the pending one is named rather than guessed at.
+          # Three inferences from where the gaps sat were wrong; this asks the
+          # library directly. Remove once #32 is understood.
+          DEBUG: 'pw:api'
           # Ensure no real API keys leak into the test env.
           OPENROUTER_API_KEY: ''
           OPENAI_API_KEY: ''
