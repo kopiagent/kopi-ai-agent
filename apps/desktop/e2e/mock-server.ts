@@ -557,6 +557,23 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
         heldCompletionCount: () => heldCompletionCount,
         close: () =>
           new Promise((resolveClose, rejectClose) => {
+            // `server.close()` stops the listener from accepting new
+            // connections, but its callback does not fire while a single
+            // established connection is still open — and the backend's HTTP
+            // client keeps one alive. The Electron app is gone by this point;
+            // the Python process holding the socket is not, so nothing ever
+            // closes it from the other end.
+            //
+            // This was #32. Teardown stalled here for the full 90s test
+            // timeout, which Playwright charges to the test that had already
+            // passed — the job log shows `test.end passed 40ms` and then 89
+            // seconds of silence before the `✘`. Playwright then discards the
+            // worker, and the 60-90s cold restart is what made the suite
+            // outrun `timeout-minutes` without ever printing a reason.
+            //
+            // macOS reclaims the socket quickly enough to hide this, which is
+            // why it reproduced only on CI.
+            server.closeAllConnections?.()
             server.close((err) => {
               if (err) {
                 rejectClose(err)
