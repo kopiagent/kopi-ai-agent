@@ -41,17 +41,17 @@ No clone needed. Nix fetches, builds, and runs everything:
 
 ```bash
 # Run the desktop app
-nix run github:NousResearch/kopi-agent#desktop
+nix run github:kopiagent/kopi-ai-agent#desktop
 
 # Or install persistently
-nix profile install github:NousResearch/kopi-agent#desktop
+nix profile install github:kopiagent/kopi-ai-agent#desktop
 
 # run the tui
-nix run github:NousResearch/kopi-agent -- setup
-nix run github:NousResearch/kopi-agent -- --tui
+nix run github:kopiagent/kopi-ai-agent -- setup
+nix run github:kopiagent/kopi-ai-agent -- --tui
 
 # or install it in your profile
-nix profile install github:NousResearch/kopi-agent
+nix profile install github:kopiagent/kopi-ai-agent
 kopi setup
 kopi --tui
 ```
@@ -69,7 +69,7 @@ The `default` package adds ~700 MB to the closure. If you only need messaging pl
 <summary><strong>Running from a local clone</strong></summary>
 
 ```bash
-git clone https://github.com/NousResearch/kopi-agent.git
+git clone https://github.com/kopiagent/kopi-ai-agent.git
 cd kopi-agent
 nix develop
 kopi setup
@@ -94,7 +94,7 @@ This module requires NixOS. For non-NixOS systems (macOS, other Linux distros), 
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    kopi-agent.url = "github:NousResearch/kopi-agent";
+    kopi-agent.url = "github:kopiagent/kopi-ai-agent";
   };
 
   outputs = { nixpkgs, kopi-agent, ... }: {
@@ -733,7 +733,7 @@ External flakes can override the package directly:
 
 ```nix
 {
-  inputs.kopi-agent.url = "github:NousResearch/kopi-agent";
+  inputs.kopi-agent.url = "github:kopiagent/kopi-ai-agent";
   outputs = { kopi-agent, nixpkgs, ... }: {
     nixpkgs.overlays = [ kopi-agent.overlays.default ];
     # Then:
