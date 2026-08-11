@@ -37,8 +37,20 @@ import { test as base, expect, type Page, type ElectronApplication, _electron } 
 // Four earlier hypotheses in this area died to measurements (backend spawn,
 // `app.close`, the overlay poll, `waitForAppReady` as a whole), so this one
 // gets verified before anything is tuned on the strength of it.
+/**
+ * Worker tag stamped on every `[e2e-timing]` line.
+ *
+ * Playwright interleaves the stdout of parallel workers into one stream, and
+ * until now only `module.load` carried a pid. A gap in the log therefore could
+ * not be attributed to the worker that owned it — which is how the 89s stall
+ * in #32 got read as `mock.close` hanging, when the `mock.close` count was
+ * simply per-describe and balanced all along. Every marker carries the worker
+ * now, so the next log can be split per worker and the stall placed exactly.
+ */
+const WORKER_TAG = `w${process.env.TEST_WORKER_INDEX ?? '?'}:${process.pid}`
+
 console.log(
-  `[e2e-timing] module.load test.ts pid=${process.pid} ` +
+  `[e2e-timing ${WORKER_TAG}] module.load test.ts pid=${process.pid} ` +
     `worker=${process.env.TEST_WORKER_INDEX ?? '?'} uptime=${process.uptime().toFixed(1)}s`,
 )
 
@@ -129,7 +141,7 @@ export async function collectErrorBanners(page: Page | null): Promise<string[]> 
 
       return [...(w.__ERROR_BANNER_GUARD__ ?? [])]
     })
-    console.log(`[e2e-timing] banners.evaluate ${Date.now() - t0}ms`)
+    console.log(`[e2e-timing ${WORKER_TAG}] banners.evaluate ${Date.now() - t0}ms`)
 
     // Also do a final DOM scan for any alert elements still visible.
     //
@@ -145,7 +157,7 @@ export async function collectErrorBanners(page: Page | null): Promise<string[]> 
       .locator('[role="alert"]')
       .allTextContents()
       .catch(() => [] as string[])
-    console.log(`[e2e-timing] banners.locator ${Date.now() - t1}ms`)
+    console.log(`[e2e-timing ${WORKER_TAG}] banners.locator ${Date.now() - t1}ms`)
 
     const all = [...new Set([...pageErrors, ...domAlerts.map(t => t.trim()).filter(Boolean)])]
     seenErrors.push(...all)
@@ -183,12 +195,12 @@ export const test = base.extend({
 // a run finishes, which this suite never does. A start/end marker on stdout
 // closes that gap and survives the `timeout-minutes` kill.
 base.beforeEach(async ({}, testInfo) => {
-  console.log(`[e2e-timing] test.start ${testInfo.titlePath.slice(1).join(' > ')}`)
+  console.log(`[e2e-timing ${WORKER_TAG}] test.start ${testInfo.titlePath.slice(1).join(' > ')}`)
 })
 
 base.afterEach(async ({}, testInfo) => {
   console.log(
-    `[e2e-timing] test.end ${testInfo.status} ${testInfo.duration}ms ` +
+    `[e2e-timing ${WORKER_TAG}] test.end ${testInfo.status} ${testInfo.duration}ms ` +
       `${testInfo.titlePath.slice(1).join(' > ')}`,
   )
 
@@ -208,7 +220,7 @@ base.afterEach(async ({}, testInfo) => {
   // markers is this hook; anything left over between `hook.afterEach.end` and
   // the next `test.start` belongs to Playwright itself, not to our code — which
   // is the distinction the current logs cannot make.
-  console.log('[e2e-timing] hook.afterEach.end')
+  console.log(`[e2e-timing ${WORKER_TAG}] hook.afterEach.end`)
 
   if (errors.length > 0) {
     throw new Error(
@@ -223,10 +235,10 @@ base.afterAll(async () => {
   // The other big gap class runs `mock.close` -> `mock.start`, i.e. across the
   // file boundary. These two markers say whether that time is spent in a hook
   // or between them.
-  console.log('[e2e-timing] hook.afterAll.start')
+  console.log(`[e2e-timing ${WORKER_TAG}] hook.afterAll.start`)
   seenErrors.length = 0
   activePage = null
-  console.log('[e2e-timing] hook.afterAll.end')
+  console.log(`[e2e-timing ${WORKER_TAG}] hook.afterAll.end`)
 })
 
 export { expect, type Page, type ElectronApplication, _electron }

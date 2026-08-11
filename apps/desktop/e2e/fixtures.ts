@@ -415,13 +415,25 @@ export async function launchDesktop(
  * not assumed, from the `[kopi +Ns]` backend logs. So the cost is in the
  * fixture around the app, and this narrows it to a phase. See #32.
  */
+/**
+ * Worker tag stamped on every `[e2e-timing]` line.
+ *
+ * Playwright interleaves the stdout of parallel workers into one stream, and
+ * until now only `module.load` carried a pid. A gap in the log therefore could
+ * not be attributed to the worker that owned it — which is how the 89s stall
+ * in #32 got read as `mock.close` hanging, when the `mock.close` count was
+ * simply per-describe and balanced all along. Every marker carries the worker
+ * now, so the next log can be split per worker and the stall placed exactly.
+ */
+const WORKER_TAG = `w${process.env.TEST_WORKER_INDEX ?? '?'}:${process.pid}`
+
 async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
   const started = Date.now()
 
   try {
     return await fn()
   } finally {
-    console.log(`[e2e-timing] ${label} ${Date.now() - started}ms`)
+    console.log(`[e2e-timing ${WORKER_TAG}] ${label} ${Date.now() - started}ms`)
   }
 }
 
@@ -465,7 +477,7 @@ async function closeAppAndReap(app: ElectronApplication): Promise<void> {
     }
 
     if (proc?.pid) {
-      console.log(`[e2e-timing] app.exit REAPING pid=${proc.pid} — still alive 5s after close()`)
+      console.log(`[e2e-timing ${WORKER_TAG}] app.exit REAPING pid=${proc.pid} — still alive 5s after close()`)
 
       try {
         process.kill(proc.pid, 'SIGKILL')
@@ -820,9 +832,9 @@ export async function waitForAppReady(fixture: MockBackendFixture | NoProviderFi
       return { chain: out, viewport: `${window.innerWidth}x${window.innerHeight}` }
     }).catch(() => null)
 
-    console.log(`[e2e-timing] waitForAppReady BLOCKED viewport=${chain?.viewport ?? '?'}`)
+    console.log(`[e2e-timing ${WORKER_TAG}] waitForAppReady BLOCKED viewport=${chain?.viewport ?? '?'}`)
     for (const entry of chain?.chain ?? ['(could not read the DOM)']) {
-      console.log(`[e2e-timing]   ${entry}`)
+      console.log(`[e2e-timing ${WORKER_TAG}]   ${entry}`)
     }
 
     throw error
@@ -853,7 +865,7 @@ export async function waitForAppReady(fixture: MockBackendFixture | NoProviderFi
       // Silent expiry, unlike the two waits above — it just falls through to
       // the test with a hidden window. Say so, or a 60s stall here reads as
       // the test itself being slow.
-      console.log('[e2e-timing] ready.visible EXPIRED — window never reported visible')
+      console.log(`[e2e-timing ${WORKER_TAG}] ready.visible EXPIRED — window never reported visible`)
     })
   }
 }
