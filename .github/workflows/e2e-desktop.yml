@@ -148,20 +148,6 @@ jobs:
       - name: Run Playwright E2E tests
         working-directory: apps/desktop
         run: |
-          # Runner-side half of the #32 liveness probe; the worker-side half is
-          # the heartbeat in e2e/test.ts. Together they separate "the worker is
-          # alive and Playwright is waiting" from "the worker was not scheduled",
-          # which no marker inside the suite can distinguish on its own. Load
-          # and free memory are sampled on the same clock as the test log.
-          ( while true; do
-              echo "[runner-load] $(date -u +%H:%M:%S) loadavg=$(cut -d' ' -f1-3 /proc/loadavg)" \
-                   "mem=$(free -m | awk '/^Mem:/{print $3"/"$2"MB"}')" \
-                   "io=$(awk '/^procs_blocked/{print $2}' /proc/stat)"
-              sleep 10
-            done ) &
-          SAMPLER=$!
-          trap 'kill $SAMPLER 2>/dev/null || true' EXIT
-
           if [ "${{ github.ref_name }}" = "main" ]; then
             echo "On main — generating/updating baseline screenshots"
             npm run build && xvfb-run -a --server-args="-screen 0 1280x1024x24" \
@@ -173,16 +159,6 @@ jobs:
           fi
         env:
           CI: 'true'
-          # The stalls in #32 sit entirely inside Playwright: our markers
-          # bracket them (`hook.afterEach.end` on one side, `test.start` on the
-          # other), the heartbeats keep ticking through them, and the runner is
-          # idle — loadavg decaying from 2.0 to 0.5, memory at 2.3 of 16 GB,
-          # `procs_blocked` zero. Nothing is starved and nothing is blocked on
-          # I/O; the run resumes only when a timeout fires. `pw:api` logs each
-          # internal call, so the pending one is named rather than guessed at.
-          # Three inferences from where the gaps sat were wrong; this asks the
-          # library directly. Remove once #32 is understood.
-          DEBUG: 'pw:api'
           # Ensure no real API keys leak into the test env.
           OPENROUTER_API_KEY: ''
           OPENAI_API_KEY: ''
