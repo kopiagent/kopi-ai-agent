@@ -47,6 +47,19 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Inline evidence needs a gh-image session token, which is an
+          # optional per-repository secret. Without it publish_e2e_evidence.py
+          # exits 2 during its own argument parsing, so this workflow went red
+          # ~20s into every CI run — a failure that had nothing to do with the
+          # tests, on a repository where the secret was never configured. The
+          # inline comment is a convenience; the screenshots are uploaded as
+          # run artifacts by the E2E job either way. So skip, don't fail.
+          if [ -z "${GH_SESSION_TOKEN:-}" ]; then
+            echo "GH_IMAGE_SESSION_TOKEN is not configured for $SOURCE_REPO — skipping inline evidence."
+            echo "Screenshots remain available as artifacts on the CI run itself."
+            exit 0
+          fi
+
           PR_NUMBER=$(gh api "repos/$SOURCE_REPO/actions/runs/$SOURCE_RUN_ID" --jq '.pull_requests[0].number // empty')
           if [ -z "$PR_NUMBER" ]; then
             echo "No pull request is associated with CI run $SOURCE_RUN_ID."
