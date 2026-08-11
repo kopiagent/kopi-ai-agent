@@ -36,7 +36,28 @@ export default defineConfig({
   fullyParallel: false,
   reporter: reporters,
   use: {
-    screenshot: 'on',
+    /* `'on'` took an automatic screenshot at the end of EVERY test, and on CI
+     * that capture hangs against an Electron page under xvfb — for the full
+     * `timeout` above, at which point Playwright fails a test that had already
+     * passed. That is #32. From the worker-tagged log of run 31466811433,
+     * where every gap sits between `hook.afterEach.end` and the next
+     * `test.start` and every gap is the timeout to the second:
+     *
+     *   06:55:50  hook.afterEach.end
+     *   06:57:20  test.start ...          <- 90s
+     *   06:57:21  hook.afterEach.end
+     *   06:58:51  test.start ...          <- 90s
+     *   06:58:51  hook.afterEach.end
+     *   07:00:22  test.start ...          <- 91s
+     *
+     * The failures carry no stack and no locator, and their sole attachment
+     * is `test-finished-1.png` — this screenshot. Test bodies pass in tens of
+     * milliseconds throughout.
+     *
+     * The visual-diff pipeline does not read these: its `-diff/-actual/
+     * -expected.png` come from visual-snapshot.ts and its baselines from
+     * `e2e/*-snapshots`, so nothing downstream loses an image. */
+    screenshot: 'only-on-failure',
     trace: { mode: 'on', screenshots: true, snapshots: true, sources: true },
     // Emulate prefers-reduced-motion: reduce so all CSS transitions and
     // animations resolve instantly. This prevents boot/connecting overlays
