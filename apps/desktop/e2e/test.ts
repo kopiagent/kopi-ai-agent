@@ -63,9 +63,18 @@ const WORKER_TAG = `w${process.env.TEST_WORKER_INDEX ?? '?'}:${process.pid}`
 // running, which points outward at the runner rather than at this suite.
 // `rss` separates a memory wall from plain CPU starvation. `unref()` keeps
 // the timer from holding the process open at exit.
+// `getActiveResourcesInfo` is the part that names what the process is holding.
+// `pw:api` already showed the stalls contain no Playwright call at all — every
+// `=>` has its `<=` before the gap opens — so the wait is not on a page or a
+// CDP operation. Active handles say what it is on instead: a socket, a child
+// process, an IPC channel, or nothing but timers.
 setInterval(() => {
   const rssMb = Math.round(process.memoryUsage.rss() / 1e6)
-  console.log(`[e2e-timing ${WORKER_TAG}] heartbeat uptime=${process.uptime().toFixed(1)}s rss=${rssMb}MB`)
+  const handles = [...new Set(process.getActiveResourcesInfo())].sort().join(',')
+  console.log(
+    `[e2e-timing ${WORKER_TAG}] heartbeat uptime=${process.uptime().toFixed(1)}s ` +
+      `rss=${rssMb}MB handles=${handles}`,
+  )
 }, 10_000).unref()
 
 console.log(
