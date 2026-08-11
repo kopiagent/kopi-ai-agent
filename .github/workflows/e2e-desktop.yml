@@ -132,17 +132,30 @@ jobs:
       # On main, we run with --update-snapshots to generate baselines.
       # `npm run test:e2e` builds dist/ as a pretest hook so the renderer
       # is always fresh — no separate build step needed.
+      #
+      # `--max-failures` exists because of #32, and it buys information rather
+      # than green. The `list` reporter prints a failure's error, stack and
+      # attachments only in the end-of-run summary; this suite has never
+      # reached one, because Playwright discards the worker after every
+      # failure and each cold restart costs 60-90s, so ~28 failures outlast
+      # any `timeout-minutes`. Every run therefore spent 20 minutes and
+      # reported a bare `✘` per test with no reason attached — the job log
+      # from run 31454224016 shows 22 `test.end passed` markers and 0
+      # failures at the test level, so whatever fails does so outside the
+      # test body, and the summary is the only place that would say what.
+      # Stopping at 5 lets the summary print. Raise or drop this once #32 is
+      # understood; it is a diagnostic, not a fix.
       - name: Run Playwright E2E tests
         working-directory: apps/desktop
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
             echo "On main — generating/updating baseline screenshots"
             npm run build && xvfb-run -a --server-args="-screen 0 1280x1024x24" \
-              npx playwright test --reporter=list --update-snapshots
+              npx playwright test --reporter=list --max-failures=5 --update-snapshots
           else
             echo "On PR — comparing against cached baselines"
             npm run build && xvfb-run -a --server-args="-screen 0 1280x1024x24" \
-              npx playwright test --reporter=list
+              npx playwright test --reporter=list --max-failures=5
           fi
         env:
           CI: 'true'
