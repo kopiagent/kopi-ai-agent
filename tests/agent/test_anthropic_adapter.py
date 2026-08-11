@@ -1882,3 +1882,50 @@ class TestFinalPayloadHasNoBlankTextBlocks:
         )
         image_blocks = [b for b in tool_result_block["content"] if b.get("type") == "image"]
         assert len(image_blocks) == 1
+
+
+class TestOAuthSystemPromptBrandSanitization:
+    """The OAuth wire must never carry this fork's product/vendor names.
+
+    Anthropic's server-side classifier treats a third-party product fingerprint
+    in the system prompt as a non-plan request, so build_anthropic_kwargs
+    rewrites them. The rebrand made this fragile: renaming the vendor in
+    DEFAULT_AGENT_IDENTITY silently un-sanitizes the wire unless the mapping is
+    updated in lockstep. These tests fail loudly if that pairing is ever broken.
+    """
+
+    @staticmethod
+    def _system_text(identity: str) -> str:
+        from agent.anthropic_adapter import build_anthropic_kwargs
+
+        kwargs = build_anthropic_kwargs(
+            model="claude-sonnet-4-5",
+            messages=[
+                {"role": "system", "content": identity},
+                {"role": "user", "content": "hi"},
+            ],
+            tools=None,
+            max_tokens=64,
+            reasoning_config=None,
+            is_oauth=True,
+        )
+        system = kwargs.get("system") or []
+        if isinstance(system, str):
+            return system
+        return "\n".join(b.get("text", "") for b in system if isinstance(b, dict))
+
+    def test_current_vendor_name_is_sanitized(self):
+        from agent.prompt_builder import DEFAULT_AGENT_IDENTITY
+
+        text = self._system_text(DEFAULT_AGENT_IDENTITY)
+        assert "Kopi Ai Agent" not in text
+        assert "Kopi Agent" not in text
+
+    def test_pre_rebrand_vendor_name_is_still_sanitized(self):
+        # Existing installs keep their originally-seeded SOUL.md on disk, so the
+        # old attribution keeps arriving here long after the template changed.
+        from agent.prompt_builder import DEFAULT_AGENT_IDENTITY
+
+        legacy = DEFAULT_AGENT_IDENTITY.replace("Kopi Ai Agent", "Nous Research")
+        text = self._system_text(legacy)
+        assert "Nous Research" not in text
