@@ -148,6 +148,20 @@ jobs:
       - name: Run Playwright E2E tests
         working-directory: apps/desktop
         run: |
+          # Runner-side half of the #32 liveness probe; the worker-side half is
+          # the heartbeat in e2e/test.ts. Together they separate "the worker is
+          # alive and Playwright is waiting" from "the worker was not scheduled",
+          # which no marker inside the suite can distinguish on its own. Load
+          # and free memory are sampled on the same clock as the test log.
+          ( while true; do
+              echo "[runner-load] $(date -u +%H:%M:%S) loadavg=$(cut -d' ' -f1-3 /proc/loadavg)" \
+                   "mem=$(free -m | awk '/^Mem:/{print $3"/"$2"MB"}')" \
+                   "io=$(awk '/^procs_blocked/{print $2}' /proc/stat)"
+              sleep 10
+            done ) &
+          SAMPLER=$!
+          trap 'kill $SAMPLER 2>/dev/null || true' EXIT
+
           if [ "${{ github.ref_name }}" = "main" ]; then
             echo "On main — generating/updating baseline screenshots"
             npm run build && xvfb-run -a --server-args="-screen 0 1280x1024x24" \

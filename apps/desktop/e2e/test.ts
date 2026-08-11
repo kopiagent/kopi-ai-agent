@@ -49,6 +49,25 @@ import { test as base, expect, type Page, type ElectronApplication, _electron } 
  */
 const WORKER_TAG = `w${process.env.TEST_WORKER_INDEX ?? '?'}:${process.pid}`
 
+// Liveness probe for #32.
+//
+// Every marker in this file fires from our own code, so a gap between two of
+// them is silent about whether the process was working, waiting, or not
+// scheduled at all. Three readings of that silence have now been wrong —
+// `mock.close` hanging, machine-wide contention, and the end-of-test
+// screenshot — each one inferred from where the gap happened to sit rather
+// than from anything measured inside it.
+//
+// A ticking heartbeat says the worker is alive and Playwright is awaiting
+// something. A heartbeat that stops and resumes says the process was not
+// running, which points outward at the runner rather than at this suite.
+// `rss` separates a memory wall from plain CPU starvation. `unref()` keeps
+// the timer from holding the process open at exit.
+setInterval(() => {
+  const rssMb = Math.round(process.memoryUsage.rss() / 1e6)
+  console.log(`[e2e-timing ${WORKER_TAG}] heartbeat uptime=${process.uptime().toFixed(1)}s rss=${rssMb}MB`)
+}, 10_000).unref()
+
 console.log(
   `[e2e-timing ${WORKER_TAG}] module.load test.ts pid=${process.pid} ` +
     `worker=${process.env.TEST_WORKER_INDEX ?? '?'} uptime=${process.uptime().toFixed(1)}s`,
