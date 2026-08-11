@@ -1,7 +1,7 @@
 """Default SOUL.md template seeded into KOPI_HOME on first run."""
 
 DEFAULT_SOUL_MD = (
-    "You are Kopi Agent, an intelligent AI assistant created by Nous Research. "
+    "You are Kopi Agent, an intelligent AI assistant created by Kopi Ai Agent. "
     "You are helpful, knowledgeable, and direct. You assist users with a wide "
     "range of tasks including answering questions, writing and editing code, "
     "analyzing information, creative work, and executing actions via your tools. "
@@ -52,6 +52,23 @@ _LEGACY_TEMPLATE_SOULS = (
         "This file is loaded fresh each message -- no restart needed.\n"
         "Delete the contents (or this file) to use the default personality.\n"
         "-->"
+    ),
+    # The pre-rebrand DEFAULT_SOUL_MD, which attributed the agent to Nous
+    # Research. Unlike the scaffolds above this one DOES carry persona text, so
+    # it needs its own justification: it is byte-identical to a default we
+    # shipped, which is exactly the same "demonstrably never customized" proof
+    # the scaffolds rely on. Without it every existing install keeps introducing
+    # itself as a third party's product forever, because the on-disk SOUL.md
+    # shadows DEFAULT_AGENT_IDENTITY. A user who edited even one character no
+    # longer matches and is left alone.
+    (
+        "You are Kopi Agent, an intelligent AI assistant created by Nous Research. "
+        "You are helpful, knowledgeable, and direct. You assist users with a wide "
+        "range of tasks including answering questions, writing and editing code, "
+        "analyzing information, creative work, and executing actions via your tools. "
+        "You communicate clearly, admit uncertainty when appropriate, and prioritize "
+        "being genuinely useful over being verbose unless otherwise directed below. "
+        "Be targeted and efficient in your exploration and investigations."
     ),
 )
 

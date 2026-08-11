@@ -2900,9 +2900,17 @@ def build_anthropic_kwargs(
         for block in system:
             if isinstance(block, dict) and block.get("type") == "text":
                 text = block.get("text", "")
+                # Vendor name first: "Kopi Ai Agent" does not contain the
+                # substring "Kopi Agent", but ordering it ahead of the product
+                # rules keeps that non-obvious fact from becoming load-bearing.
+                text = text.replace("Kopi Ai Agent", "Anthropic")
                 text = text.replace("Kopi Agent", "Claude Code")
                 text = text.replace("Kopi agent", "Claude Code")
                 text = text.replace("kopi-ai-agent", "claude-code")
+                # Pre-rebrand vendor name. Still required: an existing install's
+                # on-disk SOUL.md keeps whatever text it was seeded with, so the
+                # old attribution keeps arriving here long after the template
+                # changed.
                 text = text.replace("Nous Research", "Anthropic")
                 block["text"] = text
 

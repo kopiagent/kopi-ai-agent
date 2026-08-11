@@ -61,6 +61,37 @@ class TestEnsureKopiHome:
             ensure_kopi_home()
             assert soul_path.read_text(encoding="utf-8") == DEFAULT_SOUL_MD
 
+    def test_upgrades_pre_rebrand_default_soul_md(self, tmp_path):
+        # The pre-rebrand default attributed the agent to a third party ("created
+        # by Nous Research"). The on-disk SOUL.md shadows DEFAULT_AGENT_IDENTITY,
+        # so without this upgrade every existing install would keep introducing
+        # itself as someone else's product forever.
+        from kopi_cli.default_soul import DEFAULT_SOUL_MD, is_legacy_template_soul
+
+        pre_rebrand = DEFAULT_SOUL_MD.replace("Kopi Ai Agent", "Nous Research")
+        assert pre_rebrand != DEFAULT_SOUL_MD, "sanity: the rebrand must be in DEFAULT_SOUL_MD"
+        assert is_legacy_template_soul(pre_rebrand)
+
+        with patch.dict(os.environ, {"KOPI_HOME": str(tmp_path)}):
+            soul_path = tmp_path / "SOUL.md"
+            soul_path.write_text(pre_rebrand + "\n", encoding="utf-8")
+            ensure_kopi_home()
+            assert soul_path.read_text(encoding="utf-8") == DEFAULT_SOUL_MD
+            assert "Nous Research" not in soul_path.read_text(encoding="utf-8")
+
+    def test_keeps_a_customized_soul_md_untouched(self, tmp_path):
+        # The safety guarantee behind the in-place upgrade: one character of user
+        # intent and we never rewrite the file.
+        from kopi_cli.default_soul import DEFAULT_SOUL_MD
+
+        customized = DEFAULT_SOUL_MD.replace("Kopi Ai Agent", "Nous Research") + " Always answer in haiku."
+
+        with patch.dict(os.environ, {"KOPI_HOME": str(tmp_path)}):
+            soul_path = tmp_path / "SOUL.md"
+            soul_path.write_text(customized, encoding="utf-8")
+            ensure_kopi_home()
+            assert soul_path.read_text(encoding="utf-8") == customized
+
 
 
 

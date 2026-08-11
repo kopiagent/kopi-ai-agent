@@ -6,6 +6,10 @@
 > 不含规则:① 状态(`synced_to_commit` / `sync_tag` / `synced_date` / `history`)、
 > ② `conflict_policy` 逐文件的 union-preserve 清单、③ `known_noise_failures` 已知噪音名单。
 > 规则与数据冲突时,**以本文件为准**。
+>
+> 🔴 **动手写代码前,先读 [`docs/README.md`](docs/README.md)** —— 它是 `docs/` 的入口索引,
+> 「遗留问题 / 待决事项」栏记录了**已知但尚未解决**的事。不读就动手 = 大概率重复考古,
+> 或者把别人刻意留下的坑当成新 bug。收尾时按第 4 步把本次的遗留写回去。
 
 ## 铁律
 
@@ -251,6 +255,47 @@ gh pr merge <PR> --rebase --delete-branch     # 多提交需保留结构(如 syn
   所以看到红别只看 PR 首页,去读 `All required checks pass` 那个 job 的日志,
   它会逐行打印 `✅/❌ <job>: <result>` 和真正导致 exit 1 的清单。
   ❌ 图标 ≠ 阻塞。
+
+---
+
+## 第 4 步:遗留问题必须落文档(强制)
+
+**每次新增/修改代码,凡是「查清了但这次没做」的事,都要写进 `docs/` 下的 md,并在
+[`docs/README.md`](docs/README.md) 索引里挂上。** 不写等于没查 —— 下一个人(或下一个会话)
+会把同样的东西从头考古一遍。
+
+🔴 **`docs/README.md` 是 `docs/` 的唯一入口。新增文档不加索引 = 没人找得到 = 白写。**
+动手写代码前先读它的「遗留问题 / 待决事项」栏。
+
+### 什么必须记
+
+- **刻意没修的**:发现了但超出本次范围(例:改名时发现另外 150 处也该改)。
+- **卡住的**:缺信息 / 缺决策 / 缺外部依赖(例:等域名、等法务确认收单主体)。
+- **判断不了的**:属于产品/商业/法律决策,不是代码能回答的 —— **写下来交给人,不要自己拍**。
+- **验证有缺口的**:本机环境做不到的验证(例:clash fake-IP 下摸不到线上域名,
+  只有 mock 单测兜底)。**必须写明缺口,不能让它看起来像验过了。**
+- **踩过的坑**:同类工作下次会再踩的,写进本文件(CLAUDE.md)而不是 docs/。
+
+### 怎么写才有用
+
+每条至少给三样,缺一样下一个人就得重查:
+
+1. **证据指针** —— `file:line` / issue / commit hash。不要写"某个地方有问题"。
+2. **为什么这次没做** —— 缺什么才能做。
+3. **判据** —— 下一个人怎么确认这条还成立(代码会变,记录会过期)。
+
+反面教材:「品牌还有些地方没改完」。正面:「`default_soul.py:4` 等 4 处 identity 串仍写
+`created by Nous Research`;改动会连坐 `anthropic_adapter.py:2906` 的消毒 replace;
+判据 `grep -rn 'created by Nous Research'`」。
+
+### 现有的活文档
+
+- [`docs/pending-product-decisions.md`](docs/pending-product-decisions.md) —— 产品级待决
+- [`docs/brand-rename-audit.md`](docs/brand-rename-audit.md) —— 品牌改名剩余项分类
+
+新问题优先**追加到已有文档的对应章节**,只有开了新领域才新建文件(新建必须加索引)。
+
+📌 纯文档改动命中第 1 步的豁免(只动 `*.md`),**但仍须走 PR + CI 全绿**。
 
 ---
 
@@ -629,6 +674,8 @@ mac 包是 ad-hoc 签名未公证,安装需 `xattr -dr com.apple.quarantine /App
 - [ ] uv lock / 版本一致 / ruff / footgun / 品牌 grep 全过
 - [ ] 每个失败都归类了:真回归(已修)或已知噪音(**有出处** —— 大批量时用 `origin/main` worktree 差分,别凭经验猜)
 - [ ] **修完 bug 重跑了全量**,并用数字变化证明
+- [ ] **遗留问题写进 `docs/` 并挂进 [`docs/README.md`](docs/README.md) 索引**(第 4 步)——
+      刻意没修的、卡住的、判断不了的、验证有缺口的,每条带 `file:line` + 为什么没做 + 判据
 - [ ] PR 已开,`All required checks pass` = pass
 - [ ] 用 squash/rebase 合并(无 merge commit)
 
