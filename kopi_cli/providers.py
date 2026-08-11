@@ -57,7 +57,7 @@ KOPI_OVERLAYS: Dict[str, KopiOverlay] = {
     "nous": KopiOverlay(
         transport="openai_chat",
         auth_type="oauth_device_code",
-        base_url_override="https://inference-api.nousresearch.com/v1",
+        base_url_override="https://kopiaiagent.com/v1",
     ),
     "openai-codex": KopiOverlay(
         transport="codex_responses",
@@ -401,7 +401,7 @@ ALIASES: Dict[str, str] = {
 
 _LABEL_OVERRIDES: Dict[str, str] = {
     "moa": "Mixture of Agents",
-    "nous": "Nous Portal",
+    "nous": "Kopi Official",
     "openai-codex": "OpenAI Codex",
     "copilot-acp": "GitHub Copilot ACP",
     "stepfun": "StepFun Step Plan",
