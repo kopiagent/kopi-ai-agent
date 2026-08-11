@@ -28,18 +28,39 @@ name: auto-fix lint issues & formatting
 #      repo code. The only input it trusts is the patch artifact.
 #      Skipped entirely when generate-patch reports no fixes (has-fixes != true).
 
+# ── Why this no longer runs on push ─────────────────────────────────────────
+#
+# The premise in the header above — "single-maintainer fork; no branch
+# protection" — stopped being true. The `Protect main branch` ruleset is active
+# and requires `pull_request` plus linear history, with `bypass_actors` empty,
+# so no direct push to main can succeed by anyone. Every run that found a fix
+# died at the push:
+#
+#   error: GH013: Repository rule violations found for refs/heads/main.
+#
+# That is a standing red on main for a workflow that cannot do its job, which
+# is worse than not running it: it trains people to ignore a red main.
+#
+# Restoring the automation means one of two things, and both are decisions
+# rather than fixes. Granting the GitHub Actions app a ruleset bypass would let
+# ANY workflow holding `contents: write` push to main, not just this one — the
+# two-job split above protects this workflow, not the others. Going back to the
+# PR + auto-merge flow needs `AUTOFIX_BOT_PAT`, since a GITHUB_TOKEN push
+# triggers no workflows and the required checks would never run on the PR.
+#
+# Nothing is blocked in the meantime. The PR-time eslint check fails only on
+# un-fixable errors, so the cost is that fixable ones — import order, unused
+# imports, curly braces — accumulate until someone runs `npm run fix`.
+# `workflow_dispatch` still produces the patch on demand.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '**/*.js'
-      - '**/*.cjs'
-      - '**/*.mjs'
-      - '**/*.ts'
-      - '**/*.tsx'
-      - 'package.json'
-      - 'package-lock.json'
   workflow_dispatch:
+    inputs:
+      apply:
+        description: >-
+          Push the patch to main. Fails while the ruleset stands — leave off to
+          just produce the patch artifact and apply it locally.
+        type: boolean
+        default: false
 
 permissions:
   contents: read # default; apply-patch job overrides to write
@@ -117,7 +138,12 @@ jobs:
     needs: generate-patch
     # Skip entirely when generate-patch found no fixes — saves a runner,
     # avoids a redundant checkout/download, and keeps the job graph honest.
-    if: needs.generate-patch.outputs.has-fixes == 'true'
+    #
+    # Also gated on the `apply` input, because the push below cannot succeed
+    # while the `Protect main branch` ruleset stands (see the note on `on:`).
+    # A dispatch therefore leaves the patch as an artifact by default rather
+    # than ending in a red run; opting in is for once that is resolved.
+    if: needs.generate-patch.outputs.has-fixes == 'true' && inputs.apply
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
