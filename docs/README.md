@@ -14,6 +14,7 @@
 |---|---|---|
 | [pending-product-decisions.md](pending-product-decisions.md) | 产品级待决：第三方 URL 出口、Docker 安全姿态、GHCR 可见性、E2E 主线、品牌单一来源、运维遗留 | 活跃 |
 | [brand-rename-audit.md](brand-rename-audit.md) | 品牌改名剩余 ~150 处用户可见串的分类（T1 身份 / T2 商业出口 / T3 需人工判定 / T4 机械） | 活跃 |
+| [brand-cleanup-plan.md](brand-cleanup-plan.md) | 全仓 861 处 `Nous Research` 的处置方案：已定命名规则、绝对不动的 15 处（版权/语义/上游）、Step A–D 分步执行 | 待批准 |
 
 ## 契约 / 协议
 

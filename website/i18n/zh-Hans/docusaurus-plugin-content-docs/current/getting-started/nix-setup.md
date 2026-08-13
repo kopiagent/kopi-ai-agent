@@ -35,11 +35,11 @@ Kopi Agent 提供了一个 Nix flake，支持三个层级的集成：
 
 ```bash
 # 直接运行（首次使用时构建，之后使用缓存）
-nix run github:NousResearch/kopi-agent -- setup
-nix run github:NousResearch/kopi-agent -- chat
+nix run github:kopiagent/kopi-ai-agent -- setup
+nix run github:kopiagent/kopi-ai-agent -- chat
 
 # 或持久化安装
-nix profile install github:NousResearch/kopi-agent
+nix profile install github:kopiagent/kopi-ai-agent
 kopi setup
 kopi chat
 ```
@@ -50,7 +50,7 @@ kopi chat
 <summary><strong>从本地克隆构建</strong></summary>
 
 ```bash
-git clone https://github.com/NousResearch/kopi-agent.git
+git clone https://github.com/kopiagent/kopi-ai-agent.git
 cd kopi-agent
 nix build
 ./result/bin/kopi setup
@@ -75,7 +75,7 @@ nix build
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    kopi-agent.url = "github:NousResearch/kopi-agent";
+    kopi-agent.url = "github:kopiagent/kopi-ai-agent";
   };
 
   outputs = { nixpkgs, kopi-agent, ... }: {
@@ -685,7 +685,7 @@ services.kopi-agent = {
 
 ```nix
 {
-  inputs.kopi-agent.url = "github:NousResearch/kopi-agent";
+  inputs.kopi-agent.url = "github:kopiagent/kopi-ai-agent";
   outputs = { kopi-agent, nixpkgs, ... }: {
     nixpkgs.overlays = [ kopi-agent.overlays.default ];
     # 然后：
