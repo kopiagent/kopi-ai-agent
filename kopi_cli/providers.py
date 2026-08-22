@@ -422,7 +422,7 @@ ALIASES: Dict[str, str] = {
 # not in the catalog.
 
 _LABEL_OVERRIDES: Dict[str, str] = {
-    "kopi": "Kopi Official",
+    "kopi": "KOPI Gateway",
     "moa": "Mixture of Agents",
     "nous": "Kopi Official",
     "openai-codex": "OpenAI Codex",

@@ -37,8 +37,15 @@ kopi = ProviderProfile(
         "kopiaiagent",
         "kopiagent",
     ),
-    display_name="Kopi Official",
-    description="KOPI official gateway (kopi-* models, OpenAI-compatible)",
+    # NOT "Kopi Official" — that label belongs to the `nous` provider (the
+    # Portal/OAuth path, plugins/image_gen/openrouter, web EnvPage). Two rows
+    # sharing one label makes the picker ambiguous and breaks label-based
+    # exclusion (tests/kopi_cli/test_model_picker_excluded_providers.py).
+    display_name="KOPI Gateway",
+    # Starts with display_name on purpose: the CLI picker renders a plugin
+    # provider's row from `description` alone, so a description that does not
+    # contain the label makes the row unfindable by label (and un-excludable).
+    description="KOPI Gateway — official kopi-* models, OpenAI-compatible",
     # KOPI_PROXY_BASE_URL is listed so provider_catalog() surfaces it as the
     # base-URL override var (the *_BASE_URL suffix convention keeps it out of
     # the API-key var list). KOPI_API_KEY comes first because that is the name

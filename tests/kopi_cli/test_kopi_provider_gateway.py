@@ -37,7 +37,7 @@ def test_plugin_profile_is_registered_as_kopi_with_proxy_alias():
     profile = get_provider_profile("kopi")
     assert profile is not None
     assert profile.name == "kopi"
-    assert profile.display_name == "Kopi Official"
+    assert profile.display_name == "KOPI Gateway"
     # Old canonical id must keep resolving: instances provisioned before the
     # rename still carry ``provider: kopi-proxy`` in config.yaml.
     assert get_provider_profile("kopi-proxy") is profile
@@ -101,8 +101,8 @@ def test_auth_resolve_provider_maps_aliases_to_kopi(name):
 def test_provider_label_is_branded_for_both_ids():
     from kopi_cli.models import provider_label
 
-    assert provider_label("kopi") == "Kopi Official"
-    assert provider_label("kopi-proxy") == "Kopi Official"
+    assert provider_label("kopi") == "KOPI Gateway"
+    assert provider_label("kopi-proxy") == "KOPI Gateway"
 
 
 def test_provider_lock_allows_the_canonical_slug():
@@ -162,3 +162,19 @@ def test_seeded_config_defaults_to_the_kopi_gateway():
     assert model["api_key"] == "${KOPI_API_KEY}"
     # The retired endpoint must not come back as a default.
     assert "kopiaiagent.com" not in model["base_url"]
+
+
+def test_picker_row_is_findable_by_label():
+    """The CLI picker renders a plugin provider's row from ``description`` only.
+
+    A description that doesn't contain the display label makes our row
+    impossible to match by label — which is also how
+    ``model_catalog.excluded_providers`` exclusion is verified.
+    """
+    from providers import get_provider_profile
+
+    profile = get_provider_profile("kopi")
+    assert profile.description.startswith(profile.display_name), (
+        profile.display_name,
+        profile.description,
+    )
