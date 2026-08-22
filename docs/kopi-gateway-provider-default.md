@@ -14,7 +14,7 @@
 | 3 | `kopi_cli/providers.py` `resolve_provider_full()` | sibling-collapse 判定从「注册表 key 计数」改成「**distinct provider id** 计数」 |
 | 4 | `kopi_cli/models.py` | `_KOPI_LOCKED_SLUGS = {"kopi", "kopi-proxy"}`；`_PROVIDER_ALIASES` 加四个别名 |
 | 5 | `cli-config.yaml.example` | `provider: "custom"` → **`"kopi"`**；`base_url: kopiaiagent.com/v2` → **`https://bill.kopiagent.ai/v1`**；模型注释换成网关实际在卖的 11 个名字 |
-| 6 | `tests/kopi_cli/test_kopi_provider_gateway.py` | 17 项，覆盖两套解析体系 + 别名 + 标签 + 离线模型表 + 切换回归 + 模板默认值 |
+| 6 | `tests/kopi_cli/test_kopi_provider_gateway.py` | 18 项，覆盖两套解析体系 + 别名 + 标签 + 离线模型表 + 切换回归 + 模板默认值 |
 
 ### 为什么第 2 条是关键（SaaS 文档 §4 的根因）
 
@@ -67,7 +67,22 @@
 - `auth.resolve_provider('kopi-proxy') == 'kopi'`
 - `switch_model(..., explicit_provider='kopi'|'kopi-proxy')` → `success=True`（即 SaaS 文档 §4 那条报错的回归）
 - 无 key 时 `provider_model_ids('kopi')` 返回 11 个名字（选单不空）
-- `CANONICAL_PROVIDERS` 锁后仍含 `kopi`，标签是 `Kopi Official` 而不是裸 slug
+- `CANONICAL_PROVIDERS` 锁后仍含 `kopi`，标签是 `KOPI Gateway` 而不是裸 slug
+- 全量两轮：`27124 passed / 31 failed` → **`27126 passed / 30 failed`**（差值 = 修掉的
+  1 个真回归 + 新增 1 条守卫测试）。剩下 20 个失败文件全部在 `origin/main` worktree 上
+  逐字复现 = 既有环境噪音
+
+### 踩到的坑：标签不能撞车（本次唯一的真回归）
+
+`Kopi Official` 这个名字**已经属于 `nous` provider**（Portal/OAuth、
+`plugins/image_gen/openrouter`、`web/src/pages/EnvPage.tsx`）。给我们的 provider 复用它
+→ 选单里两行同名 → `model_catalog.excluded_providers` 按标签排除时**两个都排不掉**
+（`tests/kopi_cli/test_model_picker_excluded_providers.py` 抓到）。现用 `KOPI Gateway`。
+
+第二层更隐蔽：**CLI 选单渲染插件 provider 的行时只用 `description`，不用 label**
+（`kopi_cli/models.py` 的 auto-extend 把 `description` 存进 `tui_desc`）。description
+里不含标签，那一行就"按标签找不到"，排除同样失效。所以 description 必须以 display_name
+开头 —— 有 `test_picker_row_is_findable_by_label` 守着。
 
 **判据（下一个人怎么补上这个缺口）**：在无代理环境（关 clash，或在实例 pod 内）跑
 `curl -s -H "Authorization: Bearer $KOPI_API_KEY" https://bill.kopiagent.ai/v1/models | jq '.data[].id'`，
