@@ -14,6 +14,7 @@
 |---|---|---|
 | [pending-product-decisions.md](pending-product-decisions.md) | 产品级待决：第三方 URL 出口、Docker 安全姿态、GHCR 可见性、E2E 主线、品牌单一来源、运维遗留 | 活跃 |
 | [brand-rename-audit.md](brand-rename-audit.md) | 品牌改名剩余 ~150 处用户可见串的分类（T1 身份 / T2 商业出口 / T3 需人工判定 / T4 机械） | 活跃 |
+| [kopi-gateway-provider-default.md](kopi-gateway-provider-default.md) | KOPI 网关成为默认 provider（`kopi` + `bill.kopiagent.ai/v1`）：两套 provider 解析体系未打通、余额面仍指旧域名、本机 clash 下无法端到端实测 | 活跃 |
 
 ## 契约 / 协议
 

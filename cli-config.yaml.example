@@ -29,7 +29,7 @@ model:
   # Inference provider selection:
   #   "auto"         - Auto-detect from credentials (default)
   #   "openrouter"   - OpenRouter (requires: OPENROUTER_API_KEY or OPENAI_API_KEY)
-  #   "kopi"         - ⭐ KOPI Proxy (requires: KOPI_API_KEY — get yours at kopiaiagent.com/account)
+  #   "kopi"         - ⭐ KOPI official gateway (requires: KOPI_API_KEY; alias: "kopi-proxy")
   #   "nous"         - Nous Portal OAuth (requires: kopi auth add nous)
   #   "nous-api"     - Nous Portal API key (requires: NOUS_API_KEY)
   #   "anthropic"    - Direct Anthropic API (requires: ANTHROPIC_API_KEY)
@@ -58,20 +58,25 @@ model:
   #   It works with both no-auth and auth-enabled server modes.
   #
   # Can also be overridden for a single invocation with the --provider flag.
-  provider: "custom"
+  provider: "kopi"
   
-  # ── KOPI Proxy Configuration ──────────────────────────────────────────
-  # The default KOPI AI AGENT provider. Get your API key:
-  #   https://kopiaiagent.com/account
+  # ── KOPI Gateway Configuration ────────────────────────────────────────
+  # The default KOPI AI AGENT provider ("kopi"; "kopi-proxy" is an alias).
+  # Get your API key from your KOPI account page.
   #
-  # kopi-o       = MiMo v2.5 Pro · daily driver · Tier 2
-  # kopi-o-flash = MiMo v2.5 · fast + capable · Tier 3
-  # kopi-flash   = DeepSeek V4 Pro · ultra fast · Tier 3
-  # kopi-gpt5    = GPT-5.5 · strongest reasoning · Tier 1
-  # kopi-opus    = Claude Opus 4.6 · deep analysis · Tier 1
+  # kopi-o              = MiMo v2.5 Pro · daily driver
+  # kopi-siew-dai       = MiMo v2.5 Pro · same upstream, alternate name
+  # kopi-o-flash        = MiMo v2.5 · fast + capable
+  # kopi-siew-dai-flash = MiMo v2.5 · alternate name
+  # kopi-flash          = DeepSeek V4 Flash · ultra fast
+  # kopi-grok-4.5       = Grok 4.5 · strongest reasoning
+  # kopi-grok-4.3       = Grok 4.3 · cheaper reasoning
+  # kopi-free-*         = free tier (gpt-oss 120B / 20B, llama 70B)
   #
+  # The live list is always `GET <base_url>/models` — the names above are the
+  # gateway's customer-visible set as of 2026-08-22.
   api_key: "${KOPI_API_KEY}"
-  base_url: "https://kopiaiagent.com/v2"
+  base_url: "https://bill.kopiagent.ai/v1"
 
   # Azure Foundry keyless auth example:
   # provider: "azure-foundry"

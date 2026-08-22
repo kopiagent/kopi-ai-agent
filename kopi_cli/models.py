@@ -1171,7 +1171,7 @@ except Exception:
     pass
 
 # ---------------------------------------------------------------------------
-# KOPI provider lock — this fork ships the KOPI Proxy (kopiaiagent.com/v1)
+# KOPI provider lock — this fork ships the KOPI gateway (bill.kopiagent.ai/v1)
 # as the ONLY user-facing provider. Every provider surface derives from
 # CANONICAL_PROVIDERS (web /api/model/options, desktop provider_catalog(),
 # the `kopi model` TUI picker), so trimming it here hides the whole upstream
@@ -1181,9 +1181,13 @@ except Exception:
 # Escape hatches:
 #   - KOPI_ALL_PROVIDERS=1 restores the full upstream catalog (dev/debug;
 #     also set by tests/conftest.py so upstream provider tests keep passing).
-#   - If the kopi-proxy plugin failed to load, fail OPEN (keep the full
+#   - If the kopi plugin failed to load, fail OPEN (keep the full
 #     list) rather than shipping an empty picker.
-_KOPI_LOCKED_SLUGS = {"kopi-proxy"}
+#
+# "kopi" is the canonical slug (plugins/model-providers/kopi-proxy/ registers
+# it under that name). "kopi-proxy" stays in the set so an older/overridden
+# plugin profile still passes the lock instead of emptying the picker.
+_KOPI_LOCKED_SLUGS = {"kopi", "kopi-proxy"}
 # When the lock is active this is the allowed-slug frozenset; None = lock off.
 # list_authenticated_providers() also consults it, because authenticated rows
 # (detected env keys, auth-store logins) are emitted independently of
@@ -1307,6 +1311,12 @@ def group_providers(slugs):
 
 
 _PROVIDER_ALIASES = {
+    # kopi — canonical slug; "kopi-proxy" was the pre-2026-08 canonical id and
+    # is still written in existing instances' config.yaml.
+    "kopi-proxy": "kopi",
+    "kopi_proxy": "kopi",
+    "kopiaiagent": "kopi",
+    "kopiagent": "kopi",
     "glm": "zai",
     "z-ai": "zai",
     "z.ai": "zai",

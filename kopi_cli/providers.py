@@ -44,6 +44,21 @@ class KopiOverlay:
 
 
 KOPI_OVERLAYS: Dict[str, KopiOverlay] = {
+    # The fork's own gateway. It is ALSO declared as a provider plugin
+    # (plugins/model-providers/kopi-proxy/) which is what `kopi status` and the
+    # `/model` picker list read — but that plugin registry is invisible to this
+    # module, and this module is what resolves an explicit `--provider` /
+    # `/model kopi:<model>` switch. Without an overlay here the one provider we
+    # ship is offered in the picker and then rejected on selection with
+    # "Unknown provider 'kopi'" (model_switch.py PATH A). Keep the two in sync:
+    # canonical id, base URL and env vars must match the plugin profile.
+    "kopi": KopiOverlay(
+        transport="openai_chat",
+        auth_type="api_key",
+        extra_env_vars=("KOPI_API_KEY", "KOPI_PROXY_API_KEY"),
+        base_url_override="https://bill.kopiagent.ai/v1",
+        base_url_env_var="KOPI_PROXY_BASE_URL",
+    ),
     "moa": KopiOverlay(
         transport="openai_chat",
         auth_type="virtual",
@@ -266,6 +281,13 @@ class ProviderDef:
 # Uses models.dev IDs where possible.
 
 ALIASES: Dict[str, str] = {
+    # kopi (this fork's gateway; "kopi-proxy" was the old canonical id)
+    "kopi-proxy": "kopi",
+    "kopi_proxy": "kopi",
+    "kopi proxy": "kopi",
+    "kopiaiagent": "kopi",
+    "kopiagent": "kopi",
+
     # openrouter
     "openai": "openrouter",     # bare "openai" → route through aggregator
 
@@ -400,6 +422,7 @@ ALIASES: Dict[str, str] = {
 # not in the catalog.
 
 _LABEL_OVERRIDES: Dict[str, str] = {
+    "kopi": "Kopi Official",
     "moa": "Mixture of Agents",
     "nous": "Kopi Official",
     "openai-codex": "OpenAI Codex",
@@ -890,11 +913,16 @@ def resolve_provider_full(
             from kopi_cli.auth import PROVIDER_REGISTRY as _AUTH_PROVIDER_REGISTRY
             _pcfg = _AUTH_PROVIDER_REGISTRY.get(raw)
             if _pcfg is not None:
-                _collapsed_siblings = [
-                    _rid
-                    for _rid in _AUTH_PROVIDER_REGISTRY
+                # Count DISTINCT providers, not registry keys: a plugin
+                # registers one entry per alias (kopi / kopi-proxy / ... all
+                # carry id "kopi"), and those are the same provider, so the
+                # collapse loses nothing and must fall through to the overlay
+                # chain below (which is where base_url_env_var lives).
+                _collapsed_siblings = {
+                    getattr(_cfg, "id", _rid) or _rid
+                    for _rid, _cfg in _AUTH_PROVIDER_REGISTRY.items()
                     if normalize_provider(_rid) == canonical
-                ]
+                }
                 if len(_collapsed_siblings) > 1:
                     return ProviderDef(
                         id=_pcfg.id,
