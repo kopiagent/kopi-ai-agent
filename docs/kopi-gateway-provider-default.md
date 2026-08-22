@@ -9,8 +9,8 @@
 
 | # | 位置 | 改动 |
 |---|---|---|
-| 1 | `plugins/model-providers/kopi-proxy/__init__.py` | `ProviderProfile.name` `kopi-proxy` → **`kopi`**；`kopi-proxy` / `kopi_proxy` / `kopiaiagent` / `kopiagent` / `KOPI Proxy` 降级为 alias；加 `display_name="Kopi Official"`、`description`；`env_vars` 增加 `KOPI_API_KEY`（配置模板插值的就是它）；新增 `fallback_models`（11 个 `kopi-*`）|
-| 2 | `kopi_cli/providers.py` | 新增 `KOPI_OVERLAYS["kopi"]`（**这一条是 `/model` 能切过去的关键**）、`ALIASES` 五个别名、`_LABEL_OVERRIDES["kopi"]="Kopi Official"` |
+| 1 | `plugins/model-providers/kopi-proxy/__init__.py` | `ProviderProfile.name` `kopi-proxy` → **`kopi`**；`kopi-proxy` / `kopi_proxy` / `kopiaiagent` / `kopiagent` / `KOPI Proxy` 降级为 alias；加 `display_name="KOPI Gateway"`、`description`（必须以标签开头，见下）；`env_vars` 增加 `KOPI_API_KEY`（配置模板插值的就是它）；新增 `fallback_models`（11 个 `kopi-*`）|
+| 2 | `kopi_cli/providers.py` | 新增 `KOPI_OVERLAYS["kopi"]`（**这一条是 `/model` 能切过去的关键**）、`ALIASES` 五个别名、`_LABEL_OVERRIDES["kopi"]="KOPI Gateway"` |
 | 3 | `kopi_cli/providers.py` `resolve_provider_full()` | sibling-collapse 判定从「注册表 key 计数」改成「**distinct provider id** 计数」 |
 | 4 | `kopi_cli/models.py` | `_KOPI_LOCKED_SLUGS = {"kopi", "kopi-proxy"}`；`_PROVIDER_ALIASES` 加四个别名 |
 | 5 | `cli-config.yaml.example` | `provider: "custom"` → **`"kopi"`**；`base_url: kopiaiagent.com/v2` → **`https://bill.kopiagent.ai/v1`**；模型注释换成网关实际在卖的 11 个名字 |
@@ -72,6 +72,10 @@
   1 个真回归 + 新增 1 条守卫测试）。剩下 20 个失败文件全部在 `origin/main` worktree 上
   逐字复现 = 既有环境噪音
 
+**判据（下一个人怎么补上这个缺口）**：在无代理环境（关 clash，或在实例 pod 内）跑
+`curl -s -H "Authorization: Bearer $KOPI_API_KEY" https://bill.kopiagent.ai/v1/models | jq '.data[].id'`，
+数量应为 11 且与 `fallback_models` 对齐；再在实例里 `/model kopi-o-flash` 看是否真的切过去并能对话。
+
 ### 踩到的坑：标签不能撞车（本次唯一的真回归）
 
 `Kopi Official` 这个名字**已经属于 `nous` provider**（Portal/OAuth、
@@ -83,10 +87,6 @@
 （`kopi_cli/models.py` 的 auto-extend 把 `description` 存进 `tui_desc`）。description
 里不含标签，那一行就"按标签找不到"，排除同样失效。所以 description 必须以 display_name
 开头 —— 有 `test_picker_row_is_findable_by_label` 守着。
-
-**判据（下一个人怎么补上这个缺口）**：在无代理环境（关 clash，或在实例 pod 内）跑
-`curl -s -H "Authorization: Bearer $KOPI_API_KEY" https://bill.kopiagent.ai/v1/models | jq '.data[].id'`，
-数量应为 11 且与 `fallback_models` 对齐；再在实例里 `/model kopi-o-flash` 看是否真的切过去并能对话。
 
 ## 4. 遗留问题（本次刻意没做）
 
@@ -125,7 +125,7 @@
 - 网站**不需要**再注入 `provider`：镜像模板默认就是 `kopi`（SaaS 文档 §1 说的那个「只能引擎侧做」
   的口子已经关掉）。`05-model-base-url` 继续只改 `base_url`，行为不变。
 - 存量实例的 `config.yaml` 里是 `provider: custom` 或 `kopi-proxy`：两者都仍然可用
-  （`custom` 走原有特判，`kopi-proxy` 现在是 alias）。**要显示成 `Kopi Official` 必须换成 `kopi`
+  （`custom` 走原有特判，`kopi-proxy` 现在是 alias）。**要显示成 `KOPI Gateway` 必须换成 `kopi`
   或重新 seed 配置**，光换镜像不会改已存在的 config.yaml。
 - 新镜像发布后建议网站侧顺手核对：`GET /v1/capabilities` 里的模型/provider 展示，以及控制台
   「接入 · 客户用的 API 地址」（SiteContent `api.endpoint`）是否也已切到 `bill.kopiagent.ai/v1`
