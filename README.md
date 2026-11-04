@@ -12,7 +12,7 @@
 [![中文](https://img.shields.io/badge/Lang-中文-red?style=for-the-badge)](README.zh-CN.md)
 [![Español](https://img.shields.io/badge/Lang-Español-orange?style=for-the-badge)](README.es.md)
 
-[🌐 Website](https://kopiaiagent.com) · [📚 Docs](https://kopiaiagent.com/docs/) · [⚡ Quick Start](#-quick-start) · [🎮 Features](#-features)
+[🌐 Website](https://kopiaiagent.com) · [📚 Docs](https://kopiaiagent.com/docs/) · [🖥 Desktop Download](#desktop-download--upgrade) · [⚡ Quick Start](#getting-started) · [🎮 Features](#features)
 
 ---
 
@@ -25,6 +25,8 @@
 It creates skills from experience, improves them during use, persists knowledge across sessions, and builds a deepening model of who you are. Talk to it from Telegram while it works on a cloud VM — no laptop tethering.
 
 Use any model you want — **KOPI Proxy**, OpenRouter, OpenAI, or your own endpoint. Switch with `kopi model` — no code changes, no lock-in. New installs get **5 million tokens** auto-provisioned.
+
+## Features
 
 <table>
 <tr><td><b>Works out of the box</b></td><td>Install with one command. Auto-provisioned API key with 5M token quota. Pick a model and start chatting immediately — no API key collection.</td></tr>
@@ -43,6 +45,45 @@ Use any model you want — **KOPI Proxy**, OpenRouter, OpenAI, or your own endpo
 <tr><td><b>📰 Content Engine</b></td><td>Daily briefings, content repurposing (podcast→social), RSS monitoring, multi-language auto-publishing.</td></tr>
 <tr><td><b>💼 Business Suite</b></td><td>SME advertising (TikTok ads + coupon engine), digital commerce (Stripe + USDC), customer onboarding portal.</td></tr>
 </table>
+
+---
+
+## Desktop Download & Upgrade
+
+**Latest desktop release: [Kopi Desktop v1.22.9](https://github.com/kopiagent/kopi-ai-agent/releases/tag/v1.22.9)** (August 3, 2026).
+
+Download the package for your platform:
+
+| Platform | Installer / package |
+|----------|---------------------|
+| Linux x64 | [Kopi-1.22.9-linux-amd64.deb](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.9/Kopi-1.22.9-linux-amd64.deb) |
+| Linux x64 | [Kopi-1.22.9-linux-x86_64.AppImage](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.9/Kopi-1.22.9-linux-x86_64.AppImage) |
+| Linux x64 | [Kopi-1.22.9-linux-x86_64.rpm](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.9/Kopi-1.22.9-linux-x86_64.rpm) |
+| macOS Apple Silicon (arm64) | [Kopi-1.22.9-mac-arm64.dmg](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.9/Kopi-1.22.9-mac-arm64.dmg) |
+| macOS Apple Silicon (arm64) | [Kopi-1.22.9-mac-arm64.zip](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.9/Kopi-1.22.9-mac-arm64.zip) |
+| Windows x64 | [Kopi-1.22.9-win-x64.exe](https://github.com/kopiagent/kopi-ai-agent/releases/download/v1.22.9/Kopi-1.22.9-win-x64.exe) |
+
+The current release provides macOS packages for Apple Silicon (arm64). For other versions and future updates, visit [the latest release](https://github.com/kopiagent/kopi-ai-agent/releases/latest) or [all releases](https://github.com/kopiagent/kopi-ai-agent/releases).
+
+### Install or upgrade the desktop app
+
+1. Download the package matching your operating system and architecture.
+2. For an upgrade, quit Kopi before installing the new version.
+3. Run the Windows installer, open the macOS DMG and move Kopi to Applications (or extract the ZIP), or install the Linux DEB/RPM package with your package manager. For AppImage, make the downloaded file executable before launching it.
+4. Launch Kopi.
+
+**macOS first launch:** The current builds are ad-hoc signed and are not yet notarized. After attempting to open Kopi, go to **System Settings → Privacy & Security → Open Anyway** to approve the app.
+
+### Upgrade a CLI installation
+
+If you installed Kopi through the command-line installer, run:
+
+```bash
+kopi update
+kopi doctor
+```
+
+Use the desktop packages above to upgrade the desktop app.
 
 ---
 
