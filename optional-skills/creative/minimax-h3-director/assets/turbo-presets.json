@@ -1,0 +1,39 @@
+{
+  "kind": "director_configuration_recipe",
+  "execution_enabled": false,
+  "validation": "not_run",
+  "default_preset": "preview_6",
+  "mode": "text_to_video",
+  "base_workflow_api": null,
+  "model_files": null,
+  "node_bindings": null,
+  "unresolved_bindings": [
+    "base_workflow_api",
+    "model_files",
+    "node_bindings",
+    "dimensions_and_frame_count",
+    "audio_video_output_path"
+  ],
+  "presets": {
+    "preview_6": {
+      "lora_node": "MiniMaxH3TurboLoRA",
+      "lora_name": "minimax_h3_turbo_v4_step600_ema.safetensors",
+      "strength": 1.0,
+      "low_vram": false,
+      "sampler_node": "MiniMaxH3TurboSampler",
+      "scheduler_node": "BasicScheduler",
+      "scheduler": "simple",
+      "steps": 6
+    },
+    "motion_8": {
+      "lora_node": "MiniMaxH3TurboLoRA",
+      "lora_name": "minimax_h3_turbo_v4_step600_ema.safetensors",
+      "strength": 1.0,
+      "low_vram": false,
+      "sampler_node": "MiniMaxH3TurboSampler",
+      "scheduler_node": "BasicScheduler",
+      "scheduler": "simple",
+      "steps": 8
+    }
+  }
+}

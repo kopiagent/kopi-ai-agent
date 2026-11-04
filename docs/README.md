@@ -12,6 +12,7 @@
 
 | 文档 | 记录什么 | 状态 |
 |---|---|---|
+| [minimax-h3-handoff.md](minimax-h3-handoff.md) | H3 导演技能交付范围、Windows 测试失败与后续生成/发版验证 | 待验证 |
 | [pending-product-decisions.md](pending-product-decisions.md) | 产品级待决：第三方 URL 出口、Docker 安全姿态、GHCR 可见性、E2E 主线、品牌单一来源、运维遗留 | 活跃 |
 | [brand-rename-audit.md](brand-rename-audit.md) | 品牌改名剩余 ~150 处用户可见串的分类（T1 身份 / T2 商业出口 / T3 需人工判定 / T4 机械） | 活跃 |
 

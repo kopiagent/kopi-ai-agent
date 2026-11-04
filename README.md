@@ -77,6 +77,27 @@ Your first conversation is on us — 5M tokens included.
 
 ---
 
+## MiniMax H3 Video Director (v1.23.0)
+
+The optional [MiniMax H3 director skill](optional-skills/creative/minimax-h3-director/SKILL.md)
+turns a video brief into a story, timed storyboard, camera directions, character
+continuity notes, dialogue and sound cues, per-shot prompts, and an edit plan.
+It includes a **community Turbo LoRA six-step ComfyUI configuration recipe**,
+plus an eight-step preset for motion comparisons.
+
+```bash
+kopi skills install official/creative/minimax-h3-director
+```
+
+Try: “Plan a 30-second vertical coffee ad with H3, a consistent main character,
+Chinese dialogue and a six-step workflow recipe. Deliver the planning files only.”
+
+This version delivers the director skill and configuration handoff. It does not
+connect a generation service or include model weights. Rendering requires a
+compatible ComfyUI setup and the existing `comfyui` skill. Six steps refers to
+sampling, not a guaranteed render time; GPU generation has not been validated
+as part of this addition.
+
 ## Getting Started
 
 ```bash

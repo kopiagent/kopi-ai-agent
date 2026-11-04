@@ -54,6 +54,23 @@ kopi              # 开始对话！
 
 ---
 
+## MiniMax H3 视频导演技能（v1.23.0）
+
+新增可选的 [MiniMax H3 导演技能](optional-skills/creative/minimax-h3-director/SKILL.md)，
+可交付故事结构、带时间轴的分镜、景别与运镜、角色连续性、对白与音效、逐镜头提示词和剪辑方案。
+附带社区 **Turbo LoRA 6 步 ComfyUI 配置方案**，以及用于复杂运动对比的 8 步预设。
+
+```bash
+kopi skills install official/creative/minimax-h3-director
+```
+
+示例：“用 H3 导演技能设计 30 秒竖屏咖啡广告，保持主角一致，使用中文对白，
+准备 6 步工作流配置，先只交付策划文件。”
+
+本版本交付导演技能与配置方案，暂不连接实际生成服务，也不内置模型权重。
+后续生成需要兼容的 ComfyUI 环境，并复用现有 `comfyui` 技能。
+“6 步”指采样步数，不代表 6 秒出片；本次新增内容尚未经过 GPU 实际生成验证。
+
 ## 快速入门
 
 ```bash
